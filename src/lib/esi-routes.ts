@@ -79,6 +79,34 @@ export const DEFAULT_ESI_ROUTES: ESIRouteConfig = {
     currentVersion: 'v4',
     description: 'Corporation structures',
     scopes: ['esi-corporations.read_structures.v1']
+  },
+  containerLogs: {
+    path: '/corporations/{corporation_id}/containers/logs/',
+    versions: ['v3'],
+    currentVersion: 'v3',
+    description: 'Corporation container access logs (hangar deliveries)',
+    scopes: ['esi-corporations.read_container_logs.v1']
+  },
+  divisions: {
+    path: '/corporations/{corporation_id}/divisions/',
+    versions: ['v2'],
+    currentVersion: 'v2',
+    description: 'Corporation divisions (hangar and wallet names)',
+    scopes: ['esi-corporations.read_divisions.v1']
+  },
+  assetNames: {
+    path: '/corporations/{corporation_id}/assets/names/',
+    versions: ['v1'],
+    currentVersion: 'v1',
+    description: 'Get names for corporation assets',
+    scopes: ['esi-assets.read_corporation_assets.v1']
+  },
+  assetLocations: {
+    path: '/corporations/{corporation_id}/assets/locations/',
+    versions: ['v2'],
+    currentVersion: 'v2',
+    description: 'Get locations for corporation assets',
+    scopes: ['esi-assets.read_corporation_assets.v1']
   }
 };
 
@@ -161,7 +189,11 @@ export class ESIRouteManager {
         killmails: ['v1'],
         income: ['v1'],
         contracts: ['v1'],
-        structures: ['v3', 'v4']
+        structures: ['v3', 'v4'],
+        containerLogs: ['v3'],
+        divisions: ['v2'],
+        assetNames: ['v1'],
+        assetLocations: ['v2']
       };
       
       const validVersions = knownGoodVersions[processName] || [route.currentVersion];

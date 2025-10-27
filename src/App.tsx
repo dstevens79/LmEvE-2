@@ -61,6 +61,7 @@ import { Notifications } from '@/components/tabs/Notifications';
 import { Corporations } from '@/components/Corporations';
 import { Theme } from '@/components/tabs/Theme';
 import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
+import { Projects } from '@/components/tabs/Projects';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useKV<TabType>('active-tab', 'dashboard');
@@ -318,6 +319,7 @@ function AppContent() {
     { id: 'manufacturing', label: 'Manufacturing', icon: Factory, component: Manufacturing, badge: '3' },
     { id: 'mining', label: 'Mining', icon: HardHat, component: Mining },
     { id: 'planetary', label: 'Planetary Interaction', icon: Planet, component: PlanetaryInteraction, badge: '5' },
+    { id: 'projects', label: 'Projects', icon: Archive, component: Projects, badge: '2' },
     { id: 'logistics', label: 'Logistics', icon: Truck, component: Logistics },
     { id: 'killmails', label: 'Killmails', icon: Crosshair, component: Killmails },
     { id: 'market', label: 'Market', icon: TrendUp, component: Market },

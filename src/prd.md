@@ -26,6 +26,7 @@
 - **Production Planning**: Advanced planning tools for creating production schedules, cost analysis, and profit estimation
 - **Material Requirements Planning**: Automatic calculation of material needs for manufacturing jobs with availability tracking
 - **Mining Operations**: Monitor mining activities, ore processing, and resource allocation
+- **Corporation Projects**: Define project hangars for material deliveries, track requirements via ESI asset and container log endpoints, match deliveries to project needs, and monitor progress with real-time hangar scanning
 - **Settings & Configuration**: Comprehensive settings panel for API key management, sync preferences, and notification controls
 - **Dashboard Overview**: Quick stats and alerts for corporation health and activity with live EVE Online connection status
 
