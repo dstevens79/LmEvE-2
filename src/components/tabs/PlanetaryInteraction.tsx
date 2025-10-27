@@ -22,7 +22,9 @@ import {
   CheckCircle,
   Calendar,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  ArrowsClockwise,
+  Warning
 } from '@phosphor-icons/react';
 
 interface PIComponentTier {
@@ -57,6 +59,7 @@ interface PIDelivery {
   assignmentId: string;
   pilotId: string;
   pilotName: string;
+  characterId?: string;
   componentTypeId: number;
   componentName: string;
   quantity: number;
@@ -64,6 +67,8 @@ interface PIDelivery {
   verifiedByESI: boolean;
   payoutAmount: number;
   notes?: string;
+  esiItemId?: number;
+  hangarDivision?: number;
 }
 
 interface PlanetaryInteractionProps {
@@ -134,6 +139,9 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
   
   const [piAssignments, setPiAssignments] = useKV<PIAssignment[]>('pi-assignments', []);
   const [piDeliveries, setPiDeliveries] = useKV<PIDelivery[]>('pi-deliveries', []);
+  const [hangarItems, setHangarItems] = useState<any[]>([]);
+  const [lastSyncTime, setLastSyncTime] = useKV<string>('pi-last-sync', '');
+  const [isSyncing, setIsSyncing] = useState(false);
   
   const [activeTab, setActiveTab] = useState<'my-pi' | 'management'>('my-pi');
   const [showAssignDialog, setShowAssignDialog] = useState(false);
@@ -309,6 +317,121 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
     return num.toLocaleString();
   };
 
+  const syncHangarDeliveries = async () => {
+    if (!user?.accessToken || !user?.corporationId) {
+      toast.error('ESI authentication required to sync deliveries');
+      return;
+    }
+
+    setIsSyncing(true);
+    
+    try {
+      const corporationId = user.corporationId;
+      const accessToken = user.accessToken;
+
+      const assetsResponse = await fetch(
+        `https://esi.evetech.net/latest/corporations/${corporationId}/assets/?datasource=tranquility`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json'
+          }
+        }
+      );
+
+      if (!assetsResponse.ok) {
+        throw new Error(`Failed to fetch corporation assets: ${assetsResponse.statusText}`);
+      }
+
+      const allAssets = await assetsResponse.json();
+
+      const divisionsResponse = await fetch(
+        `https://esi.evetech.net/latest/corporations/${corporationId}/divisions/?datasource=tranquility`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json'
+          }
+        }
+      );
+
+      let deliveryDivision = 2;
+      
+      if (divisionsResponse.ok) {
+        const divisions = await divisionsResponse.json();
+        const deliveryHangar = divisions.hangar?.find((d: any) => 
+          d.name?.toLowerCase().includes('industry') && 
+          d.name?.toLowerCase().includes('deliveries')
+        );
+        
+        if (deliveryHangar) {
+          deliveryDivision = deliveryHangar.division;
+          console.log('📦 Found Industry Deliveries hangar:', deliveryHangar.name, 'Division:', deliveryDivision);
+        } else {
+          console.log('⚠️ Industry Deliveries hangar not found, using division 2');
+        }
+      }
+
+      const deliveryAssets = allAssets.filter((asset: any) => {
+        const locationFlag = asset.location_flag || '';
+        return locationFlag === `CorpSAG${deliveryDivision}`;
+      });
+
+      console.log('📦 Assets in delivery hangar:', deliveryAssets.length);
+
+      const newDeliveries: PIDelivery[] = [];
+
+      for (const asset of deliveryAssets) {
+        const typeId = asset.type_id;
+        const quantity = asset.quantity || 1;
+        
+        const assignment = piAssignments.find(a => a.componentTypeId === typeId && a.status === 'active');
+        
+        if (assignment) {
+          const existingDelivery = piDeliveries.find(d => d.esiItemId === asset.item_id);
+          
+          if (!existingDelivery) {
+            const delivery: PIDelivery = {
+              id: `esi-del-${Date.now()}-${asset.item_id}`,
+              assignmentId: assignment.id,
+              pilotId: assignment.pilotId,
+              pilotName: assignment.pilotName,
+              characterId: assignment.characterId,
+              componentTypeId: typeId,
+              componentName: assignment.componentName,
+              quantity: quantity,
+              deliveryDate: new Date().toISOString(),
+              verifiedByESI: true,
+              payoutAmount: quantity * assignment.payoutPerUnit,
+              esiItemId: asset.item_id,
+              hangarDivision: deliveryDivision,
+              notes: 'Auto-detected from Industry Deliveries hangar'
+            };
+            
+            newDeliveries.push(delivery);
+            console.log('✅ New delivery detected:', delivery.componentName, quantity, 'for', assignment.pilotName);
+          }
+        }
+      }
+
+      if (newDeliveries.length > 0) {
+        setPiDeliveries(prev => [...prev, ...newDeliveries]);
+        toast.success(`Synced ${newDeliveries.length} new deliveries from hangar`);
+      } else {
+        toast.info('No new deliveries found in hangar');
+      }
+
+      setLastSyncTime(new Date().toISOString());
+      setHangarItems(deliveryAssets);
+      
+    } catch (error) {
+      console.error('❌ Error syncing hangar deliveries:', error);
+      toast.error('Failed to sync deliveries. Check console for details.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleCreateAssignment = () => {
     if (!newAssignment.pilotId || !newAssignment.componentName || newAssignment.monthlyQuota <= 0) {
       toast.error('Please fill in all required fields');
@@ -415,11 +538,22 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
             Planetary Interaction
           </h1>
           <p className="text-muted-foreground mt-1">
-            Track PI component assignments and deliveries
+            Track PI component assignments and deliveries via Industry Deliveries hangar
           </p>
         </div>
         
         <div className="flex gap-2">
+          {user?.accessToken && (
+            <Button 
+              onClick={syncHangarDeliveries} 
+              variant="outline"
+              disabled={isSyncing}
+              className="border-accent/30 hover:bg-accent/10"
+            >
+              <ArrowsClockwise size={16} className={`mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Syncing...' : 'Sync Hangar'}
+            </Button>
+          )}
           {canManage && (
             <Button onClick={() => setShowAssignDialog(true)} className="bg-accent hover:bg-accent/90">
               <Plus size={16} className="mr-2" />
@@ -428,10 +562,52 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
           )}
           <Button onClick={() => setShowDeliveryDialog(true)} variant="outline">
             <Truck size={16} className="mr-2" />
-            Record Delivery
+            Manual Entry
           </Button>
         </div>
       </div>
+
+      {!user?.accessToken && (
+        <Card className="border-yellow-500/30 bg-yellow-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <Warning size={20} className="text-yellow-500 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-medium text-yellow-500">ESI Authentication Required</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  To automatically track PI deliveries from the Industry Deliveries hangar, 
+                  please log in with EVE SSO. This requires corporation asset read permissions.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {user?.accessToken && (
+        <Card className="border-accent/30 bg-accent/5">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle size={20} className="text-accent mt-0.5" />
+              <div className="flex-1">
+                <p className="font-medium text-accent">Automatic Delivery Tracking Enabled</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  <strong>How it works:</strong> When pilots place PI components in the 
+                  "Industry Deliveries" corporation hangar, click "Sync Hangar" to automatically 
+                  detect and record deliveries. The system matches items to active assignments 
+                  and calculates payouts automatically.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {lastSyncTime && (
+        <div className="text-sm text-muted-foreground">
+          Last synced: {new Date(lastSyncTime).toLocaleString()}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
@@ -452,6 +628,9 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
               <div>
                 <p className="text-sm text-muted-foreground">Total Deliveries</p>
                 <p className="text-2xl font-bold">{piDeliveries.length}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {piDeliveries.filter(d => d.verifiedByESI).length} ESI verified
+                </p>
               </div>
               <Truck size={24} className="text-green-400" />
             </div>
@@ -532,6 +711,12 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
                             <Badge variant="secondary" className="ml-2">
                               Tier {assignment.componentTier}
                             </Badge>
+                            {getDeliveriesForAssignment(assignment.id).some(d => d.verifiedByESI) && (
+                              <Badge variant="secondary" className="ml-2 bg-green-400/20 text-green-400 border-green-400/30">
+                                <CheckCircle size={12} className="mr-1" />
+                                ESI Verified
+                              </Badge>
+                            )}
                           </CardTitle>
                           <CardDescription>
                             Assigned on {new Date(assignment.assignedDate).toLocaleDateString()}
@@ -655,6 +840,67 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
                 </div>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Deliveries</CardTitle>
+                <CardDescription>
+                  Latest PI deliveries from all pilots
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {piDeliveries
+                    .sort((a, b) => new Date(b.deliveryDate).getTime() - new Date(a.deliveryDate).getTime())
+                    .slice(0, 20)
+                    .map((delivery) => {
+                      const characterImageUrl = delivery.characterId 
+                        ? `https://images.evetech.net/characters/${delivery.characterId}/portrait?size=32`
+                        : null;
+
+                      return (
+                        <div key={delivery.id} className="flex items-center gap-3 p-3 border border-border rounded-lg hover:bg-muted/30 transition-colors">
+                          {characterImageUrl && (
+                            <img 
+                              src={characterImageUrl}
+                              alt={delivery.pilotName}
+                              className="w-8 h-8 rounded-full border border-accent/30"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          )}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{delivery.pilotName}</p>
+                              {delivery.verifiedByESI && (
+                                <Badge variant="secondary" className="text-xs bg-green-400/20 text-green-400 border-green-400/30">
+                                  <CheckCircle size={10} className="mr-1" />
+                                  ESI
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {delivery.componentName} × {formatNumber(delivery.quantity)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-accent">{formatISK(delivery.payoutAmount)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(delivery.deliveryDate).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  {piDeliveries.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No deliveries recorded yet
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         )}
       </Tabs>
@@ -769,9 +1015,16 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
       <Dialog open={showDeliveryDialog} onOpenChange={setShowDeliveryDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Record PI Delivery</DialogTitle>
+            <DialogTitle>Manual PI Delivery Entry</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="p-3 bg-muted/50 rounded-lg border border-border">
+              <p className="text-xs text-muted-foreground">
+                <strong>Note:</strong> Deliveries placed in the Industry Deliveries hangar will be 
+                automatically detected and verified when you click "Sync Hangar". Manual entries are 
+                for tracking deliveries outside the ESI system.
+              </p>
+            </div>
             <div>
               <Label>Assignment</Label>
               <Select 
