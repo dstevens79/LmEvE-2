@@ -28,7 +28,6 @@ import {
   Shield,
   Archive,
   SignIn,
-  UserCheck,
   Eye,
   EyeSlash,
   DeviceMobile,
@@ -58,7 +57,6 @@ import { Killmails } from '@/components/tabs/Killmails';
 import { Market } from '@/components/tabs/Market';
 import { Income } from '@/components/tabs/Income';
 import { Settings } from '@/components/tabs/Settings';
-import { Debug } from '@/components/tabs/Debug';
 import { Notifications } from '@/components/tabs/Notifications';
 import { Corporations } from '@/components/Corporations';
 import { Theme } from '@/components/tabs/Theme';
@@ -327,7 +325,6 @@ function AppContent() {
     { id: 'notifications', label: 'Notifications', icon: Bell, component: Notifications },
     { id: 'corporations', label: 'Corporations', icon: Building, component: Corporations },
     { id: 'theme', label: 'Theme', icon: Palette, component: Theme },
-    { id: 'debug', label: 'Debug', icon: UserCheck, component: Debug },
   ];
 
   const settingsTabs = [
