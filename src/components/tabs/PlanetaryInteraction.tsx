@@ -24,7 +24,9 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowsClockwise,
-  Warning
+  Warning,
+  Gear,
+  Users
 } from '@phosphor-icons/react';
 
 interface PIComponentTier {
@@ -142,8 +144,28 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
   const [hangarItems, setHangarItems] = useState<any[]>([]);
   const [lastSyncTime, setLastSyncTime] = useKV<string>('pi-last-sync', '');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [deliveryHangarConfig, setDeliveryHangarConfig] = useKV<{
+    hangarDivision: number;
+    hangarName: string;
+    autoSync: boolean;
+    syncInterval: number;
+  }>('pi-delivery-hangar-config', {
+    hangarDivision: 2,
+    hangarName: 'Industry Deliveries',
+    autoSync: false,
+    syncInterval: 60
+  });
+  const [piPayoutRates, setPiPayoutRates] = useKV<{
+    [key: number]: {
+      typeId: number;
+      componentName: string;
+      tier: number;
+      defaultRate: number;
+      lastUpdated: string;
+    }
+  }>('pi-payout-rates', {});
   
-  const [activeTab, setActiveTab] = useState<'my-pi' | 'management'>('my-pi');
+  const [activeTab, setActiveTab] = useState<'my-pi' | 'management' | 'administration'>('my-pi');
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
   
@@ -161,6 +183,8 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
     quantity: 0,
     notes: ''
   });
+  
+  const [editingRates, setEditingRates] = useState<{[key: number]: number}>({});
 
   useEffect(() => {
     if (piAssignments.length === 0) {
@@ -345,6 +369,8 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
 
       const allAssets = await assetsResponse.json();
 
+      let deliveryDivision = deliveryHangarConfig.hangarDivision;
+      
       const divisionsResponse = await fetch(
         `https://esi.evetech.net/latest/corporations/${corporationId}/divisions/?datasource=tranquility`,
         {
@@ -355,20 +381,26 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
         }
       );
 
-      let deliveryDivision = 2;
-      
       if (divisionsResponse.ok) {
         const divisions = await divisionsResponse.json();
         const deliveryHangar = divisions.hangar?.find((d: any) => 
-          d.name?.toLowerCase().includes('industry') && 
-          d.name?.toLowerCase().includes('deliveries')
+          d.division === deliveryHangarConfig.hangarDivision ||
+          (d.name?.toLowerCase().includes('industry') && 
+           d.name?.toLowerCase().includes('deliveries'))
         );
         
         if (deliveryHangar) {
           deliveryDivision = deliveryHangar.division;
-          console.log('📦 Found Industry Deliveries hangar:', deliveryHangar.name, 'Division:', deliveryDivision);
+          console.log('📦 Found delivery hangar:', deliveryHangar.name, 'Division:', deliveryDivision);
+          
+          if (deliveryHangar.name !== deliveryHangarConfig.hangarName) {
+            setDeliveryHangarConfig(prev => ({
+              ...prev,
+              hangarName: deliveryHangar.name
+            }));
+          }
         } else {
-          console.log('⚠️ Industry Deliveries hangar not found, using division 2');
+          console.log('⚠️ Using configured division:', deliveryDivision);
         }
       }
 
@@ -405,7 +437,7 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
               payoutAmount: quantity * assignment.payoutPerUnit,
               esiItemId: asset.item_id,
               hangarDivision: deliveryDivision,
-              notes: 'Auto-detected from Industry Deliveries hangar'
+              notes: `Auto-detected from ${deliveryHangarConfig.hangarName} (Division ${deliveryDivision})`
             };
             
             newDeliveries.push(delivery);
@@ -663,9 +695,10 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
       </div>
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)}>
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="my-pi">My PI</TabsTrigger>
-          {canManage && <TabsTrigger value="management">Management</TabsTrigger>}
+          {canManage && <TabsTrigger value="management">Overview</TabsTrigger>}
+          {canManage && <TabsTrigger value="administration">Administration</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="my-pi" className="space-y-6 mt-6">
@@ -903,6 +936,368 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
             </Card>
           </TabsContent>
         )}
+
+        {canManage && (
+          <TabsContent value="administration" className="space-y-6 mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Gear size={20} />
+                  Delivery Hangar Configuration
+                </CardTitle>
+                <CardDescription>
+                  Configure which corporation hangar division to monitor for PI deliveries
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Hangar Division</Label>
+                    <Select 
+                      value={deliveryHangarConfig.hangarDivision.toString()}
+                      onValueChange={(value) => setDeliveryHangarConfig(prev => ({
+                        ...prev,
+                        hangarDivision: parseInt(value)
+                      }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5, 6, 7].map(div => (
+                          <SelectItem key={div} value={div.toString()}>
+                            Division {div}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Corporation hangar division number to monitor
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label>Hangar Name</Label>
+                    <Input
+                      value={deliveryHangarConfig.hangarName}
+                      onChange={(e) => setDeliveryHangarConfig(prev => ({
+                        ...prev,
+                        hangarName: e.target.value
+                      }))}
+                      placeholder="e.g., Industry Deliveries"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Display name for reference
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-accent/5 border border-accent/30 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle size={20} className="text-accent mt-0.5" />
+                    <div>
+                      <p className="font-medium text-accent">Current Configuration</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Monitoring <strong>Division {deliveryHangarConfig.hangarDivision}</strong> ({deliveryHangarConfig.hangarName}) 
+                        for PI component deliveries. Items placed in this hangar will be automatically detected when "Sync Hangar" is clicked.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button 
+                    onClick={() => {
+                      toast.success('Hangar configuration saved');
+                    }}
+                    className="bg-accent hover:bg-accent/90"
+                  >
+                    Save Configuration
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CurrencyDollar size={20} />
+                  PI Component Payout Rates
+                </CardTitle>
+                <CardDescription>
+                  Set default payout rates per unit for PI components (can be overridden per assignment)
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {PI_COMPONENT_TIERS.map((tier) => (
+                    <div key={tier.tier}>
+                      <h4 className="font-semibold text-sm mb-3 text-muted-foreground">{tier.name}</h4>
+                      <div className="grid gap-3">
+                        {tier.components.map((component) => {
+                          const existingRate = piPayoutRates[component.typeId];
+                          const editingRate = editingRates[component.typeId] ?? (existingRate?.defaultRate || 0);
+                          
+                          return (
+                            <div key={component.typeId} className="flex items-center gap-4 p-3 border border-border rounded-lg">
+                              <div className="flex-1">
+                                <p className="font-medium">{component.name}</p>
+                                <p className="text-xs text-muted-foreground">Type ID: {component.typeId}</p>
+                              </div>
+                              
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  value={editingRate}
+                                  onChange={(e) => setEditingRates(prev => ({
+                                    ...prev,
+                                    [component.typeId]: parseInt(e.target.value) || 0
+                                  }))}
+                                  placeholder="ISK per unit"
+                                  className="w-32"
+                                />
+                                <span className="text-sm text-muted-foreground">ISK/unit</span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setPiPayoutRates(prev => ({
+                                      ...prev,
+                                      [component.typeId]: {
+                                        typeId: component.typeId,
+                                        componentName: component.name,
+                                        tier: component.tier,
+                                        defaultRate: editingRate,
+                                        lastUpdated: new Date().toISOString()
+                                      }
+                                    }));
+                                    toast.success(`Rate updated for ${component.name}`);
+                                  }}
+                                  disabled={editingRate === (existingRate?.defaultRate || 0)}
+                                >
+                                  Save
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users size={20} />
+                  Pilot Assignment Management
+                </CardTitle>
+                <CardDescription>
+                  Assign PI components to corporation pilots for production and delivery tracking
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <p className="text-sm text-muted-foreground">
+                      {piAssignments.filter(a => a.status === 'active').length} active assignments
+                    </p>
+                    <Button 
+                      onClick={() => setShowAssignDialog(true)}
+                      className="bg-accent hover:bg-accent/90"
+                    >
+                      <Plus size={16} className="mr-2" />
+                      New Assignment
+                    </Button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {piAssignments.length === 0 ? (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <Package size={48} className="mx-auto mb-3 opacity-50" />
+                        <p>No PI assignments created yet</p>
+                        <p className="text-sm mt-1">Click "New Assignment" to assign PI components to pilots</p>
+                      </div>
+                    ) : (
+                      piAssignments.map((assignment) => {
+                        const monthlyDelivered = getMonthlyDelivered(assignment.id);
+                        const monthlyProgress = assignment.monthlyQuota > 0 
+                          ? (monthlyDelivered / assignment.monthlyQuota) * 100 
+                          : 0;
+                        const characterImageUrl = assignment.characterId 
+                          ? `https://images.evetech.net/characters/${assignment.characterId}/portrait?size=64`
+                          : null;
+
+                        return (
+                          <div key={assignment.id} className="p-4 border border-border rounded-lg">
+                            <div className="flex items-start gap-4">
+                              {characterImageUrl && (
+                                <img 
+                                  src={characterImageUrl}
+                                  alt={assignment.pilotName}
+                                  className="w-12 h-12 rounded-full border-2 border-accent/30"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                  }}
+                                />
+                              )}
+                              
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div>
+                                    <p className="font-medium">{assignment.pilotName}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {assignment.componentName} (Tier {assignment.componentTier})
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge 
+                                      className={
+                                        assignment.status === 'active' 
+                                          ? 'bg-green-400/20 text-green-400 border-green-400/30' 
+                                          : 'bg-gray-400/20 text-gray-400 border-gray-400/30'
+                                      }
+                                    >
+                                      {assignment.status.toUpperCase()}
+                                    </Badge>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setPiAssignments(prev => 
+                                          prev.map(a => 
+                                            a.id === assignment.id 
+                                              ? { ...a, status: a.status === 'active' ? 'paused' : 'active' } 
+                                              : a
+                                          )
+                                        );
+                                        toast.success(`Assignment ${assignment.status === 'active' ? 'paused' : 'activated'}`);
+                                      }}
+                                    >
+                                      {assignment.status === 'active' ? 'Pause' : 'Activate'}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleDeleteAssignment(assignment.id)}
+                                    >
+                                      <Trash2 size={14} />
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-4 gap-4 mb-3">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Monthly Quota</p>
+                                    <p className="font-medium">{formatNumber(assignment.monthlyQuota)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Delivered</p>
+                                    <p className="font-medium text-accent">{formatNumber(monthlyDelivered)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Rate</p>
+                                    <p className="font-medium">{formatISK(assignment.payoutPerUnit)}/unit</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Monthly Payout</p>
+                                    <p className="font-medium text-accent">{formatISK(getMonthlyPayout(assignment.id))}</p>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-xs text-muted-foreground">
+                                    <span>Progress</span>
+                                    <span>{monthlyProgress.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="w-full bg-muted rounded-full h-2">
+                                    <div 
+                                      className={`h-2 rounded-full transition-all ${
+                                        monthlyProgress >= 100 
+                                          ? 'bg-green-400' 
+                                          : monthlyProgress >= 75 
+                                          ? 'bg-accent' 
+                                          : 'bg-yellow-400'
+                                      }`}
+                                      style={{ width: `${Math.min(monthlyProgress, 100)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendUp size={20} />
+                  Income Integration
+                </CardTitle>
+                <CardDescription>
+                  PI deliveries are automatically integrated with the Income tab
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-4 bg-muted/50 rounded-lg">
+                    <p className="text-xs text-muted-foreground">This Month</p>
+                    <p className="text-2xl font-bold text-accent">{formatISK(totalMonthlyPayout)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {piDeliveries.filter(d => {
+                        const now = new Date();
+                        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                        return new Date(d.deliveryDate) >= startOfMonth;
+                      }).length} deliveries
+                    </p>
+                  </div>
+                  
+                  <div className="p-4 bg-muted/50 rounded-lg">
+                    <p className="text-xs text-muted-foreground">All Time</p>
+                    <p className="text-2xl font-bold">{formatISK(totalAllTimePayout)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {piDeliveries.length} deliveries
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-muted/50 rounded-lg">
+                    <p className="text-xs text-muted-foreground">ESI Verified</p>
+                    <p className="text-2xl font-bold text-green-400">
+                      {piDeliveries.filter(d => d.verifiedByESI).length}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {((piDeliveries.filter(d => d.verifiedByESI).length / Math.max(piDeliveries.length, 1)) * 100).toFixed(0)}% verified
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-muted/50 rounded-lg">
+                    <p className="text-xs text-muted-foreground">Active Pilots</p>
+                    <p className="text-2xl font-bold">{new Set(piAssignments.filter(a => a.status === 'active').map(a => a.pilotId)).size}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      producing PI
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 p-4 bg-accent/5 border border-accent/30 rounded-lg">
+                  <p className="text-sm text-muted-foreground">
+                    <strong>Integration:</strong> All PI deliveries are automatically tracked in the Income tab 
+                    under the "Planetary Interaction" category. Payouts are calculated based on assignment rates 
+                    and delivery quantities. ESI-verified deliveries are marked as such for audit purposes.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
@@ -941,11 +1336,13 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
                     ?.components.find(c => c.name === name);
                   
                   if (component) {
+                    const defaultRate = piPayoutRates[component.typeId]?.defaultRate || 0;
                     setNewAssignment(prev => ({
                       ...prev,
                       componentTypeId: component.typeId,
                       componentName: component.name,
-                      componentTier: component.tier
+                      componentTier: component.tier,
+                      payoutPerUnit: defaultRate
                     }));
                   }
                 }}
@@ -965,12 +1362,22 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
                           value={`${tier.tier}|${component.name}`}
                         >
                           {component.name}
+                          {piPayoutRates[component.typeId] && (
+                            <span className="text-xs text-muted-foreground ml-2">
+                              ({formatISK(piPayoutRates[component.typeId].defaultRate)}/unit)
+                            </span>
+                          )}
                         </SelectItem>
                       ))}
                     </React.Fragment>
                   ))}
                 </SelectContent>
               </Select>
+              {newAssignment.componentTypeId > 0 && piPayoutRates[newAssignment.componentTypeId] && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Default rate: {formatISK(piPayoutRates[newAssignment.componentTypeId].defaultRate)}/unit
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
