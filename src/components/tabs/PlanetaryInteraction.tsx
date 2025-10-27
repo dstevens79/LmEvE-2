@@ -5,121 +5,155 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { useKV } from '@github/spark/hooks';
 import { useAuth } from '@/lib/auth-provider';
 import { useLMeveData } from '@/lib/LMeveDataContext';
 import {
   Planet,
-  Factory,
   Package,
   Truck,
-  Clock,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
   Plus,
-  Edit,
   Trash2,
-  Eye,
-  Calendar,
-  Timer,
-  User,
-  Building,
-  Target,
-  TrendUp,
   CurrencyDollar,
-  Globe,
-  Wrench
+  TrendUp,
+  CheckCircle,
+  Calendar,
+  ArrowUp,
+  ArrowDown
 } from '@phosphor-icons/react';
+
+interface PIComponentTier {
+  tier: number;
+  name: string;
+  components: PIComponent[];
+}
+
+interface PIComponent {
+  typeId: number;
+  name: string;
+  tier: number;
+  icon?: string;
+}
 
 interface PIAssignment {
   id: string;
   pilotId: string;
   pilotName: string;
-  corporationId?: string;
-  planetType: string;
-  planetName: string;
-  systemName: string;
-  securityStatus: number;
-  products: PIProduct[];
+  characterId?: string;
+  componentTypeId: number;
+  componentName: string;
+  componentTier: number;
+  monthlyQuota: number;
+  payoutPerUnit: number;
   assignedDate: string;
-  dueDate?: string;
-  status: 'assigned' | 'in_progress' | 'completed' | 'overdue';
-  priority: 'low' | 'normal' | 'high' | 'urgent';
-  notes?: string;
-  estimatedIncome: number;
-  actualIncome?: number;
-  deliveryTracking: PIDelivery[];
-  lastESICheck?: string;
-  requirements?: string;
-}
-
-interface PIProduct {
-  typeId: number;
-  typeName: string;
-  quantity: number;
-  delivered: number;
-  unitPrice?: number;
-  totalValue?: number;
-  lastDelivery?: string;
+  status: 'active' | 'paused' | 'inactive';
 }
 
 interface PIDelivery {
   id: string;
-  date: string;
-  typeId: number;
-  typeName: string;
+  assignmentId: string;
+  pilotId: string;
+  pilotName: string;
+  componentTypeId: number;
+  componentName: string;
   quantity: number;
-  location: string;
-  esiTransactionId?: string;
-  value?: number;
+  deliveryDate: string;
   verifiedByESI: boolean;
+  payoutAmount: number;
+  notes?: string;
 }
 
 interface PlanetaryInteractionProps {
   isMobileView?: boolean;
 }
 
+const PI_COMPONENT_TIERS: PIComponentTier[] = [
+  {
+    tier: 0,
+    name: 'Raw Materials (Tier 0)',
+    components: [
+      { typeId: 2268, name: 'Aqueous Liquids', tier: 0 },
+      { typeId: 2270, name: 'Autotrophs', tier: 0 },
+      { typeId: 2272, name: 'Base Metals', tier: 0 },
+      { typeId: 2267, name: 'Carbon Compounds', tier: 0 },
+      { typeId: 2273, name: 'Complex Organisms', tier: 0 }
+    ]
+  },
+  {
+    tier: 1,
+    name: 'Processed Materials (Tier 1)',
+    components: [
+      { typeId: 2389, name: 'Bacteria', tier: 1 },
+      { typeId: 2390, name: 'Biofuels', tier: 1 },
+      { typeId: 2392, name: 'Biomass', tier: 1 },
+      { typeId: 2393, name: 'Chiral Structures', tier: 1 },
+      { typeId: 2395, name: 'Electrolytes', tier: 1 }
+    ]
+  },
+  {
+    tier: 2,
+    name: 'Refined Commodities (Tier 2)',
+    components: [
+      { typeId: 2312, name: 'Biocells', tier: 2 },
+      { typeId: 2317, name: 'Construction Blocks', tier: 2 },
+      { typeId: 2321, name: 'Consumer Electronics', tier: 2 },
+      { typeId: 2327, name: 'Coolant', tier: 2 },
+      { typeId: 2328, name: 'Enriched Uranium', tier: 2 },
+      { typeId: 2329, name: 'Fertilizer', tier: 2 }
+    ]
+  },
+  {
+    tier: 3,
+    name: 'Specialized Commodities (Tier 3)',
+    components: [
+      { typeId: 2867, name: 'Biotech Research Reports', tier: 3 },
+      { typeId: 2329, name: 'Camera Drones', tier: 3 },
+      { typeId: 2463, name: 'Robotics', tier: 3 },
+      { typeId: 2463, name: 'Smartfab Units', tier: 3 },
+      { typeId: 2463, name: 'Supercomputers', tier: 3 }
+    ]
+  },
+  {
+    tier: 4,
+    name: 'Advanced Commodities (Tier 4)',
+    components: [
+      { typeId: 2463, name: 'Broadcast Node', tier: 4 },
+      { typeId: 2463, name: 'Integrity Response Drones', tier: 4 },
+      { typeId: 2463, name: 'Nano-Factory', tier: 4 },
+      { typeId: 28974, name: 'Recursive Computing Module', tier: 4 }
+    ]
+  }
+];
+
 export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteractionProps) {
   const { user } = useAuth();
   const { members } = useLMeveData();
   
-  // PI data storage
   const [piAssignments, setPiAssignments] = useKV<PIAssignment[]>('pi-assignments', []);
   const [piDeliveries, setPiDeliveries] = useKV<PIDelivery[]>('pi-deliveries', []);
   
-  // UI state
-  const [activeTab, setActiveTab] = useState<'overview' | 'assignments' | 'management'>('overview');
+  const [activeTab, setActiveTab] = useState<'my-pi' | 'management'>('my-pi');
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [showDeliveryDialog, setShowDeliveryDialog] = useState(false);
-  const [selectedAssignment, setSelectedAssignment] = useState<PIAssignment | null>(null);
-  const [editingAssignment, setEditingAssignment] = useState<PIAssignment | null>(null);
   
-  // Form state
-  const [newAssignment, setNewAssignment] = useState<Partial<PIAssignment>>({
+  const [newAssignment, setNewAssignment] = useState({
     pilotId: '',
-    planetType: '',
-    planetName: '',
-    systemName: '',
-    securityStatus: 0,
-    products: [],
-    priority: 'normal',
-    estimatedIncome: 0,
+    componentTypeId: 0,
+    componentName: '',
+    componentTier: 0,
+    monthlyQuota: 0,
+    payoutPerUnit: 0
+  });
+  
+  const [newDelivery, setNewDelivery] = useState({
+    assignmentId: '',
+    quantity: 0,
     notes: ''
   });
-  
-  const [newProduct, setNewProduct] = useState({
-    typeName: '',
-    quantity: 0,
-    unitPrice: 0
-  });
 
-  // Initialize with sample data if empty
   useEffect(() => {
     if (piAssignments.length === 0) {
       const sampleAssignments: PIAssignment[] = [
@@ -127,256 +161,250 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
           id: 'pi-001',
           pilotId: 'pilot-001',
           pilotName: 'John Doe',
-          corporationId: 'corp-001',
-          planetType: 'Temperate',
-          planetName: 'Temperate Planet VII',
-          systemName: 'Jita',
-          securityStatus: 0.9,
-          products: [
-            {
-              typeId: 2317,
-              typeName: 'Robotics',
-              quantity: 1000,
-              delivered: 750,
-              unitPrice: 45000,
-              totalValue: 45000000,
-              lastDelivery: new Date(Date.now() - 86400000).toISOString()
-            },
-            {
-              typeId: 44,
-              typeName: 'Enriched Uranium',
-              quantity: 500,
-              delivered: 200,
-              unitPrice: 8500,
-              totalValue: 4250000
-            }
-          ],
-          assignedDate: new Date(Date.now() - 7 * 86400000).toISOString(),
-          dueDate: new Date(Date.now() + 7 * 86400000).toISOString(),
-          status: 'in_progress',
-          priority: 'high',
-          notes: 'High priority for upcoming manufacturing run',
-          estimatedIncome: 49250000,
-          actualIncome: 33750000,
-          deliveryTracking: [
-            {
-              id: 'del-001',
-              date: new Date(Date.now() - 86400000).toISOString(),
-              typeId: 2317,
-              typeName: 'Robotics',
-              quantity: 750,
-              location: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
-              value: 33750000,
-              verifiedByESI: true,
-              esiTransactionId: 'txn-12345'
-            }
-          ],
-          lastESICheck: new Date(Date.now() - 3600000).toISOString()
+          characterId: '95465499',
+          componentTypeId: 2463,
+          componentName: 'Robotics',
+          componentTier: 3,
+          monthlyQuota: 10000,
+          payoutPerUnit: 45000,
+          assignedDate: new Date(Date.now() - 30 * 86400000).toISOString(),
+          status: 'active'
         },
         {
           id: 'pi-002',
           pilotId: 'pilot-002',
           pilotName: 'Jane Smith',
-          planetType: 'Barren',
-          planetName: 'Barren Planet III',
-          systemName: 'Amarr',
-          securityStatus: 1.0,
-          products: [
-            {
-              typeId: 3779,
-              typeName: 'Mechanical Parts',
-              quantity: 2000,
-              delivered: 2000,
-              unitPrice: 1200,
-              totalValue: 2400000,
-              lastDelivery: new Date(Date.now() - 2 * 86400000).toISOString()
-            }
-          ],
-          assignedDate: new Date(Date.now() - 14 * 86400000).toISOString(),
-          dueDate: new Date(Date.now() - 1 * 86400000).toISOString(),
-          status: 'completed',
-          priority: 'normal',
-          estimatedIncome: 2400000,
-          actualIncome: 2400000,
-          deliveryTracking: [
-            {
-              id: 'del-002',
-              date: new Date(Date.now() - 2 * 86400000).toISOString(),
-              typeId: 3779,
-              typeName: 'Mechanical Parts',
-              quantity: 2000,
-              location: 'Amarr VIII (Oris) - Emperor Family Academy',
-              value: 2400000,
-              verifiedByESI: true,
-              esiTransactionId: 'txn-12346'
-            }
-          ],
-          lastESICheck: new Date(Date.now() - 1800000).toISOString()
+          characterId: '95465500',
+          componentTypeId: 2328,
+          componentName: 'Enriched Uranium',
+          componentTier: 2,
+          monthlyQuota: 25000,
+          payoutPerUnit: 8500,
+          assignedDate: new Date(Date.now() - 45 * 86400000).toISOString(),
+          status: 'active'
+        },
+        {
+          id: 'pi-003',
+          pilotId: 'pilot-003',
+          pilotName: 'Bob Johnson',
+          characterId: '95465501',
+          componentTypeId: 2312,
+          componentName: 'Mechanical Parts',
+          componentTier: 2,
+          monthlyQuota: 50000,
+          payoutPerUnit: 1200,
+          assignedDate: new Date(Date.now() - 60 * 86400000).toISOString(),
+          status: 'active'
         }
       ];
       
       setPiAssignments(sampleAssignments);
+      
+      const sampleDeliveries: PIDelivery[] = [
+        {
+          id: 'del-001',
+          assignmentId: 'pi-001',
+          pilotId: 'pilot-001',
+          pilotName: 'John Doe',
+          componentTypeId: 2463,
+          componentName: 'Robotics',
+          quantity: 7500,
+          deliveryDate: new Date(Date.now() - 15 * 86400000).toISOString(),
+          verifiedByESI: true,
+          payoutAmount: 337500000
+        },
+        {
+          id: 'del-002',
+          assignmentId: 'pi-001',
+          pilotId: 'pilot-001',
+          pilotName: 'John Doe',
+          componentTypeId: 2463,
+          componentName: 'Robotics',
+          quantity: 2500,
+          deliveryDate: new Date(Date.now() - 2 * 86400000).toISOString(),
+          verifiedByESI: true,
+          payoutAmount: 112500000
+        },
+        {
+          id: 'del-003',
+          assignmentId: 'pi-002',
+          pilotId: 'pilot-002',
+          pilotName: 'Jane Smith',
+          componentTypeId: 2328,
+          componentName: 'Enriched Uranium',
+          quantity: 18000,
+          deliveryDate: new Date(Date.now() - 10 * 86400000).toISOString(),
+          verifiedByESI: true,
+          payoutAmount: 153000000
+        },
+        {
+          id: 'del-004',
+          assignmentId: 'pi-003',
+          pilotId: 'pilot-003',
+          pilotName: 'Bob Johnson',
+          componentTypeId: 2312,
+          componentName: 'Mechanical Parts',
+          quantity: 45000,
+          deliveryDate: new Date(Date.now() - 5 * 86400000).toISOString(),
+          verifiedByESI: true,
+          payoutAmount: 54000000
+        }
+      ];
+      
+      setPiDeliveries(sampleDeliveries);
     }
-  }, [piAssignments, setPiAssignments]);
+  }, []);
 
-  // Get user's assignments
-  const userAssignments = piAssignments.filter(assignment => 
-    assignment.pilotName === user?.characterName
-  );
-
-  // Get all assignments for management view
-  const allAssignments = piAssignments;
-
-  // Calculate statistics
-  const getStatistics = () => {
-    const total = piAssignments.length;
-    const completed = piAssignments.filter(a => a.status === 'completed').length;
-    const inProgress = piAssignments.filter(a => a.status === 'in_progress').length;
-    const overdue = piAssignments.filter(a => a.status === 'overdue').length;
-    const totalEstimatedValue = piAssignments.reduce((sum, a) => sum + a.estimatedIncome, 0);
-    const totalActualValue = piAssignments.reduce((sum, a) => sum + (a.actualIncome || 0), 0);
-    
-    return {
-      total,
-      completed,
-      inProgress,
-      overdue,
-      totalEstimatedValue,
-      totalActualValue,
-      completionRate: total > 0 ? (completed / total) * 100 : 0
-    };
+  const getUserAssignments = () => {
+    return piAssignments.filter(assignment => 
+      assignment.pilotName === user?.characterName
+    );
   };
 
-  const stats = getStatistics();
-
-  const getStatusColor = (status: PIAssignment['status']) => {
-    switch (status) {
-      case 'completed':
-        return 'text-green-400 bg-green-400/20 border-green-400/30';
-      case 'in_progress':
-        return 'text-blue-400 bg-blue-400/20 border-blue-400/30';
-      case 'overdue':
-        return 'text-red-400 bg-red-400/20 border-red-400/30';
-      default:
-        return 'text-gray-400 bg-gray-400/20 border-gray-400/30';
-    }
+  const getDeliveriesForAssignment = (assignmentId: string) => {
+    return piDeliveries.filter(d => d.assignmentId === assignmentId);
   };
 
-  const getPriorityColor = (priority: PIAssignment['priority']) => {
-    switch (priority) {
-      case 'urgent':
-        return 'text-red-400 bg-red-400/20 border-red-400/30';
-      case 'high':
-        return 'text-orange-400 bg-orange-400/20 border-orange-400/30';
-      case 'normal':
-        return 'text-blue-400 bg-blue-400/20 border-blue-400/30';
-      case 'low':
-        return 'text-gray-400 bg-gray-400/20 border-gray-400/30';
-      default:
-        return 'text-gray-400 bg-gray-400/20 border-gray-400/30';
-    }
+  const getDeliveriesThisMonth = (assignmentId: string) => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    return piDeliveries.filter(d => 
+      d.assignmentId === assignmentId && 
+      new Date(d.deliveryDate) >= startOfMonth
+    );
+  };
+
+  const getTotalDelivered = (assignmentId: string) => {
+    return getDeliveriesForAssignment(assignmentId)
+      .reduce((sum, d) => sum + d.quantity, 0);
+  };
+
+  const getMonthlyDelivered = (assignmentId: string) => {
+    return getDeliveriesThisMonth(assignmentId)
+      .reduce((sum, d) => sum + d.quantity, 0);
+  };
+
+  const getTotalPayout = (assignmentId: string) => {
+    return getDeliveriesForAssignment(assignmentId)
+      .reduce((sum, d) => sum + d.payoutAmount, 0);
+  };
+
+  const getMonthlyPayout = (assignmentId: string) => {
+    return getDeliveriesThisMonth(assignmentId)
+      .reduce((sum, d) => sum + d.payoutAmount, 0);
   };
 
   const formatISK = (amount: number) => {
     if (amount >= 1000000000) {
-      return `${(amount / 1000000000).toFixed(1)}B ISK`;
+      return `${(amount / 1000000000).toFixed(2)}B ISK`;
     } else if (amount >= 1000000) {
-      return `${(amount / 1000000).toFixed(1)}M ISK`;
+      return `${(amount / 1000000).toFixed(2)}M ISK`;
     } else if (amount >= 1000) {
       return `${(amount / 1000).toFixed(1)}K ISK`;
     }
     return `${amount.toLocaleString()} ISK`;
   };
 
-  const getProductProgress = (product: PIProduct) => {
-    return product.quantity > 0 ? (product.delivered / product.quantity) * 100 : 0;
+  const formatNumber = (num: number) => {
+    return num.toLocaleString();
   };
 
-  const handleAssignPI = () => {
-    if (!newAssignment.pilotId || !newAssignment.planetName || newAssignment.products?.length === 0) {
-      toast.error('Please fill in all required fields and add at least one product');
+  const handleCreateAssignment = () => {
+    if (!newAssignment.pilotId || !newAssignment.componentName || newAssignment.monthlyQuota <= 0) {
+      toast.error('Please fill in all required fields');
       return;
     }
 
+    const pilot = members?.find(m => m.characterId === newAssignment.pilotId);
+    
     const assignment: PIAssignment = {
       id: `pi-${Date.now()}`,
-      pilotId: newAssignment.pilotId!,
-      pilotName: members?.find(m => m.characterId === newAssignment.pilotId)?.characterName || 'Unknown',
-      corporationId: newAssignment.corporationId,
-      planetType: newAssignment.planetType!,
-      planetName: newAssignment.planetName!,
-      systemName: newAssignment.systemName!,
-      securityStatus: newAssignment.securityStatus!,
-      products: newAssignment.products!,
+      pilotId: newAssignment.pilotId,
+      pilotName: pilot?.characterName || 'Unknown Pilot',
+      characterId: newAssignment.pilotId,
+      componentTypeId: newAssignment.componentTypeId,
+      componentName: newAssignment.componentName,
+      componentTier: newAssignment.componentTier,
+      monthlyQuota: newAssignment.monthlyQuota,
+      payoutPerUnit: newAssignment.payoutPerUnit,
       assignedDate: new Date().toISOString(),
-      dueDate: newAssignment.dueDate,
-      status: 'assigned',
-      priority: newAssignment.priority!,
-      notes: newAssignment.notes,
-      estimatedIncome: newAssignment.estimatedIncome!,
-      deliveryTracking: [],
-      requirements: newAssignment.requirements
+      status: 'active'
     };
 
     setPiAssignments(prev => [...prev, assignment]);
     
-    // Reset form
     setNewAssignment({
       pilotId: '',
-      planetType: '',
-      planetName: '',
-      systemName: '',
-      securityStatus: 0,
-      products: [],
-      priority: 'normal',
-      estimatedIncome: 0,
-      notes: ''
+      componentTypeId: 0,
+      componentName: '',
+      componentTier: 0,
+      monthlyQuota: 0,
+      payoutPerUnit: 0
     });
     
     setShowAssignDialog(false);
-    toast.success('Planetary Interaction assignment created successfully');
+    toast.success(`PI assignment created for ${pilot?.characterName}`);
   };
 
-  const handleAddProduct = () => {
-    if (!newProduct.typeName || newProduct.quantity <= 0) {
-      toast.error('Please enter valid product details');
+  const handleRecordDelivery = () => {
+    if (!newDelivery.assignmentId || newDelivery.quantity <= 0) {
+      toast.error('Please select an assignment and enter a valid quantity');
       return;
     }
 
-    const product: PIProduct = {
-      typeId: Math.floor(Math.random() * 10000), // In real implementation, this would come from EVE API
-      typeName: newProduct.typeName,
-      quantity: newProduct.quantity,
-      delivered: 0,
-      unitPrice: newProduct.unitPrice,
-      totalValue: newProduct.quantity * newProduct.unitPrice
+    const assignment = piAssignments.find(a => a.id === newDelivery.assignmentId);
+    if (!assignment) {
+      toast.error('Assignment not found');
+      return;
+    }
+
+    const delivery: PIDelivery = {
+      id: `del-${Date.now()}`,
+      assignmentId: newDelivery.assignmentId,
+      pilotId: assignment.pilotId,
+      pilotName: assignment.pilotName,
+      componentTypeId: assignment.componentTypeId,
+      componentName: assignment.componentName,
+      quantity: newDelivery.quantity,
+      deliveryDate: new Date().toISOString(),
+      verifiedByESI: false,
+      payoutAmount: newDelivery.quantity * assignment.payoutPerUnit,
+      notes: newDelivery.notes
     };
 
-    setNewAssignment(prev => ({
-      ...prev,
-      products: [...(prev.products || []), product],
-      estimatedIncome: (prev.estimatedIncome || 0) + product.totalValue!
-    }));
-
-    setNewProduct({ typeName: '', quantity: 0, unitPrice: 0 });
-    toast.success('Product added to assignment');
+    setPiDeliveries(prev => [...prev, delivery]);
+    
+    setNewDelivery({
+      assignmentId: '',
+      quantity: 0,
+      notes: ''
+    });
+    
+    setShowDeliveryDialog(false);
+    toast.success(`Delivery recorded: ${formatNumber(delivery.quantity)} ${assignment.componentName} - ${formatISK(delivery.payoutAmount)}`);
   };
 
-  const handleESISync = async (assignmentId: string) => {
-    toast.info('Syncing with ESI... (simulated)');
-    
-    // Simulate ESI sync delay
-    setTimeout(() => {
-      setPiAssignments(prev => prev.map(assignment => 
-        assignment.id === assignmentId
-          ? { ...assignment, lastESICheck: new Date().toISOString() }
-          : assignment
-      ));
-      toast.success('ESI sync completed');
-    }, 2000);
+  const handleDeleteAssignment = (assignmentId: string) => {
+    if (confirm('Are you sure you want to delete this assignment? This will also remove all associated deliveries.')) {
+      setPiAssignments(prev => prev.filter(a => a.id !== assignmentId));
+      setPiDeliveries(prev => prev.filter(d => d.assignmentId !== assignmentId));
+      toast.success('Assignment deleted');
+    }
   };
 
   const canManage = user?.role === 'ceo' || user?.role === 'director' || user?.role === 'manager';
+
+  const userAssignments = getUserAssignments();
+
+  const totalMonthlyPayout = piDeliveries
+    .filter(d => {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      return new Date(d.deliveryDate) >= startOfMonth;
+    })
+    .reduce((sum, d) => sum + d.payoutAmount, 0);
+
+  const totalAllTimePayout = piDeliveries.reduce((sum, d) => sum + d.payoutAmount, 0);
 
   return (
     <div className="space-y-6">
@@ -387,28 +415,33 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
             Planetary Interaction
           </h1>
           <p className="text-muted-foreground mt-1">
-            Manage planetary interaction assignments and track deliveries
+            Track PI component assignments and deliveries
           </p>
         </div>
         
-        {canManage && (
-          <Button onClick={() => setShowAssignDialog(true)} className="bg-accent hover:bg-accent/90">
-            <Plus size={16} className="mr-2" />
-            Assign PI
+        <div className="flex gap-2">
+          {canManage && (
+            <Button onClick={() => setShowAssignDialog(true)} className="bg-accent hover:bg-accent/90">
+              <Plus size={16} className="mr-2" />
+              Assign PI
+            </Button>
+          )}
+          <Button onClick={() => setShowDeliveryDialog(true)} variant="outline">
+            <Truck size={16} className="mr-2" />
+            Record Delivery
           </Button>
-        )}
+        </div>
       </div>
 
-      {/* Statistics Overview */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Assignments</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-sm text-muted-foreground">Active Assignments</p>
+                <p className="text-2xl font-bold">{piAssignments.filter(a => a.status === 'active').length}</p>
               </div>
-              <Factory size={24} className="text-accent" />
+              <Package size={24} className="text-accent" />
             </div>
           </CardContent>
         </Card>
@@ -417,10 +450,10 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Completion Rate</p>
-                <p className="text-2xl font-bold">{stats.completionRate.toFixed(1)}%</p>
+                <p className="text-sm text-muted-foreground">Total Deliveries</p>
+                <p className="text-2xl font-bold">{piDeliveries.length}</p>
               </div>
-              <Target size={24} className="text-green-400" />
+              <Truck size={24} className="text-green-400" />
             </div>
           </CardContent>
         </Card>
@@ -429,10 +462,10 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Est. Value</p>
-                <p className="text-lg font-bold">{formatISK(stats.totalEstimatedValue)}</p>
+                <p className="text-sm text-muted-foreground">This Month</p>
+                <p className="text-lg font-bold">{formatISK(totalMonthlyPayout)}</p>
               </div>
-              <TrendUp size={24} className="text-blue-400" />
+              <Calendar size={24} className="text-blue-400" />
             </div>
           </CardContent>
         </Card>
@@ -441,456 +474,368 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Actual Value</p>
-                <p className="text-lg font-bold">{formatISK(stats.totalActualValue)}</p>
+                <p className="text-sm text-muted-foreground">All Time</p>
+                <p className="text-lg font-bold">{formatISK(totalAllTimePayout)}</p>
               </div>
-              <CurrencyDollar size={24} className="text-accent" />
+              <TrendUp size={24} className="text-accent" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="assignments">My Assignments</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="my-pi">My PI</TabsTrigger>
           {canManage && <TabsTrigger value="management">Management</TabsTrigger>}
         </TabsList>
 
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
-          <div className="grid gap-6">
-            {/* Active Assignments Summary */}
+        <TabsContent value="my-pi" className="space-y-6 mt-6">
+          {userAssignments.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <Planet size={48} className="mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No PI Assignments</h3>
+                <p className="text-muted-foreground">
+                  You don't have any planetary interaction assignments yet.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-6">
+              {userAssignments.map((assignment) => {
+                const monthlyDelivered = getMonthlyDelivered(assignment.id);
+                const totalDelivered = getTotalDelivered(assignment.id);
+                const monthlyPayout = getMonthlyPayout(assignment.id);
+                const totalPayout = getTotalPayout(assignment.id);
+                const characterImageUrl = assignment.characterId 
+                  ? `https://images.evetech.net/characters/${assignment.characterId}/portrait?size=128`
+                  : null;
+
+                return (
+                  <Card key={assignment.id}>
+                    <CardHeader>
+                      <div className="flex items-center gap-4">
+                        {characterImageUrl && (
+                          <img 
+                            src={characterImageUrl}
+                            alt={assignment.pilotName}
+                            className="w-16 h-16 rounded-full border-2 border-accent/30"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                        )}
+                        <div className="flex-1">
+                          <CardTitle className="flex items-center gap-2">
+                            <Package size={20} />
+                            {assignment.componentName}
+                            <Badge variant="secondary" className="ml-2">
+                              Tier {assignment.componentTier}
+                            </Badge>
+                          </CardTitle>
+                          <CardDescription>
+                            Assigned on {new Date(assignment.assignedDate).toLocaleDateString()}
+                          </CardDescription>
+                        </div>
+                        <Badge 
+                          className={
+                            assignment.status === 'active' 
+                              ? 'bg-green-400/20 text-green-400 border-green-400/30' 
+                              : 'bg-gray-400/20 text-gray-400 border-gray-400/30'
+                          }
+                        >
+                          {assignment.status.toUpperCase()}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">This Month</p>
+                          <p className="text-lg font-bold text-accent">{formatNumber(monthlyDelivered)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            / {formatNumber(assignment.monthlyQuota)} quota
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">All Time</p>
+                          <p className="text-lg font-bold">{formatNumber(totalDelivered)}</p>
+                          <p className="text-xs text-muted-foreground">total delivered</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Monthly Income</p>
+                          <p className="text-lg font-bold text-accent">{formatISK(monthlyPayout)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            @ {formatISK(assignment.payoutPerUnit)}/unit
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Total Income</p>
+                          <p className="text-lg font-bold">{formatISK(totalPayout)}</p>
+                          <p className="text-xs text-muted-foreground">all time</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {canManage && (
+          <TabsContent value="management" className="space-y-6 mt-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Globe size={20} />
-                  Active Assignments Overview
-                </CardTitle>
+                <CardTitle>All PI Assignments</CardTitle>
                 <CardDescription>
-                  Current planetary interaction assignments across the corporation
+                  Manage planetary interaction assignments across the corporation
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {piAssignments.filter(a => a.status !== 'completed').slice(0, 5).map((assignment) => (
-                    <div key={assignment.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 rounded-full bg-accent"></div>
-                        <div>
-                          <p className="font-medium">{assignment.pilotName}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {assignment.planetName} - {assignment.systemName}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <Badge className={getStatusColor(assignment.status)}>
-                          {assignment.status.replace('_', ' ').toUpperCase()}
-                        </Badge>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {formatISK(assignment.estimatedIncome)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                  {piAssignments.map((assignment) => {
+                    const monthlyDelivered = getMonthlyDelivered(assignment.id);
+                    const totalDelivered = getTotalDelivered(assignment.id);
+                    const monthlyPayout = getMonthlyPayout(assignment.id);
+                    const totalPayout = getTotalPayout(assignment.id);
+                    const characterImageUrl = assignment.characterId 
+                      ? `https://images.evetech.net/characters/${assignment.characterId}/portrait?size=64`
+                      : null;
 
-            {/* Recent Deliveries */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Truck size={20} />
-                  Recent Deliveries
-                </CardTitle>
-                <CardDescription>
-                  Latest planetary interaction deliveries verified by ESI
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {piDeliveries.slice(0, 5).map((delivery) => (
-                    <div key={delivery.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <CheckCircle size={16} className="text-green-400" />
-                        <div>
-                          <p className="font-medium">{delivery.typeName}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {delivery.quantity.toLocaleString()} units - {delivery.location}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium">{formatISK(delivery.value || 0)}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(delivery.date).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        {/* User Assignments Tab */}
-        <TabsContent value="assignments" className="space-y-6">
-          <div className="grid gap-6">
-            {userAssignments.length === 0 ? (
-              <Card>
-                <CardContent className="p-8 text-center">
-                  <Planet size={48} className="mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No PI Assignments</h3>
-                  <p className="text-muted-foreground">
-                    You don't have any planetary interaction assignments yet.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              userAssignments.map((assignment) => (
-                <Card key={assignment.id}>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2">
-                          <Planet size={20} />
-                          {assignment.planetName}
-                        </CardTitle>
-                        <CardDescription>
-                          {assignment.systemName} ({assignment.securityStatus.toFixed(1)}) - {assignment.planetType}
-                        </CardDescription>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge className={getPriorityColor(assignment.priority)}>
-                          {assignment.priority.toUpperCase()}
-                        </Badge>
-                        <Badge className={getStatusColor(assignment.status)}>
-                          {assignment.status.replace('_', ' ').toUpperCase()}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Assignment Details */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">Assigned</p>
-                        <p className="font-medium">
-                          {new Date(assignment.assignedDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                      {assignment.dueDate && (
-                        <div>
-                          <p className="text-muted-foreground">Due Date</p>
-                          <p className="font-medium">
-                            {new Date(assignment.dueDate).toLocaleDateString()}
-                          </p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-muted-foreground">Estimated Value</p>
-                        <p className="font-medium">{formatISK(assignment.estimatedIncome)}</p>
-                      </div>
-                      {assignment.actualIncome && (
-                        <div>
-                          <p className="text-muted-foreground">Actual Value</p>
-                          <p className="font-medium">{formatISK(assignment.actualIncome)}</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Products Progress */}
-                    <div className="space-y-3">
-                      <h4 className="font-medium">Products</h4>
-                      {assignment.products.map((product, index) => (
-                        <div key={index} className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">{product.typeName}</span>
-                            <span className="text-sm text-muted-foreground">
-                              {product.delivered.toLocaleString()} / {product.quantity.toLocaleString()}
-                            </span>
-                          </div>
-                          <Progress value={getProductProgress(product)} className="h-2" />
-                          <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>{getProductProgress(product).toFixed(1)}% complete</span>
-                            {product.lastDelivery && (
-                              <span>Last delivery: {new Date(product.lastDelivery).toLocaleDateString()}</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Notes */}
-                    {assignment.notes && (
-                      <div>
-                        <h4 className="font-medium text-sm text-muted-foreground mb-1">Notes</h4>
-                        <p className="text-sm">{assignment.notes}</p>
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex gap-2 pt-2">
-                      <Button size="sm" variant="outline" onClick={() => handleESISync(assignment.id)}>
-                        <Wrench size={14} className="mr-1" />
-                        Sync ESI
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setSelectedAssignment(assignment)}>
-                        <Eye size={14} className="mr-1" />
-                        View Details
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Management Tab */}
-        {canManage && (
-          <TabsContent value="management" className="space-y-6">
-            <div className="grid gap-6">
-              {/* Management Overview */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">In Progress</p>
-                        <p className="text-2xl font-bold">{stats.inProgress}</p>
-                      </div>
-                      <Clock size={24} className="text-blue-400" />
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Overdue</p>
-                        <p className="text-2xl font-bold">{stats.overdue}</p>
-                      </div>
-                      <AlertTriangle size={24} className="text-red-400" />
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Completed</p>
-                        <p className="text-2xl font-bold">{stats.completed}</p>
-                      </div>
-                      <CheckCircle size={24} className="text-green-400" />
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* All Assignments Table */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>All PI Assignments</CardTitle>
-                  <CardDescription>
-                    Manage all planetary interaction assignments across the corporation
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {allAssignments.map((assignment) => (
-                      <div key={assignment.id} className="flex items-center justify-between p-4 border border-border rounded-lg">
-                        <div className="flex items-center gap-4">
-                          <div>
+                    return (
+                      <div key={assignment.id} className="flex items-center gap-4 p-4 border border-border rounded-lg">
+                        <div className="flex items-center gap-3 flex-1">
+                          {characterImageUrl && (
+                            <img 
+                              src={characterImageUrl}
+                              alt={assignment.pilotName}
+                              className="w-12 h-12 rounded-full border-2 border-accent/30"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          )}
+                          <div className="flex-1">
                             <p className="font-medium">{assignment.pilotName}</p>
                             <p className="text-sm text-muted-foreground">
-                              {assignment.planetName} - {assignment.systemName}
+                              {assignment.componentName} (Tier {assignment.componentTier})
                             </p>
-                          </div>
-                          <div className="flex gap-2">
-                            <Badge className={getStatusColor(assignment.status)}>
-                              {assignment.status.replace('_', ' ').toUpperCase()}
-                            </Badge>
-                            <Badge className={getPriorityColor(assignment.priority)}>
-                              {assignment.priority.toUpperCase()}
-                            </Badge>
                           </div>
                         </div>
                         
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <p className="font-medium">{formatISK(assignment.estimatedIncome)}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {assignment.products.length} products
+                        <div className="grid grid-cols-3 gap-6 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Month</p>
+                            <p className="font-bold">{formatNumber(monthlyDelivered)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              / {formatNumber(assignment.monthlyQuota)}
                             </p>
                           </div>
-                          
-                          <div className="flex gap-1">
-                            <Button size="sm" variant="outline" onClick={() => setSelectedAssignment(assignment)}>
-                              <Eye size={14} />
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => setEditingAssignment(assignment)}>
-                              <Edit size={14} />
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => handleESISync(assignment.id)}>
-                              <Wrench size={14} />
-                            </Button>
+                          <div>
+                            <p className="text-muted-foreground">Total</p>
+                            <p className="font-bold">{formatNumber(totalDelivered)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Payout</p>
+                            <p className="font-bold text-accent">{formatISK(totalPayout)}</p>
                           </div>
                         </div>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeleteAssignment(assignment.id)}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         )}
       </Tabs>
 
-      {/* Assignment Dialog */}
       <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Assign Planetary Interaction</DialogTitle>
+            <DialogTitle>Assign PI Component</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {/* Basic Info */}
+            <div>
+              <Label>Pilot</Label>
+              <Select 
+                value={newAssignment.pilotId} 
+                onValueChange={(value) => setNewAssignment(prev => ({ ...prev, pilotId: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select pilot" />
+                </SelectTrigger>
+                <SelectContent>
+                  {members?.map((member) => (
+                    <SelectItem key={member.characterId} value={member.characterId}>
+                      {member.characterName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>PI Component</Label>
+              <Select 
+                value={newAssignment.componentName}
+                onValueChange={(value) => {
+                  const [tier, name] = value.split('|');
+                  const component = PI_COMPONENT_TIERS
+                    .find(t => t.tier === parseInt(tier))
+                    ?.components.find(c => c.name === name);
+                  
+                  if (component) {
+                    setNewAssignment(prev => ({
+                      ...prev,
+                      componentTypeId: component.typeId,
+                      componentName: component.name,
+                      componentTier: component.tier
+                    }));
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select component" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PI_COMPONENT_TIERS.map((tier) => (
+                    <React.Fragment key={tier.tier}>
+                      <div className="px-2 py-1.5 text-sm font-semibold text-muted-foreground">
+                        {tier.name}
+                      </div>
+                      {tier.components.map((component) => (
+                        <SelectItem 
+                          key={component.typeId} 
+                          value={`${tier.tier}|${component.name}`}
+                        >
+                          {component.name}
+                        </SelectItem>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="pilot">Pilot</Label>
-                <Select value={newAssignment.pilotId} onValueChange={(value) => setNewAssignment(prev => ({ ...prev, pilotId: value }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select pilot" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {members?.map((member) => (
-                      <SelectItem key={member.characterId} value={member.characterId}>
-                        {member.characterName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div>
-                <Label htmlFor="priority">Priority</Label>
-                <Select value={newAssignment.priority} onValueChange={(value) => setNewAssignment(prev => ({ ...prev, priority: value as any }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="normal">Normal</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Planet Info */}
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="planetType">Planet Type</Label>
-                <Select value={newAssignment.planetType} onValueChange={(value) => setNewAssignment(prev => ({ ...prev, planetType: value }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select planet type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Temperate">Temperate</SelectItem>
-                    <SelectItem value="Barren">Barren</SelectItem>
-                    <SelectItem value="Oceanic">Oceanic</SelectItem>
-                    <SelectItem value="Ice">Ice</SelectItem>
-                    <SelectItem value="Gas">Gas</SelectItem>
-                    <SelectItem value="Lava">Lava</SelectItem>
-                    <SelectItem value="Storm">Storm</SelectItem>
-                    <SelectItem value="Plasma">Plasma</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div>
-                <Label htmlFor="planetName">Planet Name</Label>
+                <Label>Monthly Quota</Label>
                 <Input
-                  id="planetName"
-                  value={newAssignment.planetName}
-                  onChange={(e) => setNewAssignment(prev => ({ ...prev, planetName: e.target.value }))}
-                  placeholder="e.g., Temperate Planet VII"
+                  type="number"
+                  value={newAssignment.monthlyQuota}
+                  onChange={(e) => setNewAssignment(prev => ({ 
+                    ...prev, 
+                    monthlyQuota: parseInt(e.target.value) || 0 
+                  }))}
+                  placeholder="e.g., 10000"
                 />
               </div>
-              
               <div>
-                <Label htmlFor="systemName">System</Label>
+                <Label>Payout Per Unit (ISK)</Label>
                 <Input
-                  id="systemName"
-                  value={newAssignment.systemName}
-                  onChange={(e) => setNewAssignment(prev => ({ ...prev, systemName: e.target.value }))}
-                  placeholder="e.g., Jita"
+                  type="number"
+                  value={newAssignment.payoutPerUnit}
+                  onChange={(e) => setNewAssignment(prev => ({ 
+                    ...prev, 
+                    payoutPerUnit: parseInt(e.target.value) || 0 
+                  }))}
+                  placeholder="e.g., 45000"
                 />
               </div>
             </div>
 
-            {/* Product Management */}
-            <div>
-              <Label>Products</Label>
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Product name"
-                    value={newProduct.typeName}
-                    onChange={(e) => setNewProduct(prev => ({ ...prev, typeName: e.target.value }))}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Quantity"
-                    value={newProduct.quantity}
-                    onChange={(e) => setNewProduct(prev => ({ ...prev, quantity: parseInt(e.target.value) || 0 }))}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Unit Price"
-                    value={newProduct.unitPrice}
-                    onChange={(e) => setNewProduct(prev => ({ ...prev, unitPrice: parseInt(e.target.value) || 0 }))}
-                  />
-                  <Button onClick={handleAddProduct}>Add</Button>
-                </div>
-                
-                {newAssignment.products && newAssignment.products.length > 0 && (
-                  <div className="border rounded-lg">
-                    {newAssignment.products.map((product, index) => (
-                      <div key={index} className="flex items-center justify-between p-2 border-b last:border-b-0">
-                        <span>{product.typeName}</span>
-                        <span>{product.quantity.toLocaleString()} @ {formatISK(product.unitPrice || 0)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Notes */}
-            <div>
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={newAssignment.notes}
-                onChange={(e) => setNewAssignment(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="Additional notes or requirements..."
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 pt-4">
               <Button variant="outline" onClick={() => setShowAssignDialog(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleAssignPI}>
-                Assign PI
+              <Button onClick={handleCreateAssignment}>
+                Create Assignment
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDeliveryDialog} onOpenChange={setShowDeliveryDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record PI Delivery</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Assignment</Label>
+              <Select 
+                value={newDelivery.assignmentId}
+                onValueChange={(value) => setNewDelivery(prev => ({ ...prev, assignmentId: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select assignment" />
+                </SelectTrigger>
+                <SelectContent>
+                  {userAssignments.map((assignment) => (
+                    <SelectItem key={assignment.id} value={assignment.id}>
+                      {assignment.componentName} ({assignment.pilotName})
+                    </SelectItem>
+                  ))}
+                  {canManage && piAssignments.filter(a => !userAssignments.find(u => u.id === a.id)).map((assignment) => (
+                    <SelectItem key={assignment.id} value={assignment.id}>
+                      {assignment.componentName} ({assignment.pilotName})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Quantity Delivered</Label>
+              <Input
+                type="number"
+                value={newDelivery.quantity}
+                onChange={(e) => setNewDelivery(prev => ({ 
+                  ...prev, 
+                  quantity: parseInt(e.target.value) || 0 
+                }))}
+                placeholder="e.g., 1000"
+              />
+            </div>
+
+            <div>
+              <Label>Notes (Optional)</Label>
+              <Input
+                value={newDelivery.notes}
+                onChange={(e) => setNewDelivery(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Delivery notes..."
+              />
+            </div>
+
+            {newDelivery.assignmentId && newDelivery.quantity > 0 && (
+              <div className="p-4 bg-muted/50 rounded-lg">
+                <p className="text-sm text-muted-foreground">Payout Preview</p>
+                <p className="text-2xl font-bold text-accent">
+                  {formatISK(
+                    newDelivery.quantity * 
+                    (piAssignments.find(a => a.id === newDelivery.assignmentId)?.payoutPerUnit || 0)
+                  )}
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setShowDeliveryDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleRecordDelivery}>
+                Record Delivery
               </Button>
             </div>
           </div>
