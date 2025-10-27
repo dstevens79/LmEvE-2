@@ -12,7 +12,6 @@ import {
   Factory, 
   HardHat, 
   Truck, 
-  Crosshair, 
   TrendUp, 
   Gear,
   SignOut,
@@ -53,9 +52,8 @@ import { Assets } from '@/components/tabs/Assets';
 import { Manufacturing } from '@/components/tabs/Manufacturing';
 import { Mining } from '@/components/tabs/Mining';
 import { Logistics } from '@/components/tabs/Logistics';
-import { Killmails } from '@/components/tabs/Killmails';
 import { Market } from '@/components/tabs/Market';
-import { Income } from '@/components/tabs/Income';
+import { Wallet } from '@/components/tabs/Wallet';
 import { Settings } from '@/components/tabs/Settings';
 import { Notifications } from '@/components/tabs/Notifications';
 import { Corporations } from '@/components/Corporations';
@@ -321,9 +319,8 @@ function AppContent() {
     { id: 'planetary', label: 'Planetary Interaction', icon: Planet, component: PlanetaryInteraction, badge: '5' },
     { id: 'projects', label: 'Projects', icon: Archive, component: Projects, badge: '2' },
     { id: 'logistics', label: 'Logistics', icon: Truck, component: Logistics },
-    { id: 'killmails', label: 'Killmails', icon: Crosshair, component: Killmails },
     { id: 'market', label: 'Market', icon: TrendUp, component: Market },
-    { id: 'income', label: 'Income', icon: CurrencyDollar, component: Income },
+    { id: 'wallet', label: 'Wallet', icon: CurrencyDollar, component: Wallet },
     { id: 'notifications', label: 'Notifications', icon: Bell, component: Notifications },
     { id: 'corporations', label: 'Corporations', icon: Building, component: Corporations },
     { id: 'theme', label: 'Theme', icon: Palette, component: Theme },

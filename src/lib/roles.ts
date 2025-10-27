@@ -201,18 +201,15 @@ export function canAccessTab(user: LMeveUser | null, tab: string): boolean {
       return hasPermission(user, 'canManageManufacturing') || hasPermission(user, 'canManageMining'); // PI can be managed by manufacturing or mining managers
       
     case 'projects':
-      return hasPermission(user, 'canManageManufacturing') || hasPermission(user, 'canManageCorp'); // Projects can be managed by manufacturing managers or corp admins
+      return hasPermission(user, 'canManageManufacturing') || hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem'); // Projects can be managed by manufacturing managers, corp admins, or super admins
       
     case 'logistics':
       return hasPermission(user, 'canManageAssets');
       
-    case 'killmails':
-      return hasPermission(user, 'canViewKillmails');
-      
     case 'market':
       return hasPermission(user, 'canManageMarket');
       
-    case 'income':
+    case 'wallet':
       return hasPermission(user, 'canManageIncome') || hasPermission(user, 'canViewFinancials');
       
     case 'notifications':

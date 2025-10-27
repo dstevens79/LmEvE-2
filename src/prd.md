@@ -16,7 +16,7 @@
 - **Key Moments**: Quick dashboard overview, detailed member asset analysis, manufacturing pipeline monitoring.
 
 ## Essential Features
-- **Tabbed Interface**: Core navigation between different management areas (Members, Assets, Manufacturing, Mining, Logistics, etc.)
+- **Tabbed Interface**: Core navigation between different management areas (Members, Assets, Manufacturing, Mining, Logistics, Market, Wallet, etc.)
 - **EVE Online API Integration**: Real-time data synchronization with EVE Online's ESI API for live corporation data
 - **Real-time Data Dashboard**: Live connection status, API health monitoring, and automatic data refresh capabilities
 - **Member Management**: Track corporation members, their assets, activities, and contributions
@@ -27,6 +27,8 @@
 - **Material Requirements Planning**: Automatic calculation of material needs for manufacturing jobs with availability tracking
 - **Mining Operations**: Monitor mining activities, ore processing, and resource allocation
 - **Corporation Projects**: Define project hangars for material deliveries, track requirements via ESI asset and container log endpoints, match deliveries to project needs, and monitor progress with real-time hangar scanning
+- **Market Analysis**: Track active corporation market orders (buy/sell) via ESI routes, monitor completed sales with profit tracking, analyze sales trends and top-performing items
+- **Corporate Wallet Management**: Monitor all corporation wallet divisions, track monthly profit/loss per division, view transaction history with ESI integration, analyze financial trends with visual graphs
 - **Settings & Configuration**: Comprehensive settings panel for API key management, sync preferences, and notification controls
 - **Dashboard Overview**: Quick stats and alerts for corporation health and activity with live EVE Online connection status
 
