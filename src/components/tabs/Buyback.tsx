@@ -649,75 +649,81 @@ export function Buyback({ isMobileView }: BuybackProps) {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-6">
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2 mb-2">
-                <Clock size={20} className="text-blue-400" />
-                <p className="text-sm font-medium text-muted-foreground">New</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+              <Clock size={24} className="text-blue-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1">New</p>
+                <p className="text-xl font-bold">{stats.newContracts}</p>
               </div>
-              <p className="text-2xl font-bold">{stats.newContracts}</p>
             </div>
 
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2 mb-2">
-                <HourglassMedium size={20} className="text-yellow-400" />
-                <p className="text-sm font-medium text-muted-foreground">Waiting on Pilot</p>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+              <HourglassMedium size={24} className="text-yellow-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Waiting on Pilot</p>
+                <p className="text-xl font-bold">{stats.waitingContracts}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Avg: {stats.avgWaitingTime}
+                </p>
               </div>
-              <p className="text-2xl font-bold">{stats.waitingContracts}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Avg: {stats.avgWaitingTime}
-              </p>
             </div>
 
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2 mb-2">
-                <Coins size={20} className="text-orange-400" />
-                <p className="text-sm font-medium text-muted-foreground">Awaiting Payment</p>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+              <Coins size={24} className="text-orange-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Awaiting Payment</p>
+                <p className="text-xl font-bold">{stats.awaitingPaymentContracts}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Avg: {stats.avgPaymentTime}
+                </p>
               </div>
-              <p className="text-2xl font-bold">{stats.awaitingPaymentContracts}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Avg: {stats.avgPaymentTime}
-              </p>
             </div>
 
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2 mb-2">
-                <CheckCircle size={20} className="text-green-500" />
-                <p className="text-sm font-medium text-muted-foreground">Completed</p>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+              <CheckCircle size={24} className="text-green-500 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Completed</p>
+                <p className="text-xl font-bold">{stats.completedContracts}</p>
               </div>
-              <p className="text-2xl font-bold">{stats.completedContracts}</p>
             </div>
 
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2 mb-2">
-                <Receipt size={20} className="text-accent" />
-                <p className="text-sm font-medium text-muted-foreground">Total Contracts</p>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+              <Receipt size={24} className="text-accent flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Total Contracts</p>
+                <p className="text-xl font-bold">{stats.totalContracts}</p>
               </div>
-              <p className="text-2xl font-bold">{stats.totalContracts}</p>
             </div>
 
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2 mb-2">
-                <Coins size={20} className="text-blue-400" />
-                <p className="text-sm font-medium text-muted-foreground">Open Payout</p>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+              <Coins size={24} className="text-blue-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Open Payout</p>
+                <p className="text-base font-bold text-blue-400 truncate" title={formatISK(stats.openPayout)}>
+                  {formatISK(stats.openPayout)}
+                </p>
               </div>
-              <p className="text-lg font-bold text-blue-400">{formatISK(stats.openPayout)}</p>
             </div>
 
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2 mb-2">
-                <Coins size={20} className="text-green-500" />
-                <p className="text-sm font-medium text-muted-foreground">Completed Payout</p>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+              <Coins size={24} className="text-green-500 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Completed Payout</p>
+                <p className="text-base font-bold text-green-500 truncate" title={formatISK(stats.totalPayout)}>
+                  {formatISK(stats.totalPayout)}
+                </p>
               </div>
-              <p className="text-lg font-bold text-green-500">{formatISK(stats.totalPayout)}</p>
             </div>
 
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendUp size={20} className="text-accent" />
-                <p className="text-sm font-medium text-muted-foreground">Cumulative Payout</p>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+              <TrendUp size={24} className="text-accent flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Cumulative Payout</p>
+                <p className="text-base font-bold truncate" title={formatISK(stats.cumulativePayout)}>
+                  {formatISK(stats.cumulativePayout)}
+                </p>
               </div>
-              <p className="text-lg font-bold">{formatISK(stats.cumulativePayout)}</p>
             </div>
           </div>
         </CardContent>
