@@ -20,7 +20,7 @@
 - **EVE Online API Integration**: Real-time data synchronization with EVE Online's ESI API for live corporation data
 - **Real-time Data Dashboard**: Live connection status, API health monitoring, and automatic data refresh capabilities
 - **Member Management**: Track corporation members, their assets, activities, and contributions
-- **Asset Tracking**: Monitor corporation and member assets across different locations and types with live EVE data
+- **Asset Tracking**: Split-view hangar browser with 7 corporation divisions listed on left side, detailed item contents on right side with category-based filtering (Materials, Blueprints, Ships, Ammo, Drones, Components), search functionality, and real-time statistics. Retrieves division names from ESI divisions endpoint when available, falls back to "Hangar 1-7" naming.
 - **Manufacturing Job Scheduling**: Real-time tracking of active manufacturing jobs with progress monitoring, pause/resume capabilities, and completion alerts
 - **Blueprint Management**: Comprehensive blueprint library with research levels, material efficiency tracking, and production planning
 - **Production Planning**: Advanced planning tools for creating production schedules, cost analysis, and profit estimation

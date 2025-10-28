@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -16,15 +15,19 @@ import {
   Package, 
   MagnifyingGlass,
   Building,
-  FolderOpen,
-  File,
   Cube,
+  X,
+  FunnelSimple,
+  Database,
+  Blueprint,
+  Rocket,
+  Target,
+  Robot,
   Stack,
-  ListBullets,
-  WarningCircle
+  Circle
 } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/auth-provider';
-import { TabComponentProps, ManufacturingTask } from '@/lib/types';
+import { TabComponentProps } from '@/lib/types';
 import { useKV } from '@github/spark/hooks';
 
 interface Station {
@@ -35,24 +38,34 @@ interface Station {
   hasOffice: boolean;
 }
 
-interface AssetItem {
-  id: string;
+interface CorpHangar {
+  division: number;
   name: string;
-  type: 'folder' | 'item';
-  quantity?: number;
-  volume?: number;
-  estimatedValue?: number;
-  category?: string;
-  children?: AssetItem[];
+  itemCount: number;
+  totalVolume: number;
+  totalValue: number;
 }
 
-interface SupplyItem {
-  id: string;
-  name: string;
-  required: number;
-  available: number;
-  shortage: number;
+interface AssetItem {
+  itemId: string;
+  typeId: number;
+  typeName: string;
+  quantity: number;
+  locationId: number;
+  locationFlag: string;
+  isSingleton: boolean;
+  volume: number;
+  estimatedValue: number;
   category: string;
+  group: string;
+}
+
+interface FilterOption {
+  id: string;
+  label: string;
+  categories: string[];
+  groups?: string[];
+  active: boolean;
 }
 
 const MOCK_STATIONS: Station[] = [
@@ -66,127 +79,175 @@ const MOCK_STATIONS: Station[] = [
   { id: 8, name: 'Tash-Murkon Prime V - Moon 1 - Tash-Murkon Family Bureau', system: 'Tash-Murkon Prime', region: 'Tash-Murkon', hasOffice: true },
 ];
 
-const MOCK_HANGARS: AssetItem[] = [
-  {
-    id: 'hangar-1',
-    name: 'Corporation Hangar 1',
-    type: 'folder',
-    children: [
-      { id: 'item-1', name: 'Tritanium', type: 'item', quantity: 1500000, volume: 1500, estimatedValue: 7500000, category: 'Mineral' },
-      { id: 'item-2', name: 'Pyerite', type: 'item', quantity: 850000, volume: 850, estimatedValue: 5100000, category: 'Mineral' },
-      { id: 'item-3', name: 'Mexallon', type: 'item', quantity: 420000, volume: 420, estimatedValue: 4200000, category: 'Mineral' },
-    ]
-  },
-  {
-    id: 'hangar-2',
-    name: 'Corporation Hangar 2',
-    type: 'folder',
-    children: [
-      { id: 'item-4', name: 'Compressed Veldspar', type: 'item', quantity: 25000, volume: 2500, estimatedValue: 15000000, category: 'Ore' },
-      { id: 'item-5', name: 'Compressed Scordite', type: 'item', quantity: 18000, volume: 1800, estimatedValue: 12000000, category: 'Ore' },
-    ]
-  },
-  {
-    id: 'hangar-3',
-    name: 'Corporation Hangar 3',
-    type: 'folder',
-    children: [
-      { id: 'item-6', name: 'Raven Blueprint', type: 'item', quantity: 5, volume: 0.01, estimatedValue: 500000000, category: 'Blueprint' },
-      { id: 'item-7', name: 'Drake Blueprint', type: 'item', quantity: 12, volume: 0.01, estimatedValue: 240000000, category: 'Blueprint' },
-    ]
-  },
-  {
-    id: 'hangar-4',
-    name: 'Corporation Hangar 4',
-    type: 'folder',
-    children: [
-      { id: 'item-8', name: 'Capital Construction Parts', type: 'item', quantity: 1500, volume: 3000, estimatedValue: 75000000, category: 'Component' },
-      { id: 'item-9', name: 'R.A.M.- Starship Tech', type: 'item', quantity: 850, volume: 170, estimatedValue: 42500000, category: 'Component' },
-    ]
-  },
+const MOCK_HANGARS: CorpHangar[] = [
+  { division: 1, name: 'Raw Materials', itemCount: 142, totalVolume: 125450.5, totalValue: 850000000 },
+  { division: 2, name: 'Compressed Ores', itemCount: 68, totalVolume: 45230.2, totalValue: 320000000 },
+  { division: 3, name: 'Blueprints', itemCount: 234, totalVolume: 2.34, totalValue: 4500000000 },
+  { division: 4, name: 'Components', itemCount: 89, totalVolume: 8920.5, totalValue: 680000000 },
+  { division: 5, name: 'Ships & Modules', itemCount: 156, totalVolume: 234567.8, totalValue: 1200000000 },
+  { division: 6, name: 'Ammo & Drones', itemCount: 423, totalVolume: 12345.6, totalValue: 180000000 },
+  { division: 7, name: 'Miscellaneous', itemCount: 91, totalVolume: 5678.9, totalValue: 95000000 },
 ];
 
-const MOCK_SUPPLIES: SupplyItem[] = [
-  { id: 's1', name: 'Tritanium', required: 2000000, available: 1500000, shortage: 500000, category: 'Mineral' },
-  { id: 's2', name: 'Pyerite', required: 1000000, available: 850000, shortage: 150000, category: 'Mineral' },
-  { id: 's3', name: 'Mexallon', required: 500000, available: 420000, shortage: 80000, category: 'Mineral' },
-  { id: 's4', name: 'Capital Construction Parts', required: 2000, available: 1500, shortage: 500, category: 'Component' },
-  { id: 's5', name: 'R.A.M.- Starship Tech', required: 1000, available: 850, shortage: 150, category: 'Component' },
-];
+const generateMockItems = (hangar: CorpHangar, count: number = 50): AssetItem[] => {
+  const items: AssetItem[] = [];
+  const categories = {
+    1: ['Mineral', 'Processed Materials', 'Ice Products'],
+    2: ['Ore', 'Compressed Ore', 'Moon Ore'],
+    3: ['Blueprint', 'Blueprint Copy'],
+    4: ['Ship Components', 'Structure Components', 'Advanced Components'],
+    5: ['Frigate', 'Destroyer', 'Cruiser', 'Battlecruiser', 'Battleship', 'Ship Equipment'],
+    6: ['Projectile Ammo', 'Hybrid Ammo', 'Missiles', 'Combat Drone', 'Mining Drone'],
+    7: ['Fuel', 'Salvage', 'Planetary Materials', 'Data Cores']
+  };
+
+  const itemsByCategory = {
+    'Mineral': ['Tritanium', 'Pyerite', 'Mexallon', 'Isogen', 'Nocxium', 'Zydrine', 'Megacyte'],
+    'Ore': ['Compressed Veldspar', 'Compressed Scordite', 'Compressed Pyroxeres', 'Compressed Plagioclase'],
+    'Blueprint': ['Raven Blueprint', 'Drake Blueprint', 'Naga Blueprint', 'Ferox Blueprint'],
+    'Ship Components': ['Capital Construction Parts', 'R.A.M.- Starship Tech', 'Fusion Reactor Unit'],
+    'Frigate': ['Rifter', 'Merlin', 'Incursus', 'Punisher', 'Tristan'],
+    'Cruiser': ['Rupture', 'Caracal', 'Vexor', 'Maller', 'Osprey'],
+    'Battleship': ['Raven', 'Scorpion', 'Rokh', 'Megathron', 'Hyperion'],
+    'Projectile Ammo': ['EMP S', 'EMP M', 'EMP L', 'Fusion S', 'Fusion M', 'Fusion L'],
+    'Combat Drone': ['Warrior I', 'Warrior II', 'Valkyrie I', 'Valkyrie II', 'Hornet I', 'Hornet II'],
+  };
+
+  const relevantCategories = categories[hangar.division as keyof typeof categories] || [];
+  
+  for (let i = 0; i < count; i++) {
+    const category = relevantCategories[Math.floor(Math.random() * relevantCategories.length)];
+    const itemList = itemsByCategory[category as keyof typeof itemsByCategory] || ['Generic Item'];
+    const typeName = itemList[Math.floor(Math.random() * itemList.length)];
+    
+    const baseQuantity = category === 'Mineral' ? 100000 : category === 'Ore' ? 5000 : category === 'Blueprint' ? 1 : 50;
+    const quantity = Math.floor(Math.random() * baseQuantity) + 1;
+    const volume = category === 'Blueprint' ? 0.01 : Math.random() * 100 + 1;
+    const estimatedValue = Math.floor(Math.random() * 10000000) + 1000;
+
+    items.push({
+      itemId: `${hangar.division}-${i}`,
+      typeId: 34 + i,
+      typeName,
+      quantity,
+      locationId: 60003760,
+      locationFlag: `CorpSAG${hangar.division}`,
+      isSingleton: false,
+      volume: volume * quantity,
+      estimatedValue: estimatedValue * quantity,
+      category,
+      group: category
+    });
+  }
+
+  return items;
+};
 
 export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   const { user } = useAuth();
   const [selectedStation, setSelectedStation] = useKV<number>('assets-selected-station', 1);
+  const [selectedHangar, setSelectedHangar] = useKV<number | null>('assets-selected-hangar', null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedFolders, setExpandedFolders] = useKV<string[]>('assets-expanded-folders', []);
-  const [viewMode, setViewMode] = useKV<'hangars' | 'supplies'>('assets-view-mode', 'hangars');
-  const [manufacturingTasks] = useKV<ManufacturingTask[]>('manufacturing-tasks', []);
+  const [activeFilters, setActiveFilters] = useKV<string[]>('assets-active-filters', []);
+  const [hangarItems, setHangarItems] = useState<AssetItem[]>([]);
 
-  if (!user && onLoginClick) {
-    return (
-      <LoginPrompt 
-        onLoginClick={onLoginClick}
-        title="Corporation Assets"
-        description="Sign in to view and manage your corporation's assets"
-      />
-    );
-  }
+  const filterOptions: FilterOption[] = [
+    { 
+      id: 'materials', 
+      label: 'Materials', 
+      categories: ['Mineral', 'Processed Materials', 'Ice Products', 'Ore', 'Compressed Ore', 'Moon Ore'],
+      active: false 
+    },
+    { 
+      id: 'blueprints', 
+      label: 'Blueprints', 
+      categories: ['Blueprint', 'Blueprint Copy'],
+      active: false 
+    },
+    { 
+      id: 'ships', 
+      label: 'Ships', 
+      categories: ['Frigate', 'Destroyer', 'Cruiser', 'Battlecruiser', 'Battleship', 'Capital', 'Freighter'],
+      active: false 
+    },
+    { 
+      id: 'ammo', 
+      label: 'Ammo', 
+      categories: ['Projectile Ammo', 'Hybrid Ammo', 'Missiles', 'Bombs', 'Charges'],
+      active: false 
+    },
+    { 
+      id: 'drones', 
+      label: 'Drones', 
+      categories: ['Combat Drone', 'Mining Drone', 'Salvage Drone', 'Logistics Drone'],
+      active: false 
+    },
+    { 
+      id: 'components', 
+      label: 'Components', 
+      categories: ['Ship Components', 'Structure Components', 'Advanced Components'],
+      active: false 
+    },
+  ];
 
   const currentStation = MOCK_STATIONS.find(s => s.id === selectedStation) || MOCK_STATIONS[0];
 
-  // Generate supplies list from manufacturing tasks
-  const generateSuppliesFromTasks = (): SupplyItem[] => {
-    const tasks = manufacturingTasks || [];
-    const activeTasks = tasks.filter(t => t.status === 'assigned' || t.status === 'in_progress');
-    
-    if (activeTasks.length === 0) {
-      return MOCK_SUPPLIES;
+  useEffect(() => {
+    if (selectedHangar !== null) {
+      const hangar = MOCK_HANGARS.find(h => h.division === selectedHangar);
+      if (hangar) {
+        const items = generateMockItems(hangar);
+        setHangarItems(items);
+      }
+    } else {
+      setHangarItems([]);
+    }
+  }, [selectedHangar]);
+
+  const toggleFilter = (filterId: string) => {
+    setActiveFilters((current) => {
+      if (current.includes(filterId)) {
+        return current.filter(id => id !== filterId);
+      } else {
+        return [...current, filterId];
+      }
+    });
+  };
+
+  const clearAllFilters = () => {
+    setActiveFilters([]);
+  };
+
+  const getFilteredItems = (): AssetItem[] => {
+    let filtered = hangarItems;
+
+    if (activeFilters.length > 0) {
+      const activeFilterCategories = filterOptions
+        .filter(f => activeFilters.includes(f.id))
+        .flatMap(f => f.categories);
+      
+      filtered = filtered.filter(item => 
+        activeFilterCategories.includes(item.category) || 
+        activeFilterCategories.includes(item.group)
+      );
     }
 
-    // Aggregate materials from all active tasks
-    const materialMap = new Map<string, SupplyItem>();
-    
-    activeTasks.forEach(task => {
-      if (task.materials && task.materials.length > 0) {
-        task.materials.forEach(material => {
-          const key = `${material.typeId}-${material.typeName}`;
-          const existing = materialMap.get(key);
-          
-          if (existing) {
-            existing.required += material.quantity;
-            existing.shortage = Math.max(0, existing.required - existing.available);
-          } else {
-            materialMap.set(key, {
-              id: key,
-              name: material.typeName,
-              required: material.quantity,
-              available: Math.floor(material.quantity * 0.7), // Mock 70% availability
-              shortage: Math.ceil(material.quantity * 0.3), // Mock 30% shortage
-              category: material.category || 'Material'
-            });
-          }
-        });
-      }
-    });
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(item => 
+        item.typeName.toLowerCase().includes(query) ||
+        item.category.toLowerCase().includes(query) ||
+        item.group.toLowerCase().includes(query)
+      );
+    }
 
-    const supplies = Array.from(materialMap.values());
-    return supplies.length > 0 ? supplies : MOCK_SUPPLIES;
+    return filtered;
   };
 
-  const activeSupplies = generateSuppliesFromTasks();
-
-  const toggleFolder = (folderId: string) => {
-    setExpandedFolders((current) => {
-      if (current.includes(folderId)) {
-        return current.filter(id => id !== folderId);
-      } else {
-        return [...current, folderId];
-      }
-    });
-  };
+  const filteredItems = getFilteredItems();
 
   const formatNumber = (num: number) => {
-    return new Intl.NumberFormat('en-US').format(num);
+    return new Intl.NumberFormat('en-US').format(Math.floor(num));
   };
 
   const formatISK = (num: number) => {
@@ -196,69 +257,43 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
     return `${num.toFixed(2)} ISK`;
   };
 
-  const renderAssetItem = (item: AssetItem, depth: number = 0) => {
-    const isExpanded = expandedFolders.includes(item.id);
-    const paddingLeft = depth * (isMobileView ? 12 : 20);
-
-    if (item.type === 'folder') {
-      return (
-        <div key={item.id}>
-          <div
-            className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 cursor-pointer border-b border-border/50"
-            style={{ paddingLeft: `${paddingLeft + 12}px` }}
-            onClick={() => toggleFolder(item.id)}
-          >
-            <FolderOpen size={18} className="text-accent" />
-            <span className="flex-1 font-medium text-sm">{item.name}</span>
-            <Badge variant="secondary" className="text-xs">
-              {item.children?.length || 0} items
-            </Badge>
-          </div>
-          {isExpanded && item.children?.map(child => renderAssetItem(child, depth + 1))}
-        </div>
-      );
-    }
-
-    return (
-      <div
-        key={item.id}
-        className="flex items-center gap-2 px-3 py-2 hover:bg-muted/30 border-b border-border/30 text-sm"
-        style={{ paddingLeft: `${paddingLeft + 12}px` }}
-      >
-        <Cube size={16} className="text-muted-foreground" />
-        <span className="flex-1">{item.name}</span>
-        {!isMobileView && (
-          <>
-            <span className="text-muted-foreground text-xs w-24 text-right">
-              {formatNumber(item.quantity || 0)}x
-            </span>
-            <span className="text-muted-foreground text-xs w-24 text-right">
-              {item.volume?.toFixed(1)} m³
-            </span>
-            <span className="text-accent text-xs w-32 text-right">
-              {formatISK(item.estimatedValue || 0)}
-            </span>
-          </>
-        )}
-        {isMobileView && (
-          <div className="text-right">
-            <div className="text-xs text-muted-foreground">{formatNumber(item.quantity || 0)}x</div>
-            <div className="text-xs text-accent">{formatISK(item.estimatedValue || 0)}</div>
-          </div>
-        )}
-      </div>
-    );
+  const formatVolume = (num: number) => {
+    if (num >= 1000000) return `${(num / 1000000).toFixed(2)}M m³`;
+    if (num >= 1000) return `${(num / 1000).toFixed(2)}K m³`;
+    return `${num.toFixed(2)} m³`;
   };
+
+  const getTotalStats = () => {
+    const items = filteredItems;
+    return {
+      count: items.length,
+      totalQuantity: items.reduce((sum, i) => sum + i.quantity, 0),
+      totalVolume: items.reduce((sum, i) => sum + i.volume, 0),
+      totalValue: items.reduce((sum, i) => sum + i.estimatedValue, 0),
+    };
+  };
+
+  const stats = getTotalStats();
+
+  if (!user && onLoginClick) {
+    return (
+      <LoginPrompt 
+        onLoginClick={onLoginClick}
+        title="Corporation Assets"
+        description="Sign in to view and manage your corporation's assets across all hangars"
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-2xl font-bold flex items-center gap-2">
           <Package size={24} />
-          Corporation Assets
+          Corporation Hangars
         </h2>
         <p className="text-muted-foreground text-sm">
-          Track and manage corporation assets across all stations
+          Browse and manage items across all corporation hangar divisions
         </p>
       </div>
 
@@ -308,210 +343,269 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
         </CardContent>
       </Card>
 
-      <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'hangars' | 'supplies')}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="hangars" className="flex items-center gap-2">
-            <Stack size={16} />
-            Hangars
-          </TabsTrigger>
-          <TabsTrigger value="supplies" className="flex items-center gap-2">
-            <ListBullets size={16} />
-            Industrial Supplies
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="hangars" className="space-y-3 mt-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Corporation Hangars</CardTitle>
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="Search items..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-48 h-8 text-sm"
-                  />
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <MagnifyingGlass size={16} />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="border-t border-border">
-                {!isMobileView && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-b border-border font-medium text-xs text-muted-foreground">
-                    <span className="flex-1 pl-8">Item Name</span>
-                    <span className="w-24 text-right">Quantity</span>
-                    <span className="w-24 text-right">Volume</span>
-                    <span className="w-32 text-right">Est. Value</span>
-                  </div>
-                )}
-                <div className="max-h-96 overflow-y-auto">
-                  {MOCK_HANGARS.map(hangar => renderAssetItem(hangar))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className={`grid ${isMobileView ? 'grid-cols-2' : 'grid-cols-4'} gap-4`}>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-foreground">
-                    {MOCK_HANGARS.reduce((sum, h) => sum + (h.children?.length || 0), 0)}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">Total Items</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-foreground">
-                    {formatNumber(
-                      MOCK_HANGARS.reduce((sum, h) => 
-                        sum + (h.children?.reduce((s, i) => s + (i.quantity || 0), 0) || 0), 0
-                      )
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">Total Quantity</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-accent">
-                    {formatISK(
-                      MOCK_HANGARS.reduce((sum, h) => 
-                        sum + (h.children?.reduce((s, i) => s + (i.estimatedValue || 0), 0) || 0), 0
-                      )
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">Total Value</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-foreground">
-                    {formatNumber(
-                      MOCK_HANGARS.reduce((sum, h) => 
-                        sum + (h.children?.reduce((s, i) => s + (i.volume || 0), 0) || 0), 0
-                      )
-                    )} m³
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">Total Volume</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="supplies" className="space-y-3 mt-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <WarningCircle size={18} />
-                Industrial Supply Requirements
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Materials needed for active manufacturing jobs at {currentStation.name}
-              </p>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="border-t border-border">
-                {!isMobileView && (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-muted/30 border-b border-border font-medium text-xs text-muted-foreground">
-                    <span className="flex-1">Material Name</span>
-                    <span className="w-28 text-right">Required</span>
-                    <span className="w-28 text-right">Available</span>
-                    <span className="w-28 text-right">Shortage</span>
-                    <span className="w-24 text-right">Status</span>
-                  </div>
-                )}
-                <div className="divide-y divide-border/50">
-                  {activeSupplies.map(supply => {
-                    const percentAvailable = (supply.available / supply.required) * 100;
-                    const hasShortage = supply.shortage > 0;
-
-                    if (isMobileView) {
-                      return (
-                        <div key={supply.id} className="p-3 hover:bg-muted/30">
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex-1">
-                              <div className="font-medium text-sm">{supply.name}</div>
-                              <div className="text-xs text-muted-foreground">{supply.category}</div>
-                            </div>
-                            <Badge 
-                              variant={hasShortage ? 'destructive' : 'default'}
-                              className="text-xs"
-                            >
-                              {hasShortage ? 'Shortage' : 'Sufficient'}
-                            </Badge>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2 text-xs">
-                            <div>
-                              <div className="text-muted-foreground">Required</div>
-                              <div className="font-medium">{formatNumber(supply.required)}</div>
-                            </div>
-                            <div>
-                              <div className="text-muted-foreground">Available</div>
-                              <div className="font-medium">{formatNumber(supply.available)}</div>
-                            </div>
-                            <div>
-                              <div className="text-muted-foreground">Short</div>
-                              <div className="font-medium text-destructive">{formatNumber(supply.shortage)}</div>
-                            </div>
-                          </div>
+      <div className={`grid ${isMobileView ? 'grid-cols-1 gap-4' : 'grid-cols-12 gap-4'}`}>
+        {/* Left Side - Hangar List */}
+        <Card className={isMobileView ? '' : 'col-span-3'}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Database size={18} />
+              Hangars ({MOCK_HANGARS.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-border">
+              {MOCK_HANGARS.map((hangar) => {
+                const isSelected = selectedHangar === hangar.division;
+                return (
+                  <button
+                    key={hangar.division}
+                    onClick={() => setSelectedHangar(hangar.division)}
+                    className={`w-full text-left px-4 py-3 transition-colors ${
+                      isSelected 
+                        ? 'bg-accent text-accent-foreground' 
+                        : 'hover:bg-muted/50'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${
+                        isSelected ? 'bg-accent-foreground' : 'bg-accent'
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm mb-1 truncate">
+                          {hangar.name}
                         </div>
-                      );
-                    }
-
-                    return (
-                      <div key={supply.id} className="flex items-center gap-2 px-4 py-3 hover:bg-muted/30">
-                        <div className="flex-1">
-                          <div className="font-medium text-sm">{supply.name}</div>
-                          <div className="text-xs text-muted-foreground">{supply.category}</div>
-                        </div>
-                        <span className="w-28 text-right text-sm">{formatNumber(supply.required)}</span>
-                        <span className="w-28 text-right text-sm">{formatNumber(supply.available)}</span>
-                        <span className={`w-28 text-right text-sm font-medium ${hasShortage ? 'text-destructive' : 'text-muted-foreground'}`}>
-                          {formatNumber(supply.shortage)}
-                        </span>
-                        <div className="w-24 flex justify-end">
-                          <Badge 
-                            variant={hasShortage ? 'destructive' : 'default'}
-                            className="text-xs"
-                          >
-                            {percentAvailable.toFixed(0)}%
-                          </Badge>
+                        <div className="text-xs text-muted-foreground space-y-0.5">
+                          <div className="flex items-center justify-between">
+                            <span>Items:</span>
+                            <span className="font-medium">{hangar.itemCount}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Volume:</span>
+                            <span className="font-medium">{formatVolume(hangar.totalVolume)}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Value:</span>
+                            <span className="font-medium text-accent">{formatISK(hangar.totalValue)}</span>
+                          </div>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
-          <Card>
-            <CardContent className="pt-6">
-              <div className={`grid ${isMobileView ? 'grid-cols-2' : 'grid-cols-3'} gap-4`}>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-foreground">
-                    {activeSupplies.length}
+        {/* Right Side - Hangar Contents */}
+        <div className={isMobileView ? 'space-y-4' : 'col-span-9 space-y-4'}>
+          {selectedHangar === null ? (
+            <Card className="h-full">
+              <CardContent className="flex items-center justify-center h-96">
+                <div className="text-center space-y-3">
+                  <Database size={48} className="mx-auto text-muted-foreground" />
+                  <div>
+                    <h3 className="text-lg font-semibold mb-1">Select a Hangar</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Choose a hangar from the list to view its contents
+                    </p>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">Supply Items</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-destructive">
-                    {activeSupplies.filter(s => s.shortage > 0).length}
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Filter Bar */}
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <FunnelSimple size={18} className="text-muted-foreground" />
+                      <span className="text-sm font-medium">Quick Filters</span>
+                      {activeFilters.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={clearAllFilters}
+                          className="ml-auto h-7 text-xs"
+                        >
+                          <X size={14} className="mr-1" />
+                          Clear All
+                        </Button>
+                      )}
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2">
+                      {filterOptions.map((filter) => {
+                        const isActive = activeFilters.includes(filter.id);
+                        const Icon = 
+                          filter.id === 'materials' ? Stack :
+                          filter.id === 'blueprints' ? Blueprint :
+                          filter.id === 'ships' ? Rocket :
+                          filter.id === 'ammo' ? Target :
+                          filter.id === 'drones' ? Robot :
+                          Cube;
+                        
+                        return (
+                          <Button
+                            key={filter.id}
+                            variant={isActive ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => toggleFilter(filter.id)}
+                            className={`h-8 ${isActive ? 'bg-accent text-accent-foreground' : ''}`}
+                          >
+                            <Icon size={14} className="mr-1.5" />
+                            {filter.label}
+                          </Button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="relative">
+                      <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Search items by name, category, or group..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">Items Short</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-accent">
-                    {activeSupplies.length > 0 ? ((activeSupplies.filter(s => s.shortage === 0).length / activeSupplies.length) * 100).toFixed(0) : 0}%
+                </CardContent>
+              </Card>
+
+              {/* Stats Bar */}
+              <Card>
+                <CardContent className="pt-6">
+                  <div className={`grid ${isMobileView ? 'grid-cols-2' : 'grid-cols-4'} gap-4`}>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-foreground">
+                        {formatNumber(stats.count)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {activeFilters.length > 0 || searchQuery ? 'Filtered Items' : 'Total Items'}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-foreground">
+                        {formatNumber(stats.totalQuantity)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Total Quantity</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-accent">
+                        {formatISK(stats.totalValue)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Total Value</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-foreground">
+                        {formatVolume(stats.totalVolume)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Total Volume</div>
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">Fulfillment</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                </CardContent>
+              </Card>
+
+              {/* Items List */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">
+                    {MOCK_HANGARS.find(h => h.division === selectedHangar)?.name || `Hangar ${selectedHangar}`} Contents
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="border-t border-border">
+                    {!isMobileView && (
+                      <div className="flex items-center gap-2 px-4 py-2 bg-muted/30 border-b border-border font-medium text-xs text-muted-foreground">
+                        <span className="flex-1">Item Name</span>
+                        <span className="w-32 text-right">Quantity</span>
+                        <span className="w-32 text-right">Volume</span>
+                        <span className="w-32 text-right">Est. Value</span>
+                        <span className="w-24">Category</span>
+                      </div>
+                    )}
+                    <div className="max-h-[500px] overflow-y-auto">
+                      {filteredItems.length === 0 ? (
+                        <div className="flex items-center justify-center py-12">
+                          <div className="text-center space-y-2">
+                            <Cube size={32} className="mx-auto text-muted-foreground" />
+                            <p className="text-sm text-muted-foreground">
+                              {searchQuery || activeFilters.length > 0 
+                                ? 'No items match your filters' 
+                                : 'This hangar is empty'}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-border/50">
+                          {filteredItems.map((item) => {
+                            if (isMobileView) {
+                              return (
+                                <div key={item.itemId} className="px-4 py-3 hover:bg-muted/30">
+                                  <div className="flex items-start justify-between mb-2">
+                                    <div className="flex items-start gap-2 flex-1">
+                                      <Cube size={16} className="mt-0.5 text-muted-foreground flex-shrink-0" />
+                                      <div>
+                                        <div className="font-medium text-sm">{item.typeName}</div>
+                                        <Badge variant="secondary" className="text-xs mt-1">
+                                          {item.category}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-2 text-xs">
+                                    <div>
+                                      <div className="text-muted-foreground">Qty</div>
+                                      <div className="font-medium">{formatNumber(item.quantity)}</div>
+                                    </div>
+                                    <div>
+                                      <div className="text-muted-foreground">Volume</div>
+                                      <div className="font-medium">{formatVolume(item.volume)}</div>
+                                    </div>
+                                    <div>
+                                      <div className="text-muted-foreground">Value</div>
+                                      <div className="font-medium text-accent">{formatISK(item.estimatedValue)}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div key={item.itemId} className="flex items-center gap-2 px-4 py-2.5 hover:bg-muted/30 text-sm">
+                                <div className="flex items-center gap-2 flex-1">
+                                  <Cube size={16} className="text-muted-foreground flex-shrink-0" />
+                                  <span className="font-medium">{item.typeName}</span>
+                                </div>
+                                <span className="w-32 text-right text-muted-foreground">
+                                  {formatNumber(item.quantity)}
+                                </span>
+                                <span className="w-32 text-right text-muted-foreground">
+                                  {formatVolume(item.volume)}
+                                </span>
+                                <span className="w-32 text-right text-accent">
+                                  {formatISK(item.estimatedValue)}
+                                </span>
+                                <div className="w-24">
+                                  <Badge variant="secondary" className="text-xs">
+                                    {item.category}
+                                  </Badge>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
