@@ -413,7 +413,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
             <>
               {/* Stats Bar - Moved Above Filters */}
               <Card>
-                <CardContent className="py-3">
+                <CardContent className="py-1.5">
                   <div className={`grid ${isMobileView ? 'grid-cols-2' : 'grid-cols-4'} gap-3`}>
                     <div className="text-center">
                       <div className="text-lg font-bold text-foreground">
@@ -447,7 +447,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
 
               {/* Filter Bar - Search Inline with Buttons */}
               <Card>
-                <CardContent className="py-3">
+                <CardContent className="py-1.5">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                     {/* Search Input - Left Side */}
                     <div className="relative w-full sm:w-64">
