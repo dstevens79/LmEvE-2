@@ -153,7 +153,11 @@ export function Buyback({ isMobileView }: BuybackProps) {
   });
 
   const [itemConfigs, setItemConfigs] = useKV<BuybackItemConfig[]>('buyback-item-configs', []);
-  const [itemCosts, setItemCosts] = useKV<Map<number, ItemCost>>('buyback-item-costs', new Map());
+  const [itemCostsRaw, setItemCostsRaw] = useKV<Record<number, ItemCost>>('buyback-item-costs', {});
+  
+  const itemCosts = useMemo(() => {
+    return new Map(Object.entries(itemCostsRaw).map(([key, value]) => [Number(key), value]));
+  }, [itemCostsRaw]);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -511,7 +515,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
       toast.info(`Syncing prices for ${itemsToSync.length} items from ${priceConfig.comparisonStation}...`);
       
       let synced = 0;
-      const newCosts = new Map(itemCosts);
+      const newCosts = { ...itemCostsRaw };
       
       for (let i = 0; i < itemsToSync.length; i++) {
         const typeId = itemsToSync[i];
@@ -528,7 +532,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
           );
           
           if (cost) {
-            newCosts.set(typeId, cost);
+            newCosts[typeId] = cost;
             synced++;
             
             setItemConfigs(current => {
@@ -567,7 +571,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
         }
       }
       
-      setItemCosts(newCosts);
+      setItemCostsRaw(newCosts);
       
       toast.success(`Successfully synced ${synced} of ${itemsToSync.length} item prices`);
     } catch (error) {
