@@ -70,7 +70,7 @@ interface LMeveDataContextType {
 const LMeveDataContext = createContext<LMeveDataContextType | null>(null);
 
 export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isTokenExpired } = useAuth();
   const [dbSettings] = useKV('corp-settings', null);
   
   // Services

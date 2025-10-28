@@ -23,7 +23,7 @@ interface EVEDataHook {
   clearCache: () => void;
 }
 
-export function useEVEData(corporationId?: number, characterId?: number): EVEDataHook {
+export function useEVEData(corporationId?: number, accessToken?: string): EVEDataHook {
   const [data, setData] = useKV<EVEDataState>('eve-data', {
     industryJobs: [],
     blueprints: [],
@@ -48,8 +48,7 @@ export function useEVEData(corporationId?: number, characterId?: number): EVEDat
     try {
       updateData({ isLoading: true, error: null });
       
-      // In a real app, you'd pass authentication tokens here
-      const jobs = await eveApi.getCorporationIndustryJobs(corporationId);
+      const jobs = await eveApi.getCorporationIndustryJobs(corporationId, accessToken);
       
       updateData({ 
         industryJobs: jobs,
@@ -65,7 +64,7 @@ export function useEVEData(corporationId?: number, characterId?: number): EVEDat
       });
       toast.error(errorMessage);
     }
-  }, [corporationId, updateData]);
+  }, [corporationId, accessToken, updateData]);
 
   const refreshBlueprints = useCallback(async () => {
     if (!corporationId) return;
@@ -73,7 +72,7 @@ export function useEVEData(corporationId?: number, characterId?: number): EVEDat
     try {
       updateData({ isLoading: true, error: null });
       
-      const blueprints = await eveApi.getCorporationBlueprints(corporationId);
+      const blueprints = await eveApi.getCorporationBlueprints(corporationId, accessToken);
       
       updateData({ 
         blueprints,
@@ -89,7 +88,7 @@ export function useEVEData(corporationId?: number, characterId?: number): EVEDat
       });
       toast.error(errorMessage);
     }
-  }, [corporationId, updateData]);
+  }, [corporationId, accessToken, updateData]);
 
   const refreshAssets = useCallback(async () => {
     if (!corporationId) return;
@@ -97,7 +96,7 @@ export function useEVEData(corporationId?: number, characterId?: number): EVEDat
     try {
       updateData({ isLoading: true, error: null });
       
-      const assets = await eveApi.getCorporationAssets(corporationId);
+      const assets = await eveApi.getCorporationAssets(corporationId, accessToken);
       
       updateData({ 
         assets,
@@ -113,7 +112,7 @@ export function useEVEData(corporationId?: number, characterId?: number): EVEDat
       });
       toast.error(errorMessage);
     }
-  }, [corporationId, updateData]);
+  }, [corporationId, accessToken, updateData]);
 
   const refreshMarketPrices = useCallback(async () => {
     try {
@@ -143,10 +142,14 @@ export function useEVEData(corporationId?: number, characterId?: number): EVEDat
       return;
     }
 
+    if (!accessToken) {
+      toast.error('Authentication token required for ESI calls');
+      return;
+    }
+
     updateData({ isLoading: true, error: null });
 
     try {
-      // Refresh all data sources in parallel
       await Promise.allSettled([
         refreshIndustryJobs(),
         refreshBlueprints(),
@@ -164,7 +167,7 @@ export function useEVEData(corporationId?: number, characterId?: number): EVEDat
       });
       toast.error(errorMessage);
     }
-  }, [corporationId, refreshIndustryJobs, refreshBlueprints, refreshAssets, refreshMarketPrices, updateData]);
+  }, [corporationId, accessToken, refreshIndustryJobs, refreshBlueprints, refreshAssets, refreshMarketPrices, updateData]);
 
   const clearCache = useCallback(() => {
     eveApi.clearCache();

@@ -106,12 +106,22 @@ This document outlines all areas where test/fake data needs to be replaced with 
   - Priority: CRITICAL ✅
 
 ### 4.3 Blueprints
-- ❌ **Blueprint library** (`src/components/tabs/Manufacturing.tsx` line 44)
-  - Current: Mock blueprint data
+- ✅ **Blueprint library** (`src/components/tabs/Manufacturing.tsx` + `src/hooks/useBlueprints.ts`)
+  - Status: Fully implemented with ESI integration
   - ESI Route: `GET /corporations/{corporation_id}/blueprints/`
   - ESI Scopes: `esi-corporations.read_blueprints.v1`
-  - Returns: Material efficiency, time efficiency, runs remaining
-  - Priority: HIGH
+  - Implementation:
+    - Created `useBlueprints` hook for ESI data fetching with authentication token
+    - Created `BlueprintLibrary` component with search, filtering, and sorting
+    - Batch resolves blueprint type names via `POST /universe/names/`
+    - Resolves location names for all blueprint locations
+    - Parses hangar flags (CorpSAG1-7) into readable format
+    - Displays Material Efficiency (ME), Time Efficiency (TE), and runs remaining
+    - Distinguishes between Blueprint Originals (BPO) and Blueprint Copies (BPC)
+    - Shows statistics: total blueprints, originals, copies, perfect (10/20) blueprints
+    - Categories automatically determined from blueprint names
+  - Returns: item_id, type_id, location_id, location_flag, material_efficiency, time_efficiency, runs, quantity
+  - Priority: HIGH ✅
 
 ---
 
@@ -213,18 +223,31 @@ This document outlines all areas where test/fake data needs to be replaced with 
 ## 10. Data Hooks & Services
 
 ### 10.1 useEVEData Hook
-- ⚠️ **ESI data hook** (`src/hooks/useEVEData.ts`)
-  - Current: Hook exists but needs access token passing
-  - Issue: All authenticated calls need actual ESI tokens
-  - Fix Required: Pass `user.accessToken` to all ESI calls
-  - Priority: CRITICAL
+- ✅ **ESI data hook** (`src/hooks/useEVEData.ts`)
+  - Status: Fully updated with proper token passing
+  - Implementation:
+    - Changed signature from `useEVEData(corporationId?, characterId?)` to `useEVEData(corporationId?, accessToken?)`
+    - All ESI API calls now properly pass `accessToken` parameter
+    - Added token validation before making authenticated calls
+    - All refresh methods (refreshIndustryJobs, refreshBlueprints, refreshAssets) use accessToken
+    - refreshData validates both corporationId and accessToken before execution
+  - Fix: Pass `user.accessToken` from components that use this hook
+  - Priority: CRITICAL ✅
 
 ### 10.2 LMeveDataContext
-- ⚠️ **Data context provider** (`src/lib/LMeveDataContext.tsx`)
-  - Current: Mixing mock data with real ESI calls
-  - Issue: `fetchMembersWithESI` has placeholder logic (line 121-150)
-  - Fix Required: Implement actual ESI member fetching
-  - Priority: HIGH
+- ✅ **Data context provider** (`src/lib/LMeveDataContext.tsx`)
+  - Status: Fully updated with proper ESI integration
+  - Implementation:
+    - Added `isTokenExpired` from useAuth hook
+    - All ESI data fetching methods now properly check token validity
+    - `fetchMembersWithESI` uses real ESI API with token: `eveApi.getCorporationMembers(corporationId, accessToken)`
+    - `fetchAssetsWithESI` uses real ESI API with token: `eveApi.getCorporationAssets(corporationId, accessToken)`
+    - `fetchManufacturingWithESI` uses real ESI API with token: `eveApi.getCorporationIndustryJobs(corporationId, accessToken)`
+    - All methods include proper error handling with ESI fallback to database data
+    - Batch name resolution for all entities (types, characters, stations)
+    - Location resolution with token passing for structures
+  - Fix: Implemented actual ESI member fetching with proper authentication
+  - Priority: HIGH ✅
 
 ---
 

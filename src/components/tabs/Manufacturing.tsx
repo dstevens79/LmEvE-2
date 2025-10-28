@@ -31,6 +31,7 @@ import { AdministrationView } from '@/components/manufacturing/AdministrationVie
 import { JobActivityView } from '@/components/manufacturing/JobActivityView';
 import { AssignTaskView } from '@/components/manufacturing/AssignTaskView';
 import { UnassignedJobsView } from '@/components/manufacturing/UnassignedJobsView';
+import { BlueprintLibrary } from '@/components/manufacturing/BlueprintLibrary';
 import { toast } from 'sonner';
 
 interface ManufacturingProps {
@@ -59,7 +60,7 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
     invention: 40000
   });
 
-  const [currentView, setCurrentView] = useState<'administration' | 'jobs' | 'assign-task' | 'unassigned'>('administration');
+  const [currentView, setCurrentView] = useState<'administration' | 'jobs' | 'assign-task' | 'unassigned' | 'blueprints'>('administration');
   const [newJobDialogOpen, setNewJobDialogOpen] = useState(false);
   const [jobDetailsOpen, setJobDetailsOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<ManufacturingJob | null>(null);
@@ -324,6 +325,13 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
             </Badge>
           )}
         </Button>
+        <Button
+          variant={currentView === 'blueprints' ? 'default' : 'ghost'}
+          onClick={() => setCurrentView('blueprints')}
+        >
+          <Copy size={16} className="mr-2" />
+          Blueprints
+        </Button>
         {currentView === 'assign-task' && (
           <Button variant="default" disabled>
             <Plus size={16} className="mr-2" />
@@ -452,6 +460,10 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           onCancel={() => setCurrentView('administration')}
           isMobileView={isMobileView}
         />
+      )}
+
+      {currentView === 'blueprints' && (
+        <BlueprintLibrary isMobileView={isMobileView} />
       )}
 
       {/* Job Details Dialog */}
