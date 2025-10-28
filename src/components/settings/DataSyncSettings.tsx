@@ -786,7 +786,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                     <Input
                       id={`${process.id}-interval`}
                       type="number"
-                      min="1440"
+                      min="10"
                       max="10080"
                       value={process.interval}
                       onChange={(e) => {
