@@ -189,24 +189,45 @@ This document outlines all areas where test/fake data needs to be replaced with 
 ## 7. Universe Data Resolution
 
 ### 7.1 Type Names
-- ⚠️ **Item type resolution** (`src/lib/eveApi.ts` line 313-327)
-  - Current: Batch name resolution exists
-  - Status: Working but needs integration into all asset/job displays
-  - Priority: MEDIUM
+- ✅ **Item type resolution** (`src/lib/eveApi.ts` lines 372-408)
+  - Status: Fully implemented with batch processing
+  - Implementation:
+    - `getNames()` - Batch resolves any type of ID (types, characters, corporations, stations)
+    - `getTypeNames()` - Convenience wrapper specifically for type IDs
+    - Automatically chunks requests to respect ESI 1000-ID limit per request
+    - Uses `POST /universe/names/` batch endpoint
+    - Returns: `[{id, name, category}]`
+    - Caching: 1 hour cache to minimize API calls
+  - Used throughout: Assets, Manufacturing, Blueprints, etc.
+  - Priority: CRITICAL ✅
 
 ### 7.2 System Information
-- ⚠️ **System details** (`src/lib/eveApi.ts` line 278-285)
-  - Current: API exists
-  - Needed: Cache and integrate into location displays
-  - Priority: MEDIUM
+- ✅ **System details** (`src/lib/eveApi.ts` lines 295-301)
+  - Status: Fully implemented with caching
+  - ESI Route: `GET /universe/systems/{system_id}/`
+  - Implementation:
+    - Returns: name, security_status, star_id
+    - Caching: 24 hour cache (system data rarely changes)
+    - Integrated into location displays via `getLocationName()`
+  - Priority: MEDIUM ✅
 
 ### 7.3 Location Name Resolution
-- ❌ **Bulk location resolution** (needs implementation)
+- ✅ **Bulk location resolution** (`src/lib/eveApi.ts` lines 372-398)
+  - Status: Fully implemented with intelligent batching
   - ESI Route: `POST /universe/names/` (batch endpoint)
-  - Use for: station_ids, structure_ids, character_ids, corporation_ids
-  - Accepts: Array of IDs (up to 1000 at once)
-  - Returns: `[{id, name, category}]`
-  - Priority: HIGH (required for readable displays)
+  - Implementation:
+    - `getNames(ids)` - Accepts array of any IDs (up to 1000 at once per chunk)
+    - Automatically splits large requests into 1000-ID chunks
+    - Processes all chunks in parallel with Promise.all()
+    - Returns flat array: `[{id, name, category}]`
+    - Works for: station_ids, structure_ids, character_ids, corporation_ids, type_ids
+    - Caching: 1 hour cache for resolved names
+  - Used in:
+    - Asset name resolution (types, locations)
+    - Manufacturing job resolution (blueprints, products, installers, stations)
+    - Blueprint library (type names, locations)
+    - Member list (character names)
+  - Priority: CRITICAL ✅
 
 ---
 
