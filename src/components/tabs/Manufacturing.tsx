@@ -32,6 +32,7 @@ import { JobActivityView } from '@/components/manufacturing/JobActivityView';
 import { AssignTaskView } from '@/components/manufacturing/AssignTaskView';
 import { UnassignedJobsView } from '@/components/manufacturing/UnassignedJobsView';
 import { BlueprintLibrary } from '@/components/manufacturing/BlueprintLibrary';
+import { StationInfoPopup } from '@/components/popups/StationInfoPopup';
 import { toast } from 'sonner';
 
 interface ManufacturingProps {
@@ -66,22 +67,33 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
   const [selectedJob, setSelectedJob] = useState<ManufacturingJob | null>(null);
   const [editingTask, setEditingTask] = useState<ManufacturingTask | null>(null);
   const [taskFilter, setTaskFilter] = useState<'my-tasks' | 'all-tasks'>('my-tasks');
+  const [selectedStation, setSelectedStation] = useState<{ id: number; name: string } | null>(null);
   
-  // Handler for station click - navigate to assets tab with station selected
-  const handleStationClick = async (stationId: number) => {
+  // Handler for station click - show station popup
+  const handleStationClick = (stationId: number, stationName?: string) => {
+    const tasks = manufacturingTasks || [];
+    const task = tasks.find(t => t.stationId === stationId);
+    const finalStationName = stationName || task?.stationName || `Station ${stationId}`;
+    
+    setSelectedStation({
+      id: stationId,
+      name: finalStationName
+    });
+  };
+
+  const handleViewAssetsFromStation = async () => {
+    if (!selectedStation) return;
+    
     try {
-      // Store the selected station for the assets tab
-      await spark.kv.set('assets-selected-station', stationId);
-      
-      // Navigate to assets tab by setting active tab
+      await spark.kv.set('assets-selected-station', selectedStation.id);
       await spark.kv.set('active-tab', 'assets');
       
-      // Show feedback
+      setSelectedStation(null);
+      
       toast.success('Navigating to Assets tab...', {
         duration: 1500
       });
       
-      // Force a small delay to ensure KV updates are processed
       setTimeout(() => {
         window.location.reload();
       }, 300);
@@ -534,6 +546,16 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
         onOpenChange={setJobDetailsOpen}
         onJobUpdate={() => {}}
       />
+
+      {/* Station Info Popup */}
+      {selectedStation && (
+        <StationInfoPopup
+          stationId={selectedStation.id}
+          stationName={selectedStation.name}
+          onClose={() => setSelectedStation(null)}
+          onViewAssets={handleViewAssetsFromStation}
+        />
+      )}
     </div>
   );
 }

@@ -14,7 +14,7 @@ interface UnassignedJobsViewProps {
   onClaimTask: (taskId: string, pilotId: string, pilotName: string) => void;
   getStatusBadge: (status: string) => React.ReactNode;
   getPayModifierDisplay: (modifier: string | null) => string | null;
-  onStationClick?: (stationId: number) => void;
+  onStationClick?: (stationId: number, stationName?: string) => void;
   isMobileView?: boolean;
 }
 
@@ -125,9 +125,9 @@ export function UnassignedJobsView({
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => onStationClick(task.stationId!)}
+                              onClick={() => onStationClick(task.stationId!, task.stationName)}
                               className="h-auto p-0.5 px-1 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 -ml-1"
-                              title="View in Assets"
+                              title="View Station Info"
                             >
                               <Building size={12} className="mr-1" />
                               {task.stationName.split(' - ')[0]}
