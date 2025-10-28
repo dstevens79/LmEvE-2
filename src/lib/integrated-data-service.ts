@@ -757,13 +757,6 @@ class IntegratedDataService {
             timestamp: new Date().toISOString()
           };
         }
-        
-          balance: 1000000000
-        },
-        {
-          divisionId: 2,
-          timestamp: new Date().toISOString()
-        };
       } catch (error) {
         console.error('❌ Database fetch failed:', error);
         return {
@@ -785,16 +778,16 @@ class IntegratedDataService {
         },
         {
           divisionId: 2,
-      keysToDelete.forEach(key => this.cache.delete(key));
-      console.log(`🗑️ Cleared cache for ${type} (${keysToDelete.length} entries)`);
+          divisionName: 'Secondary Wallet',
+          balance: 500000000
         }
       ];
       source.mock = true;
       return {
         data: mockDivisions,
-}
-
-export const integratedDataService = new IntegratedDataService();
+        source,
+        timestamp: new Date().toISOString()
+      };
     }
 
     return {
