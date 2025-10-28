@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Wrench, Users, Package, CheckCircle, Globe } from '@phosphor-icons/react';
+import { Wrench, Users, Package, CheckCircle, Building } from '@phosphor-icons/react';
 import { ManufacturingTask, User, Member } from '@/lib/types';
 import { toast } from 'sonner';
 import { ItemInfoPopup } from '@/components/popups/ItemInfoPopup';
@@ -14,6 +14,7 @@ interface UnassignedJobsViewProps {
   onClaimTask: (taskId: string, pilotId: string, pilotName: string) => void;
   getStatusBadge: (status: string) => React.ReactNode;
   getPayModifierDisplay: (modifier: string | null) => string | null;
+  onStationClick?: (stationId: number) => void;
   isMobileView?: boolean;
 }
 
@@ -24,6 +25,7 @@ export function UnassignedJobsView({
   onClaimTask,
   getStatusBadge,
   getPayModifierDisplay,
+  onStationClick,
   isMobileView
 }: UnassignedJobsViewProps) {
   const [selectedItem, setSelectedItem] = React.useState<{ typeId: number; typeName: string } | null>(null);
@@ -119,12 +121,23 @@ export function UnassignedJobsView({
                             <Wrench size={14} />
                             Est. {formatDuration(task.estimatedDuration)}
                           </span>
-                          {task.stationName && (
-                            <span className="flex items-center gap-1">
-                              <Globe size={14} />
-                              {task.stationName}
+                          {task.stationName && task.stationId && onStationClick ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onStationClick(task.stationId!)}
+                              className="h-auto p-0.5 px-1 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 -ml-1"
+                              title="View in Assets"
+                            >
+                              <Building size={12} className="mr-1" />
+                              {task.stationName.split(' - ')[0]}
+                            </Button>
+                          ) : task.stationName ? (
+                            <span className="flex items-center gap-1 text-xs">
+                              <Building size={14} />
+                              {task.stationName.split(' - ')[0]}
                             </span>
-                          )}
+                          ) : null}
                           <span>
                             Created: {new Date(task.createdDate).toLocaleDateString()}
                           </span>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X } from '@phosphor-icons/react';
+import { X, Factory } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -8,9 +8,10 @@ interface ItemInfoPopupProps {
   itemTypeId: number;
   itemName: string;
   onClose: () => void;
+  onAssignJob?: () => void;
 }
 
-export function ItemInfoPopup({ itemTypeId, itemName, onClose }: ItemInfoPopupProps) {
+export function ItemInfoPopup({ itemTypeId, itemName, onClose, onAssignJob }: ItemInfoPopupProps) {
   const [itemStats, setItemStats] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
 
@@ -240,6 +241,22 @@ export function ItemInfoPopup({ itemTypeId, itemName, onClose }: ItemInfoPopupPr
                 </div>
               </TabsContent>
             </Tabs>
+          )}
+
+          {/* Action Button */}
+          {onAssignJob && (
+            <div className="mt-4 pt-4 border-t border-border">
+              <Button
+                onClick={() => {
+                  onAssignJob();
+                  onClose();
+                }}
+                className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
+              >
+                <Factory size={16} className="mr-2" />
+                Create Manufacturing Job
+              </Button>
+            </div>
           )}
         </div>
       </div>

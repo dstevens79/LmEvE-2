@@ -28,6 +28,8 @@ import {
 import { useAuth } from '@/lib/auth-provider';
 import { TabComponentProps } from '@/lib/types';
 import { useKV } from '@github/spark/hooks';
+import { ItemInfoPopup } from '@/components/popups/ItemInfoPopup';
+import { BlueprintInfoPopup } from '@/components/popups/BlueprintInfoPopup';
 
 interface Station {
   id: number;
@@ -167,6 +169,8 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilters, setActiveFilters] = useKV<string[]>('assets-active-filters', []);
   const [hangarItems, setHangarItems] = useState<AssetItem[]>([]);
+  const [selectedItem, setSelectedItem] = useState<AssetItem | null>(null);
+  const [selectedBlueprint, setSelectedBlueprint] = useState<any | null>(null);
 
   const filterOptions: FilterOption[] = [
     { 
@@ -496,9 +500,33 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                       ) : (
                         <div className="divide-y divide-border/50">
                           {filteredItems.map((item) => {
+                            const isBlueprint = item.category === 'Blueprint' || item.category === 'Blueprint Copy';
+                            const handleItemClick = () => {
+                              if (isBlueprint) {
+                                setSelectedBlueprint({
+                                  id: item.itemId,
+                                  typeId: item.typeId,
+                                  typeName: item.typeName,
+                                  location: currentStation.name,
+                                  locationId: currentStation.id,
+                                  materialEfficiency: Math.floor(Math.random() * 11),
+                                  timeEfficiency: Math.floor(Math.random() * 21),
+                                  runs: item.category === 'Blueprint' ? -1 : Math.floor(Math.random() * 300) + 1,
+                                  isOriginal: item.category === 'Blueprint',
+                                  category: item.group
+                                });
+                              } else {
+                                setSelectedItem(item);
+                              }
+                            };
+
                             if (isMobileView) {
                               return (
-                                <div key={item.itemId} className="px-4 py-3 hover:bg-muted/30">
+                                <button 
+                                  key={item.itemId} 
+                                  onClick={handleItemClick}
+                                  className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer"
+                                >
                                   <div className="flex items-start justify-between mb-2">
                                     <div className="flex items-start gap-2 flex-1">
                                       <Cube size={16} className="mt-0.5 text-muted-foreground flex-shrink-0" />
@@ -524,12 +552,16 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                                       <div className="font-medium text-accent">{formatISK(item.estimatedValue)}</div>
                                     </div>
                                   </div>
-                                </div>
+                                </button>
                               );
                             }
 
                             return (
-                              <div key={item.itemId} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 text-sm">
+                              <button 
+                                key={item.itemId} 
+                                onClick={handleItemClick}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 text-sm transition-colors cursor-pointer"
+                              >
                                 <div className="flex items-center gap-2 w-64">
                                   <Cube size={16} className="text-muted-foreground flex-shrink-0" />
                                   <span className="font-medium truncate">{item.typeName}</span>
@@ -548,7 +580,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                                     {item.category}
                                   </Badge>
                                 </div>
-                              </div>
+                              </button>
                             );
                           })}
                         </div>
@@ -669,6 +701,35 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Item Info Popup */}
+      {selectedItem && (
+        <ItemInfoPopup
+          itemTypeId={selectedItem.typeId}
+          itemName={selectedItem.typeName}
+          onClose={() => setSelectedItem(null)}
+          onAssignJob={() => {
+            spark.kv.set('active-tab', 'manufacturing');
+            spark.kv.set('manufacturing-view', 'assign-task');
+            spark.kv.set('assign-task-item', selectedItem);
+            setSelectedItem(null);
+          }}
+        />
+      )}
+
+      {/* Blueprint Info Popup */}
+      {selectedBlueprint && (
+        <BlueprintInfoPopup
+          blueprint={selectedBlueprint}
+          onClose={() => setSelectedBlueprint(null)}
+          onAssignJob={(blueprint) => {
+            spark.kv.set('active-tab', 'manufacturing');
+            spark.kv.set('manufacturing-view', 'assign-task');
+            spark.kv.set('assign-task-blueprint', blueprint);
+            setSelectedBlueprint(null);
+          }}
+        />
+      )}
     </div>
   );
 }

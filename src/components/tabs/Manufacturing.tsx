@@ -68,18 +68,27 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
   const [taskFilter, setTaskFilter] = useState<'my-tasks' | 'all-tasks'>('my-tasks');
   
   // Handler for station click - navigate to assets tab with station selected
-  const handleStationClick = (stationId: number) => {
-    // Store the selected station for the assets tab
-    spark.kv.set('assets-selected-station', stationId);
-    
-    // Navigate to assets tab by setting active tab in App.tsx
-    spark.kv.set('active-tab', 'assets');
-    
-    // Force page reload to ensure tab switch happens
-    window.location.hash = 'assets';
-    window.dispatchEvent(new HashChangeEvent('hashchange'));
-    
-    toast.success('Navigating to Assets tab');
+  const handleStationClick = async (stationId: number) => {
+    try {
+      // Store the selected station for the assets tab
+      await spark.kv.set('assets-selected-station', stationId);
+      
+      // Navigate to assets tab by setting active tab
+      await spark.kv.set('active-tab', 'assets');
+      
+      // Show feedback
+      toast.success('Navigating to Assets tab...', {
+        duration: 1500
+      });
+      
+      // Force a small delay to ensure KV updates are processed
+      setTimeout(() => {
+        window.location.reload();
+      }, 300);
+    } catch (error) {
+      console.error('Error navigating to assets:', error);
+      toast.error('Failed to navigate to Assets tab');
+    }
   };
 
   // Initialize sample data if empty
@@ -499,6 +508,7 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           onClaimTask={handleClaimTask}
           getStatusBadge={getStatusBadge}
           getPayModifierDisplay={getPayModifierDisplay}
+          onStationClick={handleStationClick}
           isMobileView={isMobileView}
         />
       )}
