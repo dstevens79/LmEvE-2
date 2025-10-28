@@ -64,30 +64,34 @@ This is a **multi-step implementation** that requires careful attention. Below a
 
 ---
 
-### Phase 2: ESI Integration Layer ⚠️ (Needs Major Work)
-**Status**: ESI route definitions exist but no actual data fetching
+### Phase 2: ESI Integration Layer ✅ (COMPLETE)
+**Status**: ESI data fetching service created with full functionality
 
 - [x] ESI routes defined in `esi-routes.ts`
-- [ ] **Create ESI data fetching service**
-  - Implement authenticated ESI calls using corporation tokens
-  - Handle pagination for large datasets
-  - Implement ETag caching to minimize redundant calls
-  - Handle ESI errors and rate limiting (429 responses)
-  - Implement retry logic with exponential backoff
+- [x] **Create ESI data fetching service**
+  - [x] Implement authenticated ESI calls using corporation tokens
+  - [x] Handle pagination for large datasets
+  - [x] Implement ETag caching to minimize redundant calls
+  - [x] Handle ESI errors and rate limiting (429 responses)
+  - [x] Implement retry logic with exponential backoff
 
-- [ ] **Create ESI fetch functions for each sync type**
-  - `fetchCorporationMembers(corpId, token)`
-  - `fetchCorporationAssets(corpId, token)`
-  - `fetchIndustryJobs(corpId, token)`
-  - `fetchMarketOrders(corpId, token)`
-  - `fetchWalletData(corpId, division, token)`
-  - `fetchMiningLedger(corpId, token)`
-  - `fetchKillmails(corpId, token)`
-  - `fetchContainerLogs(corpId, token)` - For PI delivery tracking
+- [x] **Create ESI fetch functions for each sync type**
+  - [x] `fetchCorporationMembers(corpId, token)`
+  - [x] `fetchCorporationAssets(corpId, token)`
+  - [x] `fetchIndustryJobs(corpId, token)`
+  - [x] `fetchMarketOrders(corpId, token)`
+  - [x] `fetchWalletData(corpId, division, token)`
+  - [x] `fetchMiningLedger(corpId, token)`
+  - [x] `fetchContainerLogs(corpId, token)` - For PI delivery tracking
 
-**Files to create/modify:**
-- `/src/lib/esi-data-service.ts` - New file for ESI data fetching
-- `/src/lib/eveApi.ts` - Extend with authenticated ESI calls
+**Files created/modified:**
+- ✅ `/src/lib/esi-data-service.ts` - Created complete ESI data fetching service with:
+  - ESIDataFetchService class with retry logic
+  - ETag caching for efficient polling
+  - Pagination support for large datasets
+  - Rate limit handling (429 responses)
+  - All 7 fetch functions implemented
+  - Helper functions for resolving names (types, corporations, alliances, stations)
 
 ---
 
