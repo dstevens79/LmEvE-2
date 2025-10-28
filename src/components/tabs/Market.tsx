@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LoginPrompt } from '@/components/LoginPrompt';
 import { useAuth } from '@/lib/auth-provider';
+import { useLMeveData } from '@/lib/LMeveDataContext';
 import { TabComponentProps } from '@/lib/types';
 import { 
   TrendUp,
@@ -20,9 +21,9 @@ import {
   CurrencyDollar,
   CheckCircle,
   XCircle,
-  Minus
+  Minus,
+  ArrowClockwise
 } from '@phosphor-icons/react';
-import { useKV } from '@github/spark/hooks';
 import { toast } from 'sonner';
 
 interface MarketOrder {
@@ -69,84 +70,29 @@ interface MarketStats {
 
 export function Market({ onLoginClick, isMobileView }: TabComponentProps) {
   const { user } = useAuth();
-  const [marketOrders] = useKV<MarketOrder[]>('market-orders', []);
-  const [completedSales] = useKV<CompletedSale[]>('completed-sales', []);
+  const { marketOrders, loading, refreshMarketOrders, dataSource } = useLMeveData();
   const [selectedPeriod, setSelectedPeriod] = useState('30d');
   const [orderFilter, setOrderFilter] = useState<'all' | 'buy' | 'sell'>('all');
   const [stateFilter, setStateFilter] = useState<'all' | 'active' | 'expired' | 'cancelled' | 'fulfilled'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Mock data for demonstration - ESI endpoints to use:
-  // GET /v1/corporations/{corporation_id}/orders/
-  // GET /v1/corporations/{corporation_id}/orders/history/
-  const mockOrders: MarketOrder[] = [
-    {
-      orderId: 6001,
-      typeId: 34,
-      typeName: 'Tritanium',
-      locationId: 60003760,
-      locationName: 'Jita IV - Moon 4',
-      isBuyOrder: false,
-      price: 5.50,
-      volumeTotal: 10000000,
-      volumeRemain: 7500000,
-      issued: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-      duration: 90,
-      minVolume: 1,
-      range: 'station',
-      state: 'active'
-    },
-    {
-      orderId: 6002,
-      typeId: 587,
-      typeName: 'Rifter',
-      locationId: 60003760,
-      locationName: 'Jita IV - Moon 4',
-      isBuyOrder: false,
-      price: 850000,
-      volumeTotal: 50,
-      volumeRemain: 32,
-      issued: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      duration: 30,
-      minVolume: 1,
-      range: 'region',
-      state: 'active'
-    },
-    {
-      orderId: 6003,
-      typeId: 12058,
-      typeName: 'Hobgoblin I',
-      locationId: 60011866,
-      locationName: 'Dodixie IX - Moon 20',
-      isBuyOrder: false,
-      price: 185000,
-      volumeTotal: 500,
-      volumeRemain: 0,
-      issued: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      duration: 30,
-      minVolume: 1,
-      range: 'region',
-      state: 'fulfilled'
-    },
-    {
-      orderId: 6004,
-      typeId: 35,
-      typeName: 'Pyerite',
-      locationId: 60003760,
-      locationName: 'Jita IV - Moon 4',
-      isBuyOrder: true,
-      price: 12.25,
-      volumeTotal: 5000000,
-      volumeRemain: 3200000,
-      issued: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-      duration: 90,
-      minVolume: 1000,
-      range: 'station',
-      state: 'active'
-    },
-  ];
+  // Load market orders on mount
+  useEffect(() => {
+    if (user && marketOrders.length === 0 && !loading.market) {
+      refreshMarketOrders();
+    }
+  }, [user]);
 
+  // Completed sales placeholder - will be added to unified service in future
+  const completedSales: CompletedSale[] = [];
+
+  // Use data from unified service (database-first)
+  const orders = marketOrders;
+  
+  // Mock completed sales for demonstration - ESI endpoints to use:
+  // GET /v1/corporations/{corporation_id}/orders/history/
   const mockCompletedSales: CompletedSale[] = [
+
     {
       id: 'sale1',
       date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
@@ -201,7 +147,6 @@ export function Market({ onLoginClick, isMobileView }: TabComponentProps) {
     },
   ];
 
-  const orders = (marketOrders && marketOrders.length > 0) ? marketOrders : mockOrders;
   const sales = (completedSales && completedSales.length > 0) ? completedSales : mockCompletedSales;
 
   // Filter orders
@@ -330,14 +275,36 @@ export function Market({ onLoginClick, isMobileView }: TabComponentProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-          <TrendUp size={32} />
-          Market Analysis
-        </h2>
-        <p className="text-muted-foreground">
-          Track active corporation market orders and analyze sales history and profits
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <TrendUp size={32} />
+            Market Analysis
+          </h2>
+          <p className="text-muted-foreground">
+            Track active corporation market orders and analyze sales history and profits
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {dataSource.market && (
+            <Badge variant="outline" className="text-xs">
+              {dataSource.market === 'database' ? '💾 Database' : 
+               dataSource.market === 'mock' ? '📝 Demo Data' : 
+               dataSource.market}
+            </Badge>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refreshMarketOrders()}
+            disabled={loading.market}
+          >
+            <ArrowClockwise size={16} className={loading.market ? 'animate-spin' : ''} />
+            <span className="ml-2 hidden sm:inline">
+              {loading.market ? 'Loading...' : 'Refresh'}
+            </span>
+          </Button>
+        </div>
       </div>
 
       {/* Statistics Cards */}
