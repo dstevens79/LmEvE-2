@@ -117,7 +117,8 @@ interface BuybackItemConfig {
   typeName: string;
   category: string;
   manualPercentage?: number;
-  excluded: boolean;
+  excludedFromBuyback: boolean;
+  excludedFromSync: boolean;
   useManualPrice: boolean;
   manualPrice?: number;
   lastSyncedPrice?: number;
@@ -202,7 +203,8 @@ export function Buyback({ isMobileView }: BuybackProps) {
       
       return {
         ...item,
-        excluded: false,
+        excludedFromBuyback: false,
+        excludedFromSync: false,
         useManualPrice: false
       };
     });
@@ -265,7 +267,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
             
             const percentage = getEffectivePercentage(config);
             const totalItemValue = unitPrice * quantity;
-            const payoutPerItem = config.excluded ? 0 : (unitPrice * percentage / 100);
+            const payoutPerItem = config.excludedFromBuyback ? 0 : (unitPrice * percentage / 100);
             const totalPayout = payoutPerItem * quantity;
             
             items.push({
@@ -274,10 +276,10 @@ export function Buyback({ isMobileView }: BuybackProps) {
               quantity,
               unitPrice,
               totalItemValue,
-              buybackPercentage: config.excluded ? 0 : percentage,
+              buybackPercentage: config.excludedFromBuyback ? 0 : percentage,
               payoutPerItem,
               totalPayout,
-              excluded: config.excluded,
+              excluded: config.excludedFromBuyback,
               isManualPrice: config.useManualPrice && config.manualPrice !== undefined
             });
           }
@@ -495,7 +497,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
       return;
     }
 
-    const itemsToSync = typeIds || mockEVEItems.filter(item => !getItemConfig(item.typeId).excluded).map(item => item.typeId);
+    const itemsToSync = typeIds || mockEVEItems.filter(item => !getItemConfig(item.typeId).excludedFromSync).map(item => item.typeId);
     
     if (itemsToSync.length === 0) {
       toast.error('No items to sync');
@@ -616,7 +618,8 @@ export function Buyback({ isMobileView }: BuybackProps) {
         typeId,
         typeName: 'Unknown',
         category: 'Unknown',
-        excluded: false,
+        excludedFromBuyback: false,
+        excludedFromSync: false,
         useManualPrice: false
       };
     }
@@ -1523,10 +1526,10 @@ export function Buyback({ isMobileView }: BuybackProps) {
                 </CardTitle>
                 <CardDescription>Configure global pricing settings for buyback calculations</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="comparisonStation">Comparison Station</Label>
+              <CardContent className="space-y-4">
+                <div className="flex items-end gap-3">
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="comparisonStation">Station</Label>
                     <Select
                       value={priceConfig.comparisonStation}
                       onValueChange={(value) => setPriceConfig(current => ({ ...current, comparisonStation: value }))}
@@ -1544,19 +1547,8 @@ export function Buyback({ isMobileView }: BuybackProps) {
                     </Select>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="pricingType" className="flex items-center justify-between">
-                      <span>Pricing Type</span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleAssignAllPricingType}
-                        className="text-xs h-7"
-                      >
-                        <CheckCircle size={14} className="mr-1" />
-                        Apply to All
-                      </Button>
-                    </Label>
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="pricingType">Type</Label>
                     <Select
                       value={priceConfig.pricingType}
                       onValueChange={(value: 'buy' | 'sell') => setPriceConfig(current => ({ ...current, pricingType: value }))}
@@ -1570,93 +1562,101 @@ export function Buyback({ isMobileView }: BuybackProps) {
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="defaultPercentage">Default Percentage</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="defaultPercentage"
-                      type="number"
-                      min="1"
-                      max="100"
-                      value={priceConfig.defaultPercentage}
-                      onChange={(e) => setPriceConfig(current => ({ ...current, defaultPercentage: parseInt(e.target.value) || 90 }))}
-                      className="max-w-xs"
-                    />
-                    <span className="flex items-center text-muted-foreground">%</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Applied to items without manual percentage overrides
-                  </p>
-                </div>
-
-                <div className="pt-4 border-t border-border space-y-4">
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Mass Assignment Tools</Label>
-                    <div className="flex items-center gap-3">
+                  <div className="w-48 space-y-2">
+                    <Label htmlFor="defaultPercentage">Default %</Label>
+                    <div className="flex gap-2">
                       <Input
+                        id="defaultPercentage"
                         type="number"
                         min="1"
                         max="100"
-                        value={massAssignPercentage}
-                        onChange={(e) => setMassAssignPercentage(parseInt(e.target.value) || 90)}
-                        className="w-24"
-                        placeholder="90"
+                        value={priceConfig.defaultPercentage}
+                        onChange={(e) => setPriceConfig(current => ({ ...current, defaultPercentage: parseInt(e.target.value) || 90 }))}
                       />
-                      <span className="text-sm text-muted-foreground">%</span>
                       <Button
-                        onClick={handleMassAssignPercentage}
-                        disabled={selectedItems.size === 0}
-                        className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleAssignAllPricingType}
+                        className="flex-shrink-0"
                       >
-                        <CheckCircle size={16} className="mr-2" />
-                        Assign to Selected ({selectedItems.size})
+                        <CheckCircle size={14} className="mr-1" />
+                        Apply to All
                       </Button>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Select items below and use this to mass assign a custom percentage
-                    </p>
                   </div>
 
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Price Synchronization</Label>
-                    <div className="flex items-center gap-3">
-                      <Button
-                        onClick={() => handleSyncItemPrices()}
-                        disabled={isSyncing}
-                        variant="outline"
-                        className="border-accent/50 text-accent hover:bg-accent/10"
-                      >
-                        {isSyncing ? (
-                          <>
-                            <ArrowsClockwise size={16} className="mr-2 animate-spin" />
-                            Syncing... {syncProgress}%
-                          </>
-                        ) : (
-                          <>
-                            <CloudArrowDown size={16} className="mr-2" />
-                            Sync All Non-Excluded Prices
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        onClick={handleSyncSelectedPrices}
-                        disabled={selectedItems.size === 0 || isSyncing}
-                        variant="outline"
-                      >
-                        <CloudArrowDown size={16} className="mr-2" />
-                        Sync Selected ({selectedItems.size})
-                      </Button>
+                  <div className="flex gap-2">
+                    <div className="space-y-2">
+                      <Label>&nbsp;</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={massAssignPercentage}
+                          onChange={(e) => setMassAssignPercentage(parseInt(e.target.value) || 90)}
+                          className="w-20"
+                          placeholder="90"
+                        />
+                        <Button
+                          onClick={handleMassAssignPercentage}
+                          disabled={selectedItems.size === 0}
+                          className="bg-accent hover:bg-accent/90 text-accent-foreground flex-shrink-0"
+                        >
+                          <CheckCircle size={14} className="mr-1" />
+                          Apply ({selectedItems.size})
+                        </Button>
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Fetch current market prices from {priceConfig.comparisonStation} via ESI
-                    </p>
-                    {isSyncing && (
-                      <Progress value={syncProgress} className="mt-2" />
-                    )}
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CloudArrowDown size={20} />
+                  Price Synchronization
+                </CardTitle>
+                <CardDescription>Fetch current market prices from ESI</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-3">
+                  <Button
+                    onClick={() => handleSyncItemPrices()}
+                    disabled={isSyncing}
+                    variant="outline"
+                    className="border-accent/50 text-accent hover:bg-accent/10"
+                  >
+                    {isSyncing ? (
+                      <>
+                        <ArrowsClockwise size={16} className="mr-2 animate-spin" />
+                        Syncing... {syncProgress}%
+                      </>
+                    ) : (
+                      <>
+                        <CloudArrowDown size={16} className="mr-2" />
+                        Sync All Non-Excluded Prices
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleSyncSelectedPrices}
+                    disabled={selectedItems.size === 0 || isSyncing}
+                    variant="outline"
+                  >
+                    <CloudArrowDown size={16} className="mr-2" />
+                    Sync Selected ({selectedItems.size})
+                  </Button>
+                  <p className="text-sm text-muted-foreground">
+                    Fetch prices from {priceConfig.comparisonStation} via ESI
+                  </p>
+                </div>
+                {isSyncing && (
+                  <Progress value={syncProgress} className="mt-3" />
+                )}
               </CardContent>
             </Card>
 
@@ -1753,6 +1753,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
                         <TableHead>Buyback %</TableHead>
                         <TableHead>Custom Price</TableHead>
                         <TableHead className="text-center">Exclude from Sync</TableHead>
+                        <TableHead className="text-center">Exclude from Buyback</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1767,7 +1768,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
                           config.lastSyncedPrice;
                         
                         return (
-                          <TableRow key={item.typeId} className={`${isSelected ? 'bg-accent/10' : ''} ${config.excluded ? 'opacity-60' : ''}`}>
+                          <TableRow key={item.typeId} className={`${isSelected ? 'bg-accent/10' : ''} ${config.excludedFromBuyback ? 'opacity-60' : ''}`}>
                             <TableCell>
                               <input
                                 type="checkbox"
@@ -1813,7 +1814,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
                                     useManualPrice: true
                                   })}
                                   className="w-20 h-8 text-sm"
-                                  disabled={config.excluded}
+                                  disabled={config.excludedFromBuyback}
                                 />
                                 <span className="text-sm text-muted-foreground">%</span>
                                 {config.useManualPrice && config.manualPercentage !== undefined && (
@@ -1841,7 +1842,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
                                   }}
                                   placeholder="ISK"
                                   className="w-32 h-8 text-sm font-mono"
-                                  disabled={config.excluded}
+                                  disabled={config.excludedFromBuyback}
                                 />
                                 {config.manualPrice !== undefined && (
                                   <Button
@@ -1861,8 +1862,14 @@ export function Buyback({ isMobileView }: BuybackProps) {
                             </TableCell>
                             <TableCell className="text-center">
                               <Switch
-                                checked={config.excluded}
-                                onCheckedChange={(checked) => handleUpdateItemConfig(item.typeId, { excluded: checked })}
+                                checked={config.excludedFromSync}
+                                onCheckedChange={(checked) => handleUpdateItemConfig(item.typeId, { excludedFromSync: checked })}
+                              />
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Switch
+                                checked={config.excludedFromBuyback}
+                                onCheckedChange={(checked) => handleUpdateItemConfig(item.typeId, { excludedFromBuyback: checked })}
                               />
                             </TableCell>
                             <TableCell>
