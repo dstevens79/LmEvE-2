@@ -708,9 +708,8 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                         )}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                        <span>Every {process.interval >= 1440 ? `${(process.interval / 1440).toFixed(1)} day${process.interval > 1440 ? 's' : ''}` : `${process.interval}m`}</span>
                         {process.lastSync && (
-                          <>
+                        {process.lastSync && (
                             <span>•</span>
                             <span>Last: {formatLastSync(process.lastSync)}</span>
                           </>
