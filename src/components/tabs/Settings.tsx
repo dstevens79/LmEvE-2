@@ -4969,8 +4969,6 @@ echo "See README.md for detailed setup instructions"
                       updateSyncInterval('market', 10);
                       updateSyncInterval('killmails', 120);
                       updateSyncInterval('income', 30);
-                      updateSyncInterval('item_pricing', 120);
-                      updateSyncInterval('contracts', 10);
                       setSyncSettings(prev => ({
                         ...prev,
                         masterPoller: { ...prev.masterPoller, interval: 5, enabled: true }
@@ -5007,8 +5005,6 @@ echo "See README.md for detailed setup instructions"
                       updateSyncInterval('market', 0);
                       updateSyncInterval('killmails', 0);
                       updateSyncInterval('income', 0);
-                      updateSyncInterval('item_pricing', 0);
-                      updateSyncInterval('contracts', 0);
                       setSyncSettings(prev => ({
                         ...prev,
                         masterPoller: { ...prev.masterPoller, enabled: false }
@@ -5068,6 +5064,10 @@ echo "See README.md for detailed setup instructions"
                       </p>
                     </div>
                     <Switch
+                      checked={notificationSettings.events.manufacturing}
+                      onCheckedChange={(checked) => updateNotificationEvent('manufacturing', checked)}
+                    />
+                  </div>
                       checked={notificationSettings.events.manufacturing}
                       onCheckedChange={(checked) => updateNotificationEvent('manufacturing', checked)}
                     />
