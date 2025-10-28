@@ -1065,9 +1065,6 @@ export function Buyback({ isMobileView }: BuybackProps) {
                                 <p className="font-medium text-green-500">{formatISK(contract.payoutValue)}</p>
                               </div>
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                              Include this validation key in your contract description to {contract.contractPilotName}
-                            </p>
                           </div>
                           <div className="flex gap-2">
                             {isAdmin && (
