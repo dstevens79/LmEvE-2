@@ -6,6 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { LoginPrompt } from '@/components/LoginPrompt';
 import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { 
   Package, 
   MagnifyingGlass,
   Building,
@@ -17,7 +24,7 @@ import {
   WarningCircle
 } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/auth-provider';
-import { TabComponentProps } from '@/lib/types';
+import { TabComponentProps, ManufacturingTask } from '@/lib/types';
 import { useKV } from '@github/spark/hooks';
 
 interface Station {
@@ -53,6 +60,10 @@ const MOCK_STATIONS: Station[] = [
   { id: 2, name: 'Amarr VIII (Oris) - Emperor Family Academy', system: 'Amarr', region: 'Domain', hasOffice: true },
   { id: 3, name: 'Dodixie IX - Moon 20 - Federation Navy Assembly Plant', system: 'Dodixie', region: 'Sinq Laison', hasOffice: true },
   { id: 4, name: 'Rens VI - Moon 8 - Brutor Tribe Treasury', system: 'Rens', region: 'Heimatar', hasOffice: true },
+  { id: 5, name: 'Hek VIII - Moon 12 - Boundless Creation Factory', system: 'Hek', region: 'Metropolis', hasOffice: true },
+  { id: 6, name: 'Perimeter - Tranquility Trading Tower', system: 'Perimeter', region: 'The Forge', hasOffice: true },
+  { id: 7, name: 'Oursulaert VII - Moon 4 - Federal Intelligence Office', system: 'Oursulaert', region: 'Essence', hasOffice: true },
+  { id: 8, name: 'Tash-Murkon Prime V - Moon 1 - Tash-Murkon Family Bureau', system: 'Tash-Murkon Prime', region: 'Tash-Murkon', hasOffice: true },
 ];
 
 const MOCK_HANGARS: AssetItem[] = [
@@ -109,6 +120,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useKV<string[]>('assets-expanded-folders', []);
   const [viewMode, setViewMode] = useKV<'hangars' | 'supplies'>('assets-view-mode', 'hangars');
+  const [manufacturingTasks] = useKV<ManufacturingTask[]>('manufacturing-tasks', []);
 
   if (!user && onLoginClick) {
     return (
@@ -121,6 +133,47 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   }
 
   const currentStation = MOCK_STATIONS.find(s => s.id === selectedStation) || MOCK_STATIONS[0];
+
+  // Generate supplies list from manufacturing tasks
+  const generateSuppliesFromTasks = (): SupplyItem[] => {
+    const tasks = manufacturingTasks || [];
+    const activeTasks = tasks.filter(t => t.status === 'assigned' || t.status === 'in_progress');
+    
+    if (activeTasks.length === 0) {
+      return MOCK_SUPPLIES;
+    }
+
+    // Aggregate materials from all active tasks
+    const materialMap = new Map<string, SupplyItem>();
+    
+    activeTasks.forEach(task => {
+      if (task.materials && task.materials.length > 0) {
+        task.materials.forEach(material => {
+          const key = `${material.typeId}-${material.typeName}`;
+          const existing = materialMap.get(key);
+          
+          if (existing) {
+            existing.required += material.quantity;
+            existing.shortage = Math.max(0, existing.required - existing.available);
+          } else {
+            materialMap.set(key, {
+              id: key,
+              name: material.typeName,
+              required: material.quantity,
+              available: Math.floor(material.quantity * 0.7), // Mock 70% availability
+              shortage: Math.ceil(material.quantity * 0.3), // Mock 30% shortage
+              category: material.category || 'Material'
+            });
+          }
+        });
+      }
+    });
+
+    const supplies = Array.from(materialMap.values());
+    return supplies.length > 0 ? supplies : MOCK_SUPPLIES;
+  };
+
+  const activeSupplies = generateSuppliesFromTasks();
 
   const toggleFolder = (folderId: string) => {
     setExpandedFolders((current) => {
@@ -217,27 +270,41 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className={`grid ${isMobileView ? 'grid-cols-1' : 'grid-cols-2 lg:grid-cols-4'} gap-2`}>
-            {MOCK_STATIONS.map(station => (
-              <Button
-                key={station.id}
-                variant={selectedStation === station.id ? 'default' : 'outline'}
-                className={`justify-start h-auto py-3 px-3 ${
-                  selectedStation === station.id 
-                    ? 'bg-accent text-accent-foreground' 
-                    : 'hover:bg-muted'
-                }`}
-                onClick={() => setSelectedStation(station.id)}
-              >
-                <div className="text-left">
-                  <div className="font-medium text-sm truncate">{station.name}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {station.system} • {station.region}
+          <Select 
+            value={selectedStation.toString()} 
+            onValueChange={(value) => setSelectedStation(parseInt(value))}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select a station">
+                {currentStation && (
+                  <div className="flex items-start gap-2">
+                    <Building size={16} className="mt-0.5 shrink-0" />
+                    <div className="text-left">
+                      <div className="font-medium text-sm">{currentStation.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {currentStation.system} • {currentStation.region}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </Button>
-            ))}
-          </div>
+                )}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {MOCK_STATIONS.map(station => (
+                <SelectItem key={station.id} value={station.id.toString()}>
+                  <div className="flex items-start gap-2 py-1">
+                    <Building size={16} className="mt-0.5 shrink-0" />
+                    <div>
+                      <div className="font-medium text-sm">{station.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {station.system} • {station.region}
+                      </div>
+                    </div>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </CardContent>
       </Card>
 
@@ -355,7 +422,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                   </div>
                 )}
                 <div className="divide-y divide-border/50">
-                  {MOCK_SUPPLIES.map(supply => {
+                  {activeSupplies.map(supply => {
                     const percentAvailable = (supply.available / supply.required) * 100;
                     const hasShortage = supply.shortage > 0;
 
@@ -424,19 +491,19 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
               <div className={`grid ${isMobileView ? 'grid-cols-2' : 'grid-cols-3'} gap-4`}>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-foreground">
-                    {MOCK_SUPPLIES.length}
+                    {activeSupplies.length}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">Supply Items</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-destructive">
-                    {MOCK_SUPPLIES.filter(s => s.shortage > 0).length}
+                    {activeSupplies.filter(s => s.shortage > 0).length}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">Items Short</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-accent">
-                    {((MOCK_SUPPLIES.filter(s => s.shortage === 0).length / MOCK_SUPPLIES.length) * 100).toFixed(0)}%
+                    {activeSupplies.length > 0 ? ((activeSupplies.filter(s => s.shortage === 0).length / activeSupplies.length) * 100).toFixed(0) : 0}%
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">Fulfillment</div>
                 </div>

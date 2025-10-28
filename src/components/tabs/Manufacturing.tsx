@@ -132,7 +132,14 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           payModifier: null,
           estimatedDuration: 18000,
           createdDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          corporationId: 498125261
+          corporationId: 498125261,
+          materials: [
+            { typeId: 34, typeName: 'Tritanium', quantity: 250000, totalValue: 1250000, category: 'Mineral' },
+            { typeId: 35, typeName: 'Pyerite', quantity: 120000, totalValue: 720000, category: 'Mineral' },
+            { typeId: 36, typeName: 'Mexallon', quantity: 45000, totalValue: 450000, category: 'Mineral' },
+            { typeId: 37, typeName: 'Isogen', quantity: 18000, totalValue: 180000, category: 'Mineral' },
+            { typeId: 11399, typeName: 'Morphite', quantity: 250, totalValue: 250000, category: 'Mineral' }
+          ]
         },
         {
           id: 'task-2', 
@@ -148,7 +155,13 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           estimatedDuration: 90000,
           startedDate: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
           createdDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-          corporationId: 498125261
+          corporationId: 498125261,
+          materials: [
+            { typeId: 34, typeName: 'Tritanium', quantity: 450000, totalValue: 2250000, category: 'Mineral' },
+            { typeId: 35, typeName: 'Pyerite', quantity: 180000, totalValue: 1080000, category: 'Mineral' },
+            { typeId: 36, typeName: 'Mexallon', quantity: 75000, totalValue: 750000, category: 'Mineral' },
+            { typeId: 3689, typeName: 'Robotics', quantity: 500, totalValue: 1500000, category: 'Component' }
+          ]
         },
         {
           id: 'task-3',
@@ -165,13 +178,19 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           completedDate: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
           startedDate: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
           createdDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-          corporationId: 498125261
+          corporationId: 498125261,
+          materials: [
+            { typeId: 34, typeName: 'Tritanium', quantity: 320000, totalValue: 1600000, category: 'Mineral' },
+            { typeId: 35, typeName: 'Pyerite', quantity: 150000, totalValue: 900000, category: 'Mineral' },
+            { typeId: 36, typeName: 'Mexallon', quantity: 55000, totalValue: 550000, category: 'Mineral' },
+            { typeId: 37, typeName: 'Isogen', quantity: 22000, totalValue: 220000, category: 'Mineral' }
+          ]
         },
         {
           id: 'task-4',
           targetItem: {
-            typeId: 0, // Placeholder for unassigned
-            typeName: 'Unassigned Manufacturing Job',
+            typeId: 638,
+            typeName: 'Moa',
             quantity: 10
           },
           assignedTo: null,
@@ -180,7 +199,14 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           payModifier: null,
           estimatedDuration: 14400,
           createdDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-          corporationId: 498125261
+          corporationId: 498125261,
+          materials: [
+            { typeId: 34, typeName: 'Tritanium', quantity: 580000, totalValue: 2900000, category: 'Mineral' },
+            { typeId: 35, typeName: 'Pyerite', quantity: 220000, totalValue: 1320000, category: 'Mineral' },
+            { typeId: 36, typeName: 'Mexallon', quantity: 95000, totalValue: 950000, category: 'Mineral' },
+            { typeId: 38, typeName: 'Nocxium', quantity: 18000, totalValue: 360000, category: 'Mineral' },
+            { typeId: 16272, typeName: 'Capital Construction Parts', quantity: 150, totalValue: 7500000, category: 'Component' }
+          ]
         }
       ];
       setManufacturingTasks(sampleTasks);
