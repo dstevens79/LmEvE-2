@@ -28,7 +28,10 @@ import {
   Crosshair,
   CurrencyDollar,
   Building,
-  FileText
+  FileText,
+  Receipt,
+  Planet,
+  User
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useSyncSettings } from '@/lib/persistenceService';
@@ -199,6 +202,45 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       currentVersion: 'v1',
       availableVersions: ['v1'],
       nextRun: null
+    },
+    {
+      id: 'item_pricing',
+      name: 'Item Pricing',
+      description: 'Sync market prices for items from configured station',
+      icon: Receipt,
+      enabled: syncSettings.itemPricing?.enabled ?? true,
+      interval: syncSettings.itemPricing?.interval ?? 60,
+      lastSync: null,
+      status: 'idle',
+      currentVersion: 'v1',
+      availableVersions: ['v1'],
+      nextRun: null
+    },
+    {
+      id: 'planetary_interaction',
+      name: 'Planetary Interaction',
+      description: 'Sync planetary colonies and extraction data',
+      icon: Planet,
+      enabled: syncSettings.planetaryInteraction?.enabled ?? false,
+      interval: syncSettings.planetaryInteraction?.interval ?? 120,
+      lastSync: null,
+      status: 'idle',
+      currentVersion: 'v1',
+      availableVersions: ['v1'],
+      nextRun: null
+    },
+    {
+      id: 'personal_esi',
+      name: 'Personal ESI Data',
+      description: 'Sync personal data for pilots with ESI access',
+      icon: User,
+      enabled: syncSettings.personalESI?.enabled ?? false,
+      interval: syncSettings.personalESI?.interval ?? 30,
+      lastSync: null,
+      status: 'idle',
+      currentVersion: 'v1',
+      availableVersions: ['v1'],
+      nextRun: null
     }
   ]);
 
@@ -273,7 +315,10 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
         'mining_ledger': 'mining',
         'killmails': 'killmails',
         'structures': 'container_logs',
-        'corporation_contracts': 'contracts'
+        'corporation_contracts': 'contracts',
+        'item_pricing': 'item_pricing',
+        'planetary_interaction': 'planetary',
+        'personal_esi': 'personal_esi'
       };
 
       const processType = processTypeMap[processId];
