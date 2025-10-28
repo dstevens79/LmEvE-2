@@ -18,6 +18,8 @@ import type {
   IncomeRecord,
   IncomeAnalytics,
   WalletTransaction,
+  WalletDivision,
+  MarketOrder,
   PlanetaryColony
 } from './types';
 
@@ -56,6 +58,8 @@ interface LMeveDataContextType {
   assets: Asset[];
   manufacturingJobs: ManufacturingJob[];
   walletTransactions: WalletTransaction[];
+  walletDivisions: WalletDivision[];
+  marketOrders: MarketOrder[];
   planetaryColonies: PlanetaryColony[];
   miningOperations: MiningOperation[];
   marketPrices: MarketPrice[];
@@ -91,6 +95,8 @@ interface LMeveDataContextType {
   refreshAssets: () => Promise<void>;
   refreshManufacturing: () => Promise<void>;
   refreshWallet: () => Promise<void>;
+  refreshWalletDivisions: () => Promise<void>;
+  refreshMarketOrders: () => Promise<void>;
   refreshPlanetary: () => Promise<void>;
   refreshMining: () => Promise<void>;
   refreshMarket: () => Promise<void>;
@@ -129,6 +135,8 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [manufacturingJobs, setManufacturingJobs] = useState<ManufacturingJob[]>([]);
   const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>([]);
+  const [walletDivisions, setWalletDivisions] = useState<WalletDivision[]>([]);
+  const [marketOrders, setMarketOrders] = useState<MarketOrder[]>([]);
   const [planetaryColonies, setPlanetaryColonies] = useState<PlanetaryColony[]>([]);
   const [miningOperations, setMiningOperations] = useState<MiningOperation[]>([]);
   const [marketPrices, setMarketPrices] = useState<MarketPrice[]>([]);
@@ -338,6 +346,40 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refreshWalletDivisions = async () => {
+    if (!unifiedService) return;
+    
+    setLoading(prev => ({ ...prev, wallet: true }));
+    try {
+      const result = await unifiedService.getWalletDivisions(user?.corporationId);
+      setWalletDivisions(result.data);
+      setDataSource(prev => ({ ...prev, wallet: result.source }));
+      console.log(`📊 Wallet divisions loaded from ${result.source}: ${result.data.length} divisions`);
+    } catch (error) {
+      console.error('Failed to refresh wallet divisions:', error);
+      setWalletDivisions([]);
+    } finally {
+      setLoading(prev => ({ ...prev, wallet: false }));
+    }
+  };
+
+  const refreshMarketOrders = async () => {
+    if (!unifiedService) return;
+    
+    setLoading(prev => ({ ...prev, market: true }));
+    try {
+      const result = await unifiedService.getMarketOrders(user?.corporationId);
+      setMarketOrders(result.data);
+      setDataSource(prev => ({ ...prev, market: result.source }));
+      console.log(`📊 Market orders loaded from ${result.source}: ${result.data.length} orders`);
+    } catch (error) {
+      console.error('Failed to refresh market orders:', error);
+      setMarketOrders([]);
+    } finally {
+      setLoading(prev => ({ ...prev, market: false }));
+    }
+  };
+
   const refreshKillmails = async () => {
     setLoading(prev => ({ ...prev, killmails: true }));
     try {
@@ -387,6 +429,8 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
         { name: 'Updating asset locations...', action: refreshAssets },
         { name: 'Fetching industry jobs...', action: refreshManufacturing },
         { name: 'Loading wallet transactions...', action: refreshWallet },
+        { name: 'Loading wallet divisions...', action: refreshWalletDivisions },
+        { name: 'Fetching market orders...', action: refreshMarketOrders },
         { name: 'Checking planetary colonies...', action: refreshPlanetary },
         { name: 'Collecting mining data...', action: refreshMining },
         { name: 'Updating market prices...', action: refreshMarket },
@@ -462,6 +506,8 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
     assets,
     manufacturingJobs,
     walletTransactions,
+    walletDivisions,
+    marketOrders,
     planetaryColonies,
     miningOperations,
     marketPrices,
@@ -474,6 +520,8 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
     refreshAssets,
     refreshManufacturing,
     refreshWallet,
+    refreshWalletDivisions,
+    refreshMarketOrders,
     refreshPlanetary,
     refreshMining,
     refreshMarket,

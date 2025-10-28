@@ -27,6 +27,8 @@ import type {
   KillmailSummary,
   IncomeRecord,
   WalletTransaction,
+  WalletDivision,
+  MarketOrder,
   PlanetaryColony
 } from './types';
 
@@ -322,29 +324,170 @@ class MockDataGenerator {
       {
         typeId: 34,
         typeName: 'Tritanium',
+        regionId: 10000002,
+        region: 'The Forge',
         buyPrice: 5.45,
         sellPrice: 5.52,
+        averagePrice: 5.48,
         avgPrice: 5.48,
         volume: 15000000000,
+        lastUpdate: new Date().toISOString(),
         timestamp: new Date().toISOString()
       },
       {
         typeId: 587,
         typeName: 'Rifter',
+        regionId: 10000002,
+        region: 'The Forge',
         buyPrice: 248000,
         sellPrice: 275000,
+        averagePrice: 261000,
         avgPrice: 261000,
         volume: 12500,
+        lastUpdate: new Date().toISOString(),
         timestamp: new Date().toISOString()
       },
       {
         typeId: 638,
         typeName: 'Raven',
+        regionId: 10000002,
+        region: 'The Forge',
         buyPrice: 138000000,
         sellPrice: 145000000,
+        averagePrice: 141500000,
         avgPrice: 141500000,
         volume: 850,
+        lastUpdate: new Date().toISOString(),
         timestamp: new Date().toISOString()
+      }
+    ];
+  }
+
+  /**
+   * Generate mock wallet divisions (7 corporate wallet divisions)
+   */
+  static generateWalletDivisions(): WalletDivision[] {
+    return [
+      {
+        id: 1,
+        divisionId: 1,
+        divisionName: 'Master Wallet',
+        balance: 15750000000,
+        corporationId: 98000001,
+        lastUpdate: new Date().toISOString()
+      },
+      {
+        id: 2,
+        divisionId: 2,
+        divisionName: 'Manufacturing',
+        balance: 8250000000,
+        corporationId: 98000001,
+        lastUpdate: new Date().toISOString()
+      },
+      {
+        id: 3,
+        divisionId: 3,
+        divisionName: 'Mining Operations',
+        balance: 3500000000,
+        corporationId: 98000001,
+        lastUpdate: new Date().toISOString()
+      },
+      {
+        id: 4,
+        divisionId: 4,
+        divisionName: 'Market Trading',
+        balance: 12100000000,
+        corporationId: 98000001,
+        lastUpdate: new Date().toISOString()
+      },
+      {
+        id: 5,
+        divisionId: 5,
+        divisionName: 'Research & Development',
+        balance: 2750000000,
+        corporationId: 98000001,
+        lastUpdate: new Date().toISOString()
+      },
+      {
+        id: 6,
+        divisionId: 6,
+        divisionName: 'Planetary Interaction',
+        balance: 1850000000,
+        corporationId: 98000001,
+        lastUpdate: new Date().toISOString()
+      },
+      {
+        id: 7,
+        divisionId: 7,
+        divisionName: 'Reserves',
+        balance: 25000000000,
+        corporationId: 98000001,
+        lastUpdate: new Date().toISOString()
+      }
+    ];
+  }
+
+  /**
+   * Generate mock market orders (handful of active orders)
+   */
+  static generateMarketOrders(): MarketOrder[] {
+    return [
+      {
+        id: 1,
+        orderId: 6000001,
+        typeId: 34,
+        typeName: 'Tritanium',
+        locationId: 60003760,
+        locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+        isBuyOrder: false,
+        price: 5.50,
+        volumeTotal: 10000000,
+        volumeRemain: 7500000,
+        issued: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        duration: 90,
+        minVolume: 1,
+        range: 'station',
+        state: 'active',
+        corporationId: 98000001,
+        walletDivision: 4
+      },
+      {
+        id: 2,
+        orderId: 6000002,
+        typeId: 638,
+        typeName: 'Raven',
+        locationId: 60003760,
+        locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+        isBuyOrder: false,
+        price: 145000000,
+        volumeTotal: 3,
+        volumeRemain: 2,
+        issued: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
+        duration: 90,
+        minVolume: 1,
+        range: 'region',
+        state: 'active',
+        corporationId: 98000001,
+        walletDivision: 4
+      },
+      {
+        id: 3,
+        orderId: 6000003,
+        typeId: 587,
+        typeName: 'Rifter',
+        locationId: 60003760,
+        locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+        isBuyOrder: true,
+        price: 240000,
+        volumeTotal: 50,
+        volumeRemain: 35,
+        issued: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        duration: 30,
+        minVolume: 1,
+        range: 'station',
+        state: 'active',
+        corporationId: 98000001,
+        walletDivision: 4
       }
     ];
   }
@@ -804,6 +947,112 @@ export class UnifiedDataService {
       if (this.shouldUseMockData()) {
         return {
           data: MockDataGenerator.generateMarketPrices(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get wallet divisions - Database → Mock (if never configured)
+   */
+  async getWalletDivisions(corporationId?: number): Promise<DataResult<WalletDivision[]>> {
+    try {
+      if (this.dbManager && this.setupStatus.databaseConnected) {
+        const result = await this.dbManager.query<WalletDivision>(
+          LMeveQueries.getWalletDivisions(corporationId)
+        );
+
+        if (result.success && result.data && result.data.length > 0) {
+          console.log(`✅ Wallet divisions from database: ${result.data.length} divisions`);
+          return {
+            data: result.data,
+            source: 'database',
+            timestamp: new Date().toISOString()
+          };
+        }
+      }
+
+      if (this.shouldUseMockData()) {
+        console.log('📝 Using mock wallet division data (database not yet configured)');
+        return {
+          data: MockDataGenerator.generateWalletDivisions(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Failed to get wallet divisions:', error);
+      
+      if (this.shouldUseMockData()) {
+        return {
+          data: MockDataGenerator.generateWalletDivisions(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get market orders - Database → Mock (if never configured)
+   */
+  async getMarketOrders(corporationId?: number): Promise<DataResult<MarketOrder[]>> {
+    try {
+      if (this.dbManager && this.setupStatus.databaseConnected) {
+        const result = await this.dbManager.query<MarketOrder>(
+          `SELECT * FROM market_orders WHERE corporation_id = ${corporationId || 0} ORDER BY issued DESC`
+        );
+
+        if (result.success && result.data && result.data.length > 0) {
+          console.log(`✅ Market orders from database: ${result.data.length} orders`);
+          return {
+            data: result.data,
+            source: 'database',
+            timestamp: new Date().toISOString()
+          };
+        }
+      }
+
+      if (this.shouldUseMockData()) {
+        console.log('📝 Using mock market order data (database not yet configured)');
+        return {
+          data: MockDataGenerator.generateMarketOrders(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Failed to get market orders:', error);
+      
+      if (this.shouldUseMockData()) {
+        return {
+          data: MockDataGenerator.generateMarketOrders(),
           source: 'mock',
           timestamp: new Date().toISOString()
         };

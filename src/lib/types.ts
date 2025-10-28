@@ -631,6 +631,35 @@ export interface WalletTransaction {
   divisionId?: number;
 }
 
+export interface WalletDivision {
+  id: number;
+  divisionId: number;
+  divisionName: string;
+  balance: number;
+  corporationId?: number;
+  lastUpdate?: string;
+}
+
+export interface MarketOrder {
+  id: number;
+  orderId: number;
+  typeId: number;
+  typeName: string;
+  locationId: number;
+  locationName?: string;
+  isBuyOrder: boolean;
+  price: number;
+  volumeTotal: number;
+  volumeRemain: number;
+  issued: string;
+  duration: number;
+  minVolume?: number;
+  range?: string;
+  state: 'active' | 'expired' | 'cancelled' | 'fulfilled';
+  corporationId?: number;
+  walletDivision?: number;
+}
+
 // Planetary interaction types
 export interface PlanetaryColony {
   id: number;

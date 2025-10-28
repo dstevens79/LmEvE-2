@@ -1456,7 +1456,29 @@ export const LMeveQueries = {
          FROM killmails k 
          JOIN eve_types t ON k.ship_type_id = t.type_id 
          JOIN systems s ON k.system_id = s.system_id 
-         ORDER BY k.killmail_time DESC`
+         ORDER BY k.killmail_time DESC`,
+
+  // Wallet queries
+  getWalletTransactions: (corporationId?: number) =>
+    corporationId !== undefined && corporationId !== null
+      ? `SELECT wt.*, t.type_name, l.location_name 
+         FROM wallet_transactions wt 
+         JOIN eve_types t ON wt.type_id = t.type_id 
+         JOIN locations l ON wt.location_id = l.location_id 
+         WHERE wt.corporation_id = ${corporationId} 
+         ORDER BY wt.date DESC 
+         LIMIT 1000`
+      : `SELECT wt.*, t.type_name, l.location_name 
+         FROM wallet_transactions wt 
+         JOIN eve_types t ON wt.type_id = t.type_id 
+         JOIN locations l ON wt.location_id = l.location_id 
+         ORDER BY wt.date DESC 
+         LIMIT 1000`,
+
+  getWalletDivisions: (corporationId?: number) =>
+    corporationId !== undefined && corporationId !== null
+      ? `SELECT * FROM wallet_divisions WHERE corporation_id = ${corporationId} ORDER BY division_id`
+      : `SELECT * FROM wallet_divisions ORDER BY division_id`
 };
 
 // ESI Data Storage Service - Phase 1 Implementation
