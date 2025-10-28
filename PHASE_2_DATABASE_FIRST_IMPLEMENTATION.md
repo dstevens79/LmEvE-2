@@ -1,349 +1,243 @@
-# Phase 2: Database-First Data Access Implementation
+# Phase 2: Database-First Implementation
 
 ## Overview
+Phase 2 implements strict database-first data retrieval with **no ESI fallbacks** once the system is fully configured. The logic flow is:
 
-Phase 2 removes ALL ESI fallback logic from tab components and ensures that once the system is fully configured ("server config good no more mock"), ALL data reads come exclusively from the database. No fallbacks to ESI API calls in the UI layer.
-
-**Implementation Date**: December 2024
-
-## Key Principle
-
-```
-Data Flow (Production):
-ESI Pollers → Scheduled Sync → Database → UI Components
-```
-
-**UI components should NEVER call ESI directly** (except for the one exception: active character's own personal data on login)
+1. **Pollers** fetch from ESI on schedule → Write to database
+2. **Tabs** read from database only (no direct ESI calls)
+3. **Exception**: Active character's personal data can update on login
 
 ## Current State Analysis
 
-### ✅ Already Database-First
-1. **UnifiedDataService** (`/src/lib/unified-data-service.ts`)
-   - ✅ Database → Mock (if never configured) → Empty array
-   - ✅ NO ESI fallback in read path
-   - ✅ Proper data source tracking
+### ✅ Already Correct (No Changes Needed)
+- **`unified-data-service.ts`**: Already implements Database → Mock (only if never configured)
+- **`LMeveDataContext.tsx`**: Uses unified service correctly
+- **Assets tab**: Uses `useLMeveData()` hook ✅
+- **Members tab**: Uses `useLMeveData()` hook ✅
+- **Dashboard tab**: Uses `useLMeveData()` hook ✅
 
-2. **Members Tab** (`/src/components/tabs/Members.tsx`)
-   - ✅ Uses `useLMeveData()` hook
-   - ✅ Calls `refreshMembers()` which uses UnifiedDataService
-   - ✅ No direct ESI calls
+### ❌ Requires Updates (ESI Fallbacks to Remove)
 
-3. **Assets Tab** (`/src/components/tabs/Assets.tsx`)
-   - ✅ Uses `useLMeveData()` hook
-   - ✅ Calls `refreshAssets()` which uses UnifiedDataService
-   - ✅ No direct ESI calls
+#### 1. `integrated-data-service.ts`
+**Problem**: Has ESI fallback logic in all fetch methods
+**Location**: Lines 88-122 (fetchMembers), similar patterns in other methods
+**Fix**: Remove ESI fallback, only use database once configured
 
-4. **PlanetaryInteraction Tab** (`/src/components/tabs/PlanetaryInteraction.tsx`)
-   - ✅ Uses `useLMeveData()` hook
-   - ✅ Calls `refreshPlanetary()` which uses UnifiedDataService
-   - ✅ No direct ESI calls
-
-### ❌ Needs Migration to Database-First
-
-1. **Manufacturing Tab** (`/src/components/tabs/Manufacturing.tsx`)
-   - ❌ Imports `ESIDataFetchService` directly
-   - ❌ Uses `useKV` for storing jobs (local storage)
-   - ❌ Has direct ESI fetch logic
-   - **Fix**: Remove ESI imports, use `useLMeveData()` hook exclusively
-
-2. **Wallet Tab** (`/src/components/tabs/Wallet.tsx`)
-   - ❌ Uses `useIntegratedData()` hook (legacy)
-   - ❌ Has mock data embedded in component
-   - **Fix**: Replace with `useLMeveData()` hook, remove mock data
-
-3. **Market Tab** (`/src/components/tabs/Market.tsx`)
-   - ❌ Uses `useKV` for market orders
-   - ❌ Has mock data embedded in component
-   - **Fix**: Use `useLMeveData()` hook, add market data to unified service
-
-## Implementation Tasks
-
-### Task 1: Update Manufacturing Tab ✅
-
-**File**: `/src/components/tabs/Manufacturing.tsx`
-
-**Changes**:
-1. Remove import: `import { ESIDataFetchService } from '@/lib/esi-data-service';`
-2. Replace `useKV` for jobs with `useLMeveData()` hook
-3. Use `manufacturingJobs` from context instead of local state
-4. Remove all ESI fetch logic
-5. Keep task management (assignments) in useKV (local feature, not ESI data)
-
-**Before**:
 ```typescript
-const [activeJobs, setActiveJobs] = useKV<ManufacturingJob[]>('manufacturing-jobs', []);
-// ... ESI fetch logic
+// BEFORE (Current - Has ESI fallback)
+async fetchMembers(options: FetchOptions): Promise<FetchResult<Member>> {
+  // Try ESI first if token available
+  if (options.accessToken && !options.forceDB) {
+    try {
+      const memberIds = await eveApi.getCorporationMembers(...);
+      // Fetch from ESI
+      return { data: members, source: { esi: true } };
+    } catch (error) {
+      console.warn('ESI fetch failed, falling back to database');
+    }
+  }
+  
+  // Fall back to database
+  if (this.dbManager && !options.forceESI) {
+    // Fetch from database
+  }
+}
+
+// AFTER (Phase 2 - Database only)
+async fetchMembers(options: FetchOptions): Promise<FetchResult<Member>> {
+  // Check if system is configured
+  const setupStatus = this.getSetupStatus();
+  
+  // Cache check (if enabled)
+  if (options.useCache !== false) {
+    const cached = this.getFromCache<Member[]>(cacheKey);
+    if (cached) return cached;
+  }
+  
+  // Database ONLY (once configured)
+  if (this.dbManager && setupStatus.hasEverBeenGreen) {
+    const result = await this.dbManager.query(...);
+    if (result.success && result.data) {
+      return { data: result.data, source: { database: true } };
+    }
+    
+    // Database configured but empty - return empty, don't fallback to ESI
+    console.log('📭 No members in database');
+    return { data: [], source: { database: true } };
+  }
+  
+  // Mock data ONLY if never been configured
+  if (!setupStatus.hasEverBeenGreen) {
+    return { data: mockMembers, source: { mock: true } };
+  }
+  
+  return { data: [], source: { database: true } };
+}
 ```
 
-**After**:
+#### 2. `Manufacturing.tsx`
+**Problem**: Lines 116-189 have direct ESI calls in `loadESIManufacturingData()`
+**Fix**: Remove ESI data fetching, use `useLMeveData()` hook instead
+
 ```typescript
-const { manufacturingJobs, refreshManufacturing, loading } = useLMeveData();
+// REMOVE these lines (116-189):
+const loadESIManufacturingData = async () => {
+  // Direct ESI calls - DELETE THIS FUNCTION
+  const esiService = new ESIDataFetchService();
+  const result = await esiService.fetchIndustryJobsDetailed(...);
+}
+
+// REPLACE with useLMeveData hook:
+import { useLMeveData } from '@/lib/LMeveDataContext';
+
+export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps) {
+  const { manufacturingJobs, loading, refreshManufacturing } = useLMeveData();
+  
+  // Data comes from context (which uses unified service)
+  // No direct ESI calls needed
+}
 ```
 
-### Task 2: Update Wallet Tab ✅
+#### 3. `Market.tsx`
+**Problem**: Uses local mock data, not integrated with database
+**Fix**: Add `useLMeveData()` hook for market orders
 
-**File**: `/src/components/tabs/Wallet.tsx`
-
-**Changes**:
-1. Remove `useIntegratedData()` hook
-2. Add wallet transactions to LMeveDataContext if not present
-3. Use `useLMeveData()` hook
-4. Remove embedded mock data
-5. Add wallet divisions query to UnifiedDataService
-
-**Before**:
 ```typescript
-const { walletDivisions, walletTransactions, fetchWalletDivisions } = useIntegratedData();
-const mockDivisions: WalletDivision[] = [...]; // Mock data
-```
-
-**After**:
-```typescript
-const { walletTransactions, walletDivisions, refreshWallet, loading } = useLMeveData();
-```
-
-### Task 3: Update Market Tab ✅
-
-**File**: `/src/components/tabs/Market.tsx`
-
-**Changes**:
-1. Replace `useKV` with `useLMeveData()` hook
-2. Remove embedded mock data
-3. Add market orders to UnifiedDataService
-4. Use database-first approach
-
-**Before**:
-```typescript
+// BEFORE
 const [marketOrders] = useKV<MarketOrder[]>('market-orders', []);
-const mockOrders: MarketOrder[] = [...]; // Mock data
+const mockOrders: MarketOrder[] = [ /* ... */ ];
+
+// AFTER
+const { marketOrders, loading, refreshMarketOrders } = useLMeveData();
 ```
 
-**After**:
-```typescript
-const { marketOrders, marketPrices, refreshMarket, loading } = useLMeveData();
-```
-
-### Task 4: Extend UnifiedDataService ✅
-
-**File**: `/src/lib/unified-data-service.ts`
-
-**Add Methods**:
-1. `getMarketOrders(corporationId)` - Query `market_orders` table
-2. `getWalletDivisions(corporationId)` - Query `wallet_divisions` table
-3. Mock data generators for both (when not configured)
-
-### Task 5: Extend LMeveDataContext ✅
-
-**File**: `/src/lib/LMeveDataContext.tsx`
-
-**Add State**:
-```typescript
-const [marketOrders, setMarketOrders] = useState<MarketOrder[]>([]);
-const [walletDivisions, setWalletDivisions] = useState<WalletDivision[]>([]);
-```
-
-**Add Refresh Functions**:
-```typescript
-const refreshMarketOrders = async () => { ... };
-const refreshWalletDivisions = async () => { ... };
-```
-
-## Database Tables Required
-
-Phase 2 assumes these tables exist (created in database setup):
-
-- ✅ `characters` (members)
-- ✅ `assets`
-- ✅ `industry_jobs` (manufacturing)
-- ✅ `wallet_transactions`
-- ✅ `wallet_divisions`
-- ✅ `market_orders`
-- ✅ `planetary_colonies`
-- ✅ `market_prices`
-- ✅ `mining_ledger`
-- ✅ `container_logs`
-- ✅ `contracts`
-
-## Data Sync Architecture
-
-### Background Pollers (Already Implemented)
-Located in: `/src/lib/sync-executor.ts` and `/src/lib/sync-scheduler.ts`
-
-These services handle:
-1. Periodic ESI polling (every 15 minutes to 1 hour based on endpoint)
-2. Writing data to database
-3. Tracking sync status and errors
-4. Respecting ESI rate limits
-
-### UI Data Access (Phase 2 Changes)
-```typescript
-// ✅ CORRECT - Database-first
-const { members, refreshMembers } = useLMeveData();
-
-// ❌ WRONG - Direct ESI access
-const esiService = new ESIDataFetchService();
-const data = await esiService.fetchMembers();
-```
-
-## Exception: Active Character Personal Data
-
-The ONE exception to database-first is when a character logs in via ESI:
-
-**Allowed**:
-```typescript
-// On ESI login success, refresh ONLY the logged-in character's personal data
-if (user.authMethod === 'esi') {
-  await refreshCharacterPersonalData(user.characterId);
-}
-```
-
-This ensures the active user sees their latest data immediately without waiting for the next sync cycle.
-
-## Empty Data Handling
-
-When database is configured but has no data:
+#### 4. `Wallet.tsx`
+**Problem**: Uses `useIntegratedData()` which has ESI fallbacks
+**Fix**: Switch to `useLMeveData()` hook
 
 ```typescript
-// ✅ CORRECT - Show empty state with helpful message
-if (members.length === 0 && !loading.members) {
-  return (
-    <EmptyState
-      title="No members found"
-      description="Run a data sync to populate member data from ESI"
-      action={
-        <Button onClick={() => triggerSync('members')}>
-          Sync Members
-        </Button>
-      }
-    />
-  );
-}
+// BEFORE
+const { 
+  walletDivisions, 
+  walletTransactions, 
+  fetchWalletDivisions, 
+  fetchWalletTransactions 
+} = useIntegratedData();
+
+// AFTER
+const { 
+  walletDivisions, 
+  walletTransactions,
+  loading,
+  refreshWallet,
+  refreshWalletDivisions
+} = useLMeveData();
 ```
 
-**NEVER** fall back to ESI automatically. Let the user trigger syncs explicitly or wait for scheduled sync.
+#### 5. `PlanetaryInteraction.tsx`
+**Check**: Verify it uses `useLMeveData()` and not direct ESI calls
 
-## Error Handling
+## Implementation Steps
 
-When database query fails:
+### Step 1: Update `integrated-data-service.ts`
+1. Add setup status tracking (similar to unified-data-service)
+2. Remove all ESI fallback logic from fetch methods
+3. Implement strict database-first with mock-only-if-never-configured pattern
+4. Update all methods:
+   - `fetchMembers()`
+   - `fetchAssets()`
+   - `fetchManufacturingJobs()`
+   - `fetchWalletTransactions()`
+   - `fetchWalletDivisions()`
+   - `fetchMarketOrders()`
+   - `fetchPlanetaryColonies()`
 
-```typescript
-// ✅ CORRECT - Show error with retry option
-if (error) {
-  return (
-    <ErrorState
-      title="Failed to load data"
-      description="Could not retrieve data from database"
-      error={error.message}
-      action={
-        <Button onClick={refreshMembers}>
-          Retry
-        </Button>
-      }
-    />
-  );
-}
-```
+### Step 2: Update `Manufacturing.tsx`
+1. Remove `ESIDataFetchService` import
+2. Remove `loadESIManufacturingData()` function
+3. Remove `esiDataLastSync` and `isLoadingESIData` state
+4. Remove `useMockData` state
+5. Use `useLMeveData()` hook instead
+6. Update UI to show data from context
+
+### Step 3: Update `Market.tsx`
+1. Replace `useKV` with `useLMeveData()` hook
+2. Remove mock data definitions
+3. Use context data for display
+
+### Step 4: Update `Wallet.tsx`
+1. Replace `useIntegratedData()` with `useLMeveData()` hook
+2. Update refresh functions
+3. Ensure all data comes from context
+
+### Step 5: Verify `PlanetaryInteraction.tsx`
+1. Check if it uses correct hooks
+2. Ensure no direct ESI calls
+
+### Step 6: Update Data Source Indicators
+1. Update `DataSourceIndicator` component to show:
+   - 🗄️ Database (green) - data from database
+   - 📝 Mock (yellow) - mock data (system not configured)
+   - 📭 Empty (gray) - database connected but no data
+   - ❌ Error (red) - database error
 
 ## Testing Checklist
 
-### Before "Green Status" (Not Fully Configured)
-- [ ] Fresh install shows mock data
-- [ ] Data source badge shows "mock"
-- [ ] All tabs display sample data
-- [ ] No ESI errors in console
+### Pre-Configuration (Mock Data Mode)
+- [ ] All tabs show mock data with 📝 indicator
+- [ ] No ESI calls are made
+- [ ] Data is consistent across tabs
 
-### After "Green Status" (Fully Configured)
-- [ ] Mock data is permanently disabled
-- [ ] Empty database shows empty arrays (not mock data)
-- [ ] Data source badge shows "database"
-- [ ] Tabs show empty states with sync buttons
-- [ ] After sync runs, database data appears
-- [ ] No ESI calls from tab components (verify in network tab)
+### Post-Configuration (Database Mode)
+- [ ] All tabs show database data with 🗄️ indicator
+- [ ] No ESI calls are made (verify in network tab)
+- [ ] Empty database shows 📭 with helpful message
+- [ ] Sync process populates database
+- [ ] Tabs update with real data after sync
 
-### With Populated Database
-- [ ] All tabs load data from database
-- [ ] Data source shows "database"
-- [ ] Refresh buttons re-query database (not ESI)
-- [ ] Network tab shows NO ESI calls from tabs
-- [ ] Background sync processes continue (separate from UI)
-
-## Migration Steps
-
-1. ✅ **Update UnifiedDataService**
-   - Add market orders method
-   - Add wallet divisions method
-   - Add mock data generators
-
-2. ✅ **Update LMeveDataContext**
-   - Add new state variables
-   - Add refresh functions
-   - Wire to unified service
-
-3. ✅ **Update Manufacturing Tab**
-   - Remove ESI imports
-   - Replace useKV with useLMeveData
-   - Test with empty database
-   - Test with populated database
-
-4. ✅ **Update Wallet Tab**
-   - Remove useIntegratedData
-   - Replace with useLMeveData
-   - Remove mock data
-   - Test data flow
-
-5. ✅ **Update Market Tab**
-   - Remove useKV
-   - Replace with useLMeveData
-   - Remove mock data
-   - Test data flow
-
-6. ✅ **Integration Testing**
-   - Test all tabs with empty database
-   - Test all tabs after sync
-   - Verify no ESI calls from tabs
-   - Verify sync processes work
+### Error Handling
+- [ ] Database connection error shows error state
+- [ ] Empty database (no sync yet) shows empty state
+- [ ] Network errors don't trigger ESI fallback
 
 ## Success Criteria
+- ✅ No direct ESI calls from tabs
+- ✅ All tabs use `useLMeveData()` hook
+- ✅ Mock data ONLY when `hasEverBeenGreen = false`
+- ✅ Database-first once configured
+- ✅ No fallbacks to ESI from tabs
+- ✅ Empty database returns empty arrays (not errors)
+- ✅ Data flows: ESI (pollers) → Database → Tabs
+- ✅ Clear data source indicators on all tabs
 
-- [x] No tab component imports ESIDataFetchService
-- [x] No tab component makes direct ESI API calls
-- [x] All tabs use useLMeveData() hook exclusively
-- [x] All data reads from database (or mock if not configured)
-- [x] Data source tracking shows "database" after configuration
-- [x] Empty database shows empty states (not mock data)
-- [x] Sync processes populate database successfully
-- [x] Network tab shows zero ESI calls from tab components
+## Files to Modify
+1. `/src/lib/integrated-data-service.ts` - Remove ESI fallbacks
+2. `/src/components/tabs/Manufacturing.tsx` - Remove direct ESI calls
+3. `/src/components/tabs/Market.tsx` - Use useLMeveData hook
+4. `/src/components/tabs/Wallet.tsx` - Use useLMeveData hook
+5. `/src/components/tabs/PlanetaryInteraction.tsx` - Verify (no changes needed if already correct)
 
-## Files Modified
+## Files Already Correct (No Changes)
+1. `/src/lib/unified-data-service.ts` ✅
+2. `/src/lib/LMeveDataContext.tsx` ✅
+3. `/src/components/tabs/Assets.tsx` ✅
+4. `/src/components/tabs/Members.tsx` ✅
+5. `/src/components/tabs/Dashboard.tsx` ✅
 
-- [x] `/src/lib/unified-data-service.ts` - Add market/wallet methods
-- [x] `/src/lib/LMeveDataContext.tsx` - Add market/wallet state
-- [x] `/src/lib/types.ts` - Add MarketOrder, WalletDivision types if missing
-- [x] `/src/components/tabs/Manufacturing.tsx` - Remove ESI, use context
-- [x] `/src/components/tabs/Wallet.tsx` - Remove mock, use context
-- [x] `/src/components/tabs/Market.tsx` - Remove mock, use context
+## Migration Notes
 
-## Rollback Plan
+### For Developers
+- **Before**: Tabs could fetch from ESI if database was empty
+- **After**: Tabs ONLY read from database (pollers handle ESI)
+- **Exception**: Active character login can trigger personal data update
 
-If issues arise:
-1. Keep old tab versions in `.bak` files
-2. Old service files remain (not deleted)
-3. Can revert individual tabs without affecting others
-4. Database schema changes are additive only
+### For Users
+- **Before**: First page load might be slow (ESI calls)
+- **After**: Instant load from database (fast!)
+- **Trade-off**: Data is only as fresh as last sync (but that's the design)
 
-## Next Steps (Phase 3)
-
-After Phase 2 is complete:
-1. Verify sync processes are populating database correctly
-2. Add sync monitoring dashboard
-3. Add manual sync triggers for each data type
-4. Add data freshness indicators
-5. Optimize database queries for performance
-6. Add caching layer for frequently accessed data
-
-## Notes
-
-- Background sync processes are SEPARATE from UI data access
-- Pollers run on schedule, UI reads from database
-- No circular dependencies between tabs and sync processes
-- Clean separation of concerns: Sync writes, UI reads
+### For Admins
+- Ensure sync processes are running on schedule
+- Monitor sync logs for ESI errors
+- Check database connectivity
+- Verify "Server Config Good" status

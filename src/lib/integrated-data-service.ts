@@ -1,5 +1,4 @@
 import { DatabaseManager } from './database';
-import { eveApi } from './eveApi';
 import type {
   Member,
   Asset,
@@ -17,6 +16,7 @@ export interface DataSource {
   esi: boolean;
   database: boolean;
   cache: boolean;
+  mock: boolean;
 }
 
 export interface FetchOptions {
@@ -34,17 +34,86 @@ export interface FetchResult<T> {
   error?: string;
 }
 
+interface SetupStatus {
+  isFullyConfigured: boolean;
+  databaseConnected: boolean;
+  esiConfigured: boolean;
+  hasEverBeenGreen: boolean;
+  timestamp: string;
+}
+
 export class IntegratedDataService {
   private dbManager: DatabaseManager | null = null;
   private cache: Map<string, { data: any; expires: number }> = new Map();
   private readonly CACHE_DURATION = 5 * 60 * 1000;
+  private setupStatus: SetupStatus;
 
   constructor(dbManager?: DatabaseManager) {
     this.dbManager = dbManager || null;
+    this.setupStatus = this.loadSetupStatus();
+  }
+
+  private loadSetupStatus(): SetupStatus {
+    try {
+      const stored = localStorage.getItem('lmeve-setup-status');
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (error) {
+      console.error('Failed to load setup status:', error);
+    }
+
+    return {
+      isFullyConfigured: false,
+      databaseConnected: false,
+      esiConfigured: false,
+      hasEverBeenGreen: false,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  private saveSetupStatus(): void {
+    try {
+      localStorage.setItem('lmeve-setup-status', JSON.stringify(this.setupStatus));
+    } catch (error) {
+      console.error('Failed to save setup status:', error);
+    }
+  }
+
+  updateSetupStatus(status: Partial<SetupStatus>): void {
+    this.setupStatus = {
+      ...this.setupStatus,
+      ...status,
+      timestamp: new Date().toISOString()
+    };
+
+    if (this.setupStatus.isFullyConfigured && !this.setupStatus.hasEverBeenGreen) {
+      this.setupStatus.hasEverBeenGreen = true;
+      console.log('🎉 System fully configured! Database-first mode enabled, no more ESI fallbacks.');
+      this.clearCache();
+    }
+
+    this.saveSetupStatus();
+  }
+
+  getSetupStatus(): SetupStatus {
+    return { ...this.setupStatus };
+  }
+
+  private shouldUseMockData(): boolean {
+    return !this.setupStatus.hasEverBeenGreen;
   }
 
   setDatabaseManager(dbManager: DatabaseManager | null) {
     this.dbManager = dbManager;
+    this.updateSetupStatus({
+      databaseConnected: !!dbManager
+    });
+  }
+
+  private clearCache(): void {
+    this.cache.clear();
+    console.log('🧹 Cache cleared');
   }
 
   private getCacheKey(type: string, options: FetchOptions): string {
@@ -73,7 +142,7 @@ export class IntegratedDataService {
 
   async fetchMembers(options: FetchOptions): Promise<FetchResult<Member>> {
     const cacheKey = this.getCacheKey('members', options);
-    const source: DataSource = { esi: false, database: false, cache: false };
+    const source: DataSource = { esi: false, database: false, cache: false, mock: false };
 
     if (options.useCache !== false) {
       const cached = this.getFromCache<Member[]>(cacheKey);
@@ -86,47 +155,13 @@ export class IntegratedDataService {
       }
     }
 
-    if (options.accessToken && !options.forceDB) {
+    if (this.dbManager && this.setupStatus.hasEverBeenGreen) {
       try {
-        console.log('🌐 Fetching members from ESI...');
-        const memberIds = await eveApi.getCorporationMembers(options.corporationId, options.accessToken);
-        const memberDetails = await eveApi.getNames(memberIds);
-
-        const members: Member[] = memberDetails.map(detail => ({
-          id: detail.id.toString(),
-          characterId: detail.id,
-          characterName: detail.name,
-          corporationId: options.corporationId,
-          corporationName: '',
-          role: 'member',
-          joinDate: new Date().toISOString(),
-          lastLogin: new Date().toISOString(),
-          status: 'active' as const,
-          location: 'Unknown',
-          shipType: 'Unknown',
-          skillPoints: 0,
-          roles: []
-        }));
-
-        this.setCache(cacheKey, members);
-        source.esi = true;
-
-        return {
-          data: members,
-          source,
-          timestamp: new Date().toISOString()
-        };
-      } catch (error) {
-        console.warn('⚠️ ESI fetch failed, falling back to database:', error);
-      }
-    }
-
-    if (this.dbManager && !options.forceESI) {
-      try {
-        console.log('🗄️ Fetching members from database...');
+        console.log('🗄️ Fetching members from database (Phase 2: database-first)...');
         const result = await this.dbManager.query('SELECT * FROM characters WHERE corporation_id = ?', [options.corporationId]);
         
-        if (result.success && result.data) {
+        if (result.success && result.data && result.data.length > 0) {
+          this.setCache(cacheKey, result.data as Member[]);
           source.database = true;
           return {
             data: result.data as Member[],
@@ -134,22 +169,62 @@ export class IntegratedDataService {
             timestamp: new Date().toISOString()
           };
         }
+        
+        console.log('📭 No members in database - empty result (data will be populated by sync process)');
+        return {
+          data: [],
+          source: { ...source, database: true },
+          timestamp: new Date().toISOString()
+        };
       } catch (error) {
-        console.warn('⚠️ Database fetch failed:', error);
+        console.error('❌ Database fetch failed:', error);
+        return {
+          data: [],
+          source,
+          timestamp: new Date().toISOString(),
+          error: error instanceof Error ? error.message : 'Database error'
+        };
       }
+    }
+
+    if (this.shouldUseMockData()) {
+      console.log('📝 Using mock member data (system not yet configured)');
+      const mockMembers: Member[] = [
+        {
+          id: '1',
+          characterId: 90000001,
+          characterName: 'Sample Character Alpha',
+          corporationId: options.corporationId,
+          corporationName: 'Sample Corporation',
+          role: 'director',
+          joinDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+          lastLogin: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          status: 'active' as const,
+          location: 'Jita IV - Moon 4',
+          shipType: 'Raven',
+          skillPoints: 50000000,
+          roles: ['Director', 'Accountant']
+        }
+      ];
+      source.mock = true;
+      return {
+        data: mockMembers,
+        source,
+        timestamp: new Date().toISOString()
+      };
     }
 
     return {
       data: [],
-      source,
+      source: { ...source, database: true },
       timestamp: new Date().toISOString(),
-      error: 'No data source available'
+      error: 'System not configured and database unavailable'
     };
   }
 
   async fetchAssets(options: FetchOptions): Promise<FetchResult<Asset>> {
     const cacheKey = this.getCacheKey('assets', options);
-    const source: DataSource = { esi: false, database: false, cache: false };
+    const source: DataSource = { esi: false, database: false, cache: false, mock: false };
 
     if (options.useCache !== false) {
       const cached = this.getFromCache<Asset[]>(cacheKey);
@@ -162,68 +237,13 @@ export class IntegratedDataService {
       }
     }
 
-    if (options.accessToken && !options.forceDB) {
+    if (this.dbManager && this.setupStatus.hasEverBeenGreen) {
       try {
-        console.log('🌐 Fetching assets from ESI...');
-        const esiAssets = await eveApi.getCorporationAssets(options.corporationId, options.accessToken);
-
-        const uniqueTypeIds = [...new Set(esiAssets.map(a => a.type_id))];
-        const typeNames = await eveApi.getNames(uniqueTypeIds);
-        const typeNameMap = new Map(typeNames.map(t => [t.id, t.name]));
-
-        const uniqueLocationIds = [...new Set(esiAssets.map(a => a.location_id))];
-        const locationPromises = uniqueLocationIds.map(async (locId) => {
-          try {
-            const name = await eveApi.getLocationName(locId, options.accessToken!);
-            return { id: locId, name };
-          } catch {
-            return { id: locId, name: `Location ${locId}` };
-          }
-        });
-        const locationNames = await Promise.all(locationPromises);
-        const locationNameMap = new Map(locationNames.map(l => [l.id, l.name]));
-
-        const parseHangarFlag = (flag: string): string => {
-          const hangarMatch = flag.match(/CorpSAG(\d)/);
-          if (hangarMatch) return `Hangar ${hangarMatch[1]}`;
-          if (flag === 'Hangar') return 'Personal Hangar';
-          return flag;
-        };
-
-        const assets: Asset[] = esiAssets.map(esiAsset => ({
-          id: `esi_${esiAsset.item_id}`,
-          typeId: esiAsset.type_id,
-          typeName: typeNameMap.get(esiAsset.type_id) || `Type ${esiAsset.type_id}`,
-          quantity: esiAsset.quantity,
-          location: locationNameMap.get(esiAsset.location_id) || `Location ${esiAsset.location_id}`,
-          locationId: esiAsset.location_id,
-          hangar: parseHangarFlag(esiAsset.location_flag),
-          owner: '',
-          ownerId: 0,
-          category: 'unknown',
-          estimatedValue: 0,
-          lastUpdate: new Date().toISOString()
-        }));
-
-        this.setCache(cacheKey, assets);
-        source.esi = true;
-
-        return {
-          data: assets,
-          source,
-          timestamp: new Date().toISOString()
-        };
-      } catch (error) {
-        console.warn('⚠️ ESI fetch failed, falling back to database:', error);
-      }
-    }
-
-    if (this.dbManager && !options.forceESI) {
-      try {
-        console.log('🗄️ Fetching assets from database...');
+        console.log('🗄️ Fetching assets from database (Phase 2: database-first)...');
         const result = await this.dbManager.query('SELECT * FROM assets WHERE owner_id = ?', [options.corporationId]);
         
-        if (result.success && result.data) {
+        if (result.success && result.data && result.data.length > 0) {
+          this.setCache(cacheKey, result.data as Asset[]);
           source.database = true;
           return {
             data: result.data as Asset[],
@@ -231,22 +251,61 @@ export class IntegratedDataService {
             timestamp: new Date().toISOString()
           };
         }
+        
+        console.log('📭 No assets in database - empty result (data will be populated by sync process)');
+        return {
+          data: [],
+          source: { ...source, database: true },
+          timestamp: new Date().toISOString()
+        };
       } catch (error) {
-        console.warn('⚠️ Database fetch failed:', error);
+        console.error('❌ Database fetch failed:', error);
+        return {
+          data: [],
+          source,
+          timestamp: new Date().toISOString(),
+          error: error instanceof Error ? error.message : 'Database error'
+        };
       }
+    }
+
+    if (this.shouldUseMockData()) {
+      console.log('📝 Using mock asset data (system not yet configured)');
+      const mockAssets: Asset[] = [
+        {
+          id: '1',
+          typeId: 34,
+          typeName: 'Tritanium',
+          quantity: 1000000,
+          location: 'Jita IV - Moon 4',
+          locationId: 60003760,
+          hangar: 'Hangar 1',
+          owner: 'Sample Corporation',
+          ownerId: options.corporationId,
+          category: 'mineral',
+          estimatedValue: 5500000,
+          lastUpdate: new Date().toISOString()
+        }
+      ];
+      source.mock = true;
+      return {
+        data: mockAssets,
+        source,
+        timestamp: new Date().toISOString()
+      };
     }
 
     return {
       data: [],
-      source,
+      source: { ...source, database: true },
       timestamp: new Date().toISOString(),
-      error: 'No data source available'
+      error: 'System not configured and database unavailable'
     };
   }
 
   async fetchManufacturingJobs(options: FetchOptions): Promise<FetchResult<ManufacturingJob>> {
     const cacheKey = this.getCacheKey('manufacturing', options);
-    const source: DataSource = { esi: false, database: false, cache: false };
+    const source: DataSource = { esi: false, database: false, cache: false, mock: false };
 
     if (options.useCache !== false) {
       const cached = this.getFromCache<ManufacturingJob[]>(cacheKey);
