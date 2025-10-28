@@ -33,7 +33,8 @@ import {
   Palette,
   Planet,
   ChartLine,
-  Key
+  Key,
+  Receipt
 } from '@phosphor-icons/react';
 import { useKV } from '@github/spark/hooks';
 import { TabType } from '@/lib/types';
@@ -58,6 +59,7 @@ import { Corporations } from '@/components/Corporations';
 import { Theme } from '@/components/tabs/Theme';
 import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
 import { Projects } from '@/components/tabs/Projects';
+import { Buyback } from '@/components/tabs/Buyback';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useKV<TabType>('active-tab', 'dashboard');
@@ -317,6 +319,7 @@ function AppContent() {
     { id: 'projects', label: 'Projects', icon: Archive, component: Projects, badge: '2' },
     { id: 'market', label: 'Market', icon: TrendUp, component: Market },
     { id: 'wallet', label: 'Wallet', icon: CurrencyDollar, component: Wallet },
+    { id: 'buyback', label: 'Buyback', icon: Receipt, component: Buyback },
     { id: 'notifications', label: 'Notifications', icon: Bell, component: Notifications },
     { id: 'corporations', label: 'ESI', icon: Key, component: Corporations },
     { id: 'theme', label: 'Theme', icon: Palette, component: Theme },
