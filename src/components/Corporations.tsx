@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,52 +55,17 @@ const PERSONAL_ESI_SCOPES: ESIScope[] = [
     category: 'character'
   },
   {
-    scope: 'esi-industry.read_character_jobs.v1',
-    label: 'Industry Jobs',
-    description: 'View your personal industry jobs for job assignment tracking',
-    required: false,
-    category: 'character'
-  },
-  {
-    scope: 'esi-wallet.read_character_wallet.v1',
-    label: 'Character Wallet',
-    description: 'Access wallet transactions for profit tracking',
-    required: false,
-    category: 'character'
-  },
-  {
-    scope: 'esi-assets.read_assets.v1',
-    label: 'Character Assets',
-    description: 'View your personal assets',
-    required: false,
-    category: 'character'
-  },
-  {
-    scope: 'esi-characters.read_blueprints.v1',
-    label: 'Character Blueprints',
-    description: 'Access your personal blueprint library',
-    required: false,
-    category: 'character'
-  },
-  {
-    scope: 'esi-characters.read_notifications.v1',
-    label: 'Notifications',
-    description: 'Read in-game notifications for job completion alerts',
-    required: false,
-    category: 'character'
-  },
-  {
     scope: 'esi-planets.manage_planets.v1',
     label: 'Planetary Interaction',
     description: 'Manage planetary colonies and view production',
-    required: false,
+    required: true,
     category: 'character'
   },
   {
     scope: 'esi-skills.read_skills.v1',
     label: 'Skills',
     description: 'View your skill levels for job assignment optimization',
-    required: false,
+    required: true,
     category: 'character'
   }
 ];
@@ -236,32 +201,19 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
   } = useAuth();
   
   const registeredCorps = getRegisteredCorporations();
-  const [selectedPersonalScopes, setSelectedPersonalScopes] = useState<string[]>(
-    PERSONAL_ESI_SCOPES.filter(s => s.required).map(s => s.scope)
-  );
 
   const isAdmin = user?.role && ['super_admin', 'admin', 'ceo'].includes(user.role);
   const canEditCorpScopes = user?.role && ['super_admin', 'admin', 'ceo'].includes(user.role);
 
-  const handlePersonalScopeToggle = (scope: string, required: boolean) => {
-    if (required) return; // Can't toggle required scopes
-    
-    setSelectedPersonalScopes(prev => 
-      prev.includes(scope) 
-        ? prev.filter(s => s !== scope)
-        : [...prev, scope]
-    );
-  };
-
   const handlePersonalAuth = () => {
     try {
-      // Build custom scope list based on selections
-      const scopes = selectedPersonalScopes.join(' ');
+      // All scopes are required - build scope list from all personal scopes
+      const allScopes = PERSONAL_ESI_SCOPES.map(s => s.scope);
       
-      // Store selected scopes for later reference
-      sessionStorage.setItem('personal-esi-scopes', JSON.stringify(selectedPersonalScopes));
+      // Store scopes for later reference
+      sessionStorage.setItem('personal-esi-scopes', JSON.stringify(allScopes));
       
-      // Initiate ESI login with selected scopes
+      // Initiate ESI login with all required scopes
       const authUrl = loginWithESI('enhanced');
       window.location.href = authUrl;
     } catch (error) {
@@ -316,17 +268,17 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-medium">ESI Access Scopes</h4>
               <Badge variant="outline" className="text-xs">
-                {selectedPersonalScopes.length} of {PERSONAL_ESI_SCOPES.length} selected
+                All {PERSONAL_ESI_SCOPES.length} scopes required
               </Badge>
             </div>
 
-            {/* Required Scopes */}
+            {/* All Scopes (Required) */}
             <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Required Scopes
+              <p className="text-xs text-muted-foreground">
+                The following scopes are required for LMeve to function properly with personal data
               </p>
               <div className="space-y-1">
-                {PERSONAL_ESI_SCOPES.filter(s => s.required).map(scope => (
+                {PERSONAL_ESI_SCOPES.map(scope => (
                   <div 
                     key={scope.scope} 
                     className="flex items-center justify-between p-2 bg-muted/30 rounded border border-border/50"
@@ -338,36 +290,6 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
                         className="opacity-50"
                       />
                       <Label className="text-sm cursor-default">
-                        {scope.label}
-                      </Label>
-                    </div>
-                    <ScopeInfoButton scope={scope} />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Optional Scopes */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Optional Scopes
-              </p>
-              <div className="space-y-1">
-                {PERSONAL_ESI_SCOPES.filter(s => !s.required).map(scope => (
-                  <div 
-                    key={scope.scope} 
-                    className="flex items-center justify-between p-2 hover:bg-muted/30 rounded border border-transparent hover:border-border/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-2 flex-1">
-                      <Checkbox 
-                        checked={selectedPersonalScopes.includes(scope.scope)}
-                        onCheckedChange={() => handlePersonalScopeToggle(scope.scope, scope.required)}
-                        id={scope.scope}
-                      />
-                      <Label 
-                        htmlFor={scope.scope}
-                        className="text-sm cursor-pointer"
-                      >
                         {scope.label}
                       </Label>
                     </div>
