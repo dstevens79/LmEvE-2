@@ -119,19 +119,6 @@ function categorizeItem(typeName: string): string {
   return 'Other';
 }
 
-function getActivityType(activityId: number): 'manufacturing' | 'mining' | 'research' | 'invention' | 'reactions' {
-  switch (activityId) {
-    case 1: return 'manufacturing';
-    case 3: return 'research';
-    case 4: return 'research';
-    case 5: return 'research';
-    case 8: return 'invention';
-    case 9: return 'reactions';
-    case 11: return 'reactions';
-    default: return 'manufacturing';
-  }
-}
-
 export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   const { user } = useAuth();
   const { assets, loading, refreshAssets } = useLMeveData();
