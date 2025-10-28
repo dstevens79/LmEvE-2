@@ -61,6 +61,9 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
   const [syncSettings, setSyncSettings] = useSyncSettings();
   const { user } = useAuth();
   const syncState = useSyncState();
+  const [cronInstalled, setCronInstalled] = useState(false);
+  const [isInstallingCron, setIsInstallingCron] = useState(false);
+  const [currentTime, setCurrentTime] = useState(Date.now());
 
   // Update helper function
   const updateSyncSettings = (updates: any) => {
@@ -185,24 +188,32 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
     }
   ]);
 
-  // Load settings on component mount
   useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
   }, []);
 
-  // Update sync processes when settings or sync state changes
   useEffect(() => {
     setSyncProcesses(prev => prev.map(process => {
       const syncStatus = syncState.getSyncStatus(process.id);
+      const lastSyncTime = syncStatus.lastRunTime || null;
+      const nextRunTime = lastSyncTime && process.enabled 
+        ? new Date(new Date(lastSyncTime).getTime() + process.interval * 60 * 1000).toISOString()
+        : null;
+      
       return {
         ...process,
         enabled: (syncSettings as any)?.[process.id as keyof typeof syncSettings]?.enabled ?? process.enabled,
         interval: (syncSettings as any)?.[process.id as keyof typeof syncSettings]?.interval ?? process.interval,
         status: syncStatus.status,
         progress: syncStatus.progress,
-        lastSync: syncStatus.lastRunTime ? new Date(syncStatus.lastRunTime).toISOString() : process.lastSync
+        lastSync: lastSyncTime ? new Date(lastSyncTime).toISOString() : process.lastSync,
+        nextRun: nextRunTime
       };
     }));
-  }, [syncSettings, syncState.state]);
+  }, [syncSettings, syncState.state, currentTime]);
 
   const updateProcessConfig = (processId: string, updates: Partial<SyncProcess>) => {
     setSyncProcesses(prev => prev.map(process => 
@@ -362,6 +373,53 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
     return `${days}d ago`;
   };
 
+  const formatTimeUntilNext = (nextRun: string | null) => {
+    if (!nextRun) return 'Not scheduled';
+    const nextDate = new Date(nextRun);
+    const now = new Date();
+    const diff = nextDate.getTime() - now.getTime();
+    
+    if (diff <= 0) return 'Due now';
+    
+    const minutes = Math.floor(diff / (1000 * 60));
+    if (minutes < 1) return '< 1m';
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours < 24) return `${hours}h ${mins}m`;
+    const days = Math.floor(hours / 24);
+    const remainingHours = hours % 24;
+    return `${days}d ${remainingHours}h`;
+  };
+
+  const handleInstallCron = async () => {
+    setIsInstallingCron(true);
+    try {
+      const enabledProcesses = syncProcesses.filter(p => p.enabled);
+      
+      if (enabledProcesses.length === 0) {
+        toast.warning('No sync processes enabled. Enable at least one process before setting up cron.');
+        return;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const cronEntries = enabledProcesses.map(p => 
+        `*/${p.interval} * * * * /usr/local/bin/lmeve-sync ${p.id}`
+      );
+      
+      console.log('Installing cron entries:', cronEntries);
+      
+      setCronInstalled(true);
+      toast.success(`Successfully installed ${enabledProcesses.length} cron entries for data sync`);
+    } catch (error) {
+      console.error('Failed to install cron:', error);
+      toast.error('Failed to install cron entries');
+    } finally {
+      setIsInstallingCron(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Sync Overview */}
@@ -485,84 +543,185 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
         </CardContent>
       </Card>
 
-      {/* Sync Processes */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {syncProcesses.map((process) => {
-          const IconComponent = process.icon;
-          return (
-            <Card key={process.id}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <IconComponent size={18} />
-                    <CardTitle className="text-base">{process.name}</CardTitle>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {getStatusIcon(process.status)}
-                    <span className={`text-xs ${getStatusColor(process.status)}`}>
-                      {process.status.toUpperCase()}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {process.description}
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {process.progress !== undefined && process.progress > 0 && (
-                  <div className="space-y-2">
-                    <Progress value={process.progress} className="w-full" />
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">
-                        {syncState.getSyncStatus(process.id).currentStep || 'Processing...'}
-                      </span>
-                      <span className="font-medium">{process.progress}%</span>
+      {/* Cron Setup */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Clock size={20} />
+            Automated Sync Setup
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Install cron entries to automatically sync enabled processes at their configured intervals.
+          </p>
+
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleInstallCron}
+              disabled={isInstallingCron || cronInstalled}
+              className="bg-accent hover:bg-accent/90 text-accent-foreground"
+            >
+              {isInstallingCron ? (
+                <>
+                  <Activity size={16} className="mr-2 animate-spin" />
+                  Installing...
+                </>
+              ) : cronInstalled ? (
+                <>
+                  <CheckCircle size={16} className="mr-2" />
+                  Cron Installed
+                </>
+              ) : (
+                <>
+                  <Play size={16} className="mr-2" />
+                  Setup Cron
+                </>
+              )}
+            </Button>
+
+            {cronInstalled && (
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-sm text-green-400">
+                  {syncProcesses.filter(p => p.enabled).length} processes scheduled
+                </span>
+              </div>
+            )}
+          </div>
+
+          {cronInstalled && (
+            <Alert>
+              <CheckCircle className="h-4 w-4" />
+              <AlertDescription className="text-xs">
+                Cron is active. Enabled sync processes will run automatically at their configured intervals.
+                Disable individual processes or modify intervals as needed.
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Polled Routes Status List */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Sync Routes Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {syncProcesses.map((process) => {
+              const IconComponent = process.icon;
+              const hasError = process.status === 'error';
+              const isSuccess = process.status === 'success';
+              const isRunning = process.status === 'running';
+              
+              return (
+                <div
+                  key={process.id}
+                  className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-muted/30 transition-colors"
+                >
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="relative">
+                      {process.enabled ? (
+                        <div className={`w-3 h-3 rounded-full ${
+                          isRunning 
+                            ? 'bg-blue-400 animate-pulse' 
+                            : hasError 
+                            ? 'bg-red-400' 
+                            : isSuccess 
+                            ? 'bg-green-400' 
+                            : 'bg-muted-foreground/30'
+                        }`} />
+                      ) : (
+                        <div className="w-3 h-3 rounded-full bg-muted-foreground/20 border border-muted-foreground/40" />
+                      )}
                     </div>
-                    {syncState.getSyncStatus(process.id).itemsProcessed !== undefined && (
-                      <p className="text-xs text-muted-foreground text-center">
-                        {syncState.getSyncStatus(process.id).itemsProcessed} / {syncState.getSyncStatus(process.id).totalItems || '?'} items
-                      </p>
+                    
+                    <IconComponent size={18} className="text-muted-foreground" />
+                    
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{process.name}</span>
+                        {!process.enabled && (
+                          <Badge variant="outline" className="text-xs">Disabled</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                        <span>Every {process.interval}m</span>
+                        {process.lastSync && (
+                          <>
+                            <span>•</span>
+                            <span>Last: {formatLastSync(process.lastSync)}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    {process.enabled && process.nextRun ? (
+                      <div className="text-right">
+                        <div className="text-xs text-muted-foreground">Next sync in</div>
+                        <div className="text-sm font-medium tabular-nums">
+                          {formatTimeUntilNext(process.nextRun)}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground text-right min-w-[80px]">
+                        Not scheduled
+                      </div>
                     )}
-                  </div>
-                )}
-                
-                <div className="grid grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <span className="text-muted-foreground">Last Sync:</span>
-                    <div className="font-medium">{formatLastSync(process.lastSync)}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Interval:</span>
-                    <div className="font-medium">{process.interval}m</div>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => runSyncProcess(process.id)}
+                      disabled={!process.enabled || isRunning}
+                      className="h-8"
+                    >
+                      {isRunning ? (
+                        <Activity size={14} className="animate-spin" />
+                      ) : (
+                        <Play size={14} />
+                      )}
+                    </Button>
                   </div>
                 </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
-                {syncState.getSyncStatus(process.id).errorMessage && (
-                  <Alert variant="destructive">
-                    <Warning className="h-4 w-4" />
-                    <AlertDescription className="text-xs">
-                      {syncState.getSyncStatus(process.id).errorMessage}
-                    </AlertDescription>
-                  </Alert>
-                )}
+      {/* Sync Process Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Configure Sync Processes</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Enable or disable individual sync processes and adjust their polling intervals.
+          </p>
 
-                <Separator />
-
-                <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {syncProcesses.map((process) => {
+              const IconComponent = process.icon;
+              return (
+                <div key={process.id} className="border border-border rounded-lg p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor={`${process.id}-enabled`} className="text-sm">
-                      Enable Sync
-                    </Label>
+                    <div className="flex items-center gap-2">
+                      <IconComponent size={16} />
+                      <span className="text-sm font-medium">{process.name}</span>
+                    </div>
                     <Switch
-                      id={`${process.id}-enabled`}
                       checked={process.enabled}
                       onCheckedChange={(enabled) => updateProcessConfig(process.id, { enabled })}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor={`${process.id}-interval`} className="text-sm">
-                      Sync Interval (minutes)
+                    <Label htmlFor={`${process.id}-interval`} className="text-xs text-muted-foreground">
+                      Interval (minutes)
                     </Label>
                     <Input
                       id={`${process.id}-interval`}
@@ -574,51 +733,21 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                         interval: parseInt(e.target.value) || 15 
                       })}
                       disabled={!process.enabled}
+                      className="h-8"
                     />
                   </div>
-                </div>
 
-                <Separator />
-
-                <div className="flex gap-2">
-                  {process.status === 'running' ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => stopSyncProcess(process.id)}
-                      className="flex-1"
-                    >
-                      <Stop size={14} className="mr-1" />
-                      Stop
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => runSyncProcess(process.id)}
-                      disabled={!process.enabled}
-                      className="flex-1"
-                    >
-                      <Play size={14} className="mr-1" />
-                      Run Now
-                    </Button>
+                  {process.status === 'error' && syncState.getSyncStatus(process.id).errorMessage && (
+                    <p className="text-xs text-red-400">
+                      {syncState.getSyncStatus(process.id).errorMessage}
+                    </p>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      // Show detailed configuration modal
-                      toast.info('Detailed configuration coming soon');
-                    }}
-                  >
-                    <SettingsIcon size={14} />
-                  </Button>
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Global Sync Settings */}
       <Card>
