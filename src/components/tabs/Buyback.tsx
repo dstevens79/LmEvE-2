@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,10 +30,16 @@ import {
   TrendUp,
   Package,
   Pencil,
-  Eye
+  Eye,
+  MagnifyingGlass,
+  FunnelSimple,
+  Gear,
+  WarningCircle,
+  Database
 } from '@phosphor-icons/react';
 import { useKV } from '@github/spark/hooks';
 import { toast } from 'sonner';
+import { useAuth } from '@/lib/auth-provider';
 
 interface BuybackProgram {
   id: string;
@@ -71,11 +77,28 @@ interface BuybackContractItem {
   totalValue: number;
 }
 
+interface BuybackItemConfig {
+  typeId: number;
+  typeName: string;
+  category: string;
+  manualPercentage?: number;
+  excluded: boolean;
+  useManualPrice: boolean;
+  manualPrice?: number;
+}
+
+interface BuybackPriceConfig {
+  comparisonStation: string;
+  pricingType: 'buy' | 'sell';
+  defaultPercentage: number;
+}
+
 interface BuybackProps {
   isMobileView?: boolean;
 }
 
 export function Buyback({ isMobileView }: BuybackProps) {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useKV<string>('buyback-tab', 'programs');
   const [programs, setPrograms] = useKV<BuybackProgram[]>('buyback-programs', [
     {
@@ -121,6 +144,90 @@ export function Buyback({ isMobileView }: BuybackProps) {
     maxValue: 0,
     location: ''
   });
+
+  const [priceConfig, setPriceConfig] = useKV<BuybackPriceConfig>('buyback-price-config', {
+    comparisonStation: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+    pricingType: 'buy',
+    defaultPercentage: 90
+  });
+
+  const [itemConfigs, setItemConfigs] = useKV<BuybackItemConfig[]>('buyback-item-configs', []);
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [massAssignPercentage, setMassAssignPercentage] = useState(90);
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  
+  const mockEVEItems: BuybackItemConfig[] = useMemo(() => {
+    const existingConfigs = new Map(itemConfigs.map(item => [item.typeId, item]));
+    
+    const baseItems = [
+      { typeId: 34, typeName: 'Tritanium', category: 'Mineral' },
+      { typeId: 35, typeName: 'Pyerite', category: 'Mineral' },
+      { typeId: 36, typeName: 'Mexallon', category: 'Mineral' },
+      { typeId: 37, typeName: 'Isogen', category: 'Mineral' },
+      { typeId: 38, typeName: 'Nocxium', category: 'Mineral' },
+      { typeId: 39, typeName: 'Zydrine', category: 'Mineral' },
+      { typeId: 40, typeName: 'Megacyte', category: 'Mineral' },
+      { typeId: 1230, typeName: 'Veldspar', category: 'Ore' },
+      { typeId: 1228, typeName: 'Scordite', category: 'Ore' },
+      { typeId: 1224, typeName: 'Pyroxeres', category: 'Ore' },
+      { typeId: 1227, typeName: 'Plagioclase', category: 'Ore' },
+      { typeId: 17470, typeName: 'Compressed Veldspar', category: 'Compressed Ore' },
+      { typeId: 17471, typeName: 'Compressed Scordite', category: 'Compressed Ore' },
+      { typeId: 25595, typeName: 'Melted Nanoribbons', category: 'Salvaged Materials' },
+      { typeId: 25596, typeName: 'Charred Micro Circuit', category: 'Salvaged Materials' },
+      { typeId: 25597, typeName: 'Fried Interface Circuit', category: 'Salvaged Materials' },
+      { typeId: 30370, typeName: 'Contaminated Nanite Compound', category: 'Salvaged Materials' },
+      { typeId: 597, typeName: 'PLEX', category: 'Special Commodities' },
+      { typeId: 44992, typeName: 'Large Skill Injector', category: 'Special Commodities' },
+      { typeId: 11399, typeName: 'Morphite', category: 'Mineral' },
+      { typeId: 16272, typeName: 'Heavy Water', category: 'Ice Product' },
+      { typeId: 16273, typeName: 'Liquid Ozone', category: 'Ice Product' },
+      { typeId: 16274, typeName: 'Strontium Clathrates', category: 'Ice Product' },
+      { typeId: 16275, typeName: 'Helium Isotopes', category: 'Ice Product' },
+      { typeId: 3683, typeName: 'Oxygen Isotopes', category: 'Ice Product' },
+      { typeId: 9832, typeName: 'Nitrogen Isotopes', category: 'Ice Product' },
+      { typeId: 17888, typeName: 'Hydrogen Isotopes', category: 'Ice Product' },
+    ];
+
+    return baseItems.map(item => {
+      const existing = existingConfigs.get(item.typeId);
+      if (existing) return existing;
+      
+      return {
+        ...item,
+        excluded: false,
+        useManualPrice: false
+      };
+    });
+  }, [itemConfigs]);
+
+  const allCategories = useMemo(() => {
+    const categories = new Set(mockEVEItems.map(item => item.category));
+    return ['all', ...Array.from(categories).sort()];
+  }, [mockEVEItems]);
+
+  const filteredItems = useMemo(() => {
+    return mockEVEItems.filter(item => {
+      const matchesSearch = searchQuery === '' || 
+        item.typeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.typeId.toString().includes(searchQuery);
+      
+      const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
+      
+      return matchesSearch && matchesCategory;
+    });
+  }, [mockEVEItems, searchQuery, categoryFilter]);
+
+  const paginatedItems = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredItems.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredItems, currentPage, itemsPerPage]);
+
+  const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
 
   const handleAddProgram = () => {
     if (!newProgram.name || !newProgram.description || !newProgram.percentage) {
@@ -177,6 +284,109 @@ export function Buyback({ isMobileView }: BuybackProps) {
     }
   };
 
+  const handleUpdateItemConfig = (typeId: number, updates: Partial<BuybackItemConfig>) => {
+    setItemConfigs(current => {
+      const existing = current.find(item => item.typeId === typeId);
+      const baseItem = mockEVEItems.find(item => item.typeId === typeId);
+      
+      if (!baseItem) return current;
+      
+      if (existing) {
+        return current.map(item => 
+          item.typeId === typeId ? { ...item, ...updates } : item
+        );
+      } else {
+        return [...current, { ...baseItem, ...updates }];
+      }
+    });
+  };
+
+  const handleMassAssignPercentage = () => {
+    if (selectedItems.size === 0) {
+      toast.error('No items selected');
+      return;
+    }
+
+    const itemsToUpdate = Array.from(selectedItems);
+    setItemConfigs(current => {
+      const updatedItems = [...current];
+      
+      itemsToUpdate.forEach(typeId => {
+        const existingIndex = updatedItems.findIndex(item => item.typeId === typeId);
+        const baseItem = mockEVEItems.find(item => item.typeId === typeId);
+        
+        if (!baseItem) return;
+        
+        if (existingIndex >= 0) {
+          updatedItems[existingIndex] = {
+            ...updatedItems[existingIndex],
+            manualPercentage: massAssignPercentage,
+            useManualPrice: true
+          };
+        } else {
+          updatedItems.push({
+            ...baseItem,
+            manualPercentage: massAssignPercentage,
+            useManualPrice: true
+          });
+        }
+      });
+      
+      return updatedItems;
+    });
+
+    setSelectedItems(new Set());
+    toast.success(`Updated ${itemsToUpdate.length} items to ${massAssignPercentage}%`);
+  };
+
+  const handleAssignAllPricingType = () => {
+    toast.success(`All items now use ${priceConfig.pricingType} pricing from ${priceConfig.comparisonStation}`);
+  };
+
+  const toggleItemSelection = (typeId: number) => {
+    setSelectedItems(current => {
+      const newSet = new Set(current);
+      if (newSet.has(typeId)) {
+        newSet.delete(typeId);
+      } else {
+        newSet.add(typeId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleAllItems = () => {
+    if (selectedItems.size === paginatedItems.length) {
+      setSelectedItems(new Set());
+    } else {
+      setSelectedItems(new Set(paginatedItems.map(item => item.typeId)));
+    }
+  };
+
+  const getItemConfig = (typeId: number): BuybackItemConfig => {
+    const config = itemConfigs.find(item => item.typeId === typeId);
+    const baseItem = mockEVEItems.find(item => item.typeId === typeId);
+    
+    if (!baseItem) {
+      return {
+        typeId,
+        typeName: 'Unknown',
+        category: 'Unknown',
+        excluded: false,
+        useManualPrice: false
+      };
+    }
+    
+    return config || baseItem;
+  };
+
+  const getEffectivePercentage = (item: BuybackItemConfig): number => {
+    if (item.manualPercentage !== undefined && item.useManualPrice) {
+      return item.manualPercentage;
+    }
+    return priceConfig.defaultPercentage;
+  };
+
   const formatISK = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       minimumFractionDigits: 2,
@@ -201,6 +411,12 @@ export function Buyback({ isMobileView }: BuybackProps) {
   };
 
   const stats = calculateStats();
+
+  const isAdmin = user && (
+    user.role === 'super_admin' || 
+    user.role === 'corp_admin' || 
+    user.role === 'corp_director'
+  );
 
   return (
     <div className="space-y-6">
@@ -265,10 +481,11 @@ export function Buyback({ isMobileView }: BuybackProps) {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-md">
+        <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-4' : 'grid-cols-3'} max-w-2xl`}>
           <TabsTrigger value="programs">Programs</TabsTrigger>
           <TabsTrigger value="contracts">Contracts</TabsTrigger>
           <TabsTrigger value="calculator">Calculator</TabsTrigger>
+          {isAdmin && <TabsTrigger value="admin">Admin</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="programs" className="mt-6 space-y-4">
@@ -556,6 +773,346 @@ export function Buyback({ isMobileView }: BuybackProps) {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {isAdmin && (
+          <TabsContent value="admin" className="mt-6 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Gear size={20} />
+                  Price Configuration
+                </CardTitle>
+                <CardDescription>Configure global pricing settings for buyback calculations</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="comparisonStation">Comparison Station</Label>
+                    <Select
+                      value={priceConfig.comparisonStation}
+                      onValueChange={(value) => setPriceConfig(current => ({ ...current, comparisonStation: value }))}
+                    >
+                      <SelectTrigger id="comparisonStation">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Jita IV - Moon 4 - Caldari Navy Assembly Plant">Jita IV - Moon 4</SelectItem>
+                        <SelectItem value="Amarr VIII (Oris) - Emperor Family Academy">Amarr VIII (Oris)</SelectItem>
+                        <SelectItem value="Dodixie IX - Moon 20 - Federation Navy Assembly Plant">Dodixie IX - Moon 20</SelectItem>
+                        <SelectItem value="Rens VI - Moon 8 - Brutor Tribe Treasury">Rens VI - Moon 8</SelectItem>
+                        <SelectItem value="Hek VIII - Moon 12 - Boundless Creation Factory">Hek VIII - Moon 12</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="pricingType" className="flex items-center justify-between">
+                      <span>Pricing Type</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleAssignAllPricingType}
+                        className="text-xs h-7"
+                      >
+                        <CheckCircle size={14} className="mr-1" />
+                        Apply to All
+                      </Button>
+                    </Label>
+                    <Select
+                      value={priceConfig.pricingType}
+                      onValueChange={(value: 'buy' | 'sell') => setPriceConfig(current => ({ ...current, pricingType: value }))}
+                    >
+                      <SelectTrigger id="pricingType">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="buy">Buy Orders</SelectItem>
+                        <SelectItem value="sell">Sell Orders</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="defaultPercentage">Default Percentage</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="defaultPercentage"
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={priceConfig.defaultPercentage}
+                      onChange={(e) => setPriceConfig(current => ({ ...current, defaultPercentage: parseInt(e.target.value) || 90 }))}
+                      className="max-w-xs"
+                    />
+                    <span className="flex items-center text-muted-foreground">%</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Applied to items without manual percentage overrides
+                  </p>
+                </div>
+
+                <div className="pt-4 border-t border-border">
+                  <div className="flex items-center gap-3">
+                    <Input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={massAssignPercentage}
+                      onChange={(e) => setMassAssignPercentage(parseInt(e.target.value) || 90)}
+                      className="w-24"
+                      placeholder="90"
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                    <Button
+                      onClick={handleMassAssignPercentage}
+                      disabled={selectedItems.size === 0}
+                      className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                    >
+                      <CheckCircle size={16} className="mr-2" />
+                      Assign to Selected ({selectedItems.size})
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Select items below and use this to mass assign a custom percentage
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database size={20} />
+                  Item Configuration
+                </CardTitle>
+                <CardDescription>
+                  Configure buyback rates and exclusions for individual items
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1 relative">
+                    <MagnifyingGlass size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by name or type ID..."
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="pl-10"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Select value={categoryFilter} onValueChange={(value) => {
+                      setCategoryFilter(value);
+                      setCurrentPage(1);
+                    }}>
+                      <SelectTrigger className="w-48">
+                        <FunnelSimple size={16} className="mr-2" />
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allCategories.map(cat => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat === 'all' ? 'All Categories' : cat}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select 
+                      value={itemsPerPage.toString()} 
+                      onValueChange={(value) => {
+                        setItemsPerPage(parseInt(value));
+                        setCurrentPage(1);
+                      }}
+                    >
+                      <SelectTrigger className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="25">25 per page</SelectItem>
+                        <SelectItem value="50">50 per page</SelectItem>
+                        <SelectItem value="100">100 per page</SelectItem>
+                        <SelectItem value="200">200 per page</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <div>
+                    Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} items
+                  </div>
+                  {selectedItems.size > 0 && (
+                    <Badge variant="secondary" className="bg-accent/20 text-accent">
+                      {selectedItems.size} selected
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">
+                          <input
+                            type="checkbox"
+                            checked={paginatedItems.length > 0 && selectedItems.size === paginatedItems.length}
+                            onChange={toggleAllItems}
+                            className="cursor-pointer"
+                          />
+                        </TableHead>
+                        <TableHead>Type ID</TableHead>
+                        <TableHead>Item Name</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Buyback %</TableHead>
+                        <TableHead>Pricing</TableHead>
+                        <TableHead>Excluded</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedItems.map((item) => {
+                        const config = getItemConfig(item.typeId);
+                        const effectivePercentage = getEffectivePercentage(config);
+                        const isSelected = selectedItems.has(item.typeId);
+                        
+                        return (
+                          <TableRow key={item.typeId} className={isSelected ? 'bg-accent/10' : ''}>
+                            <TableCell>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleItemSelection(item.typeId)}
+                                className="cursor-pointer"
+                              />
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">{item.typeId}</TableCell>
+                            <TableCell className="font-medium">{item.typeName}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">
+                                {item.category}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  max="100"
+                                  value={config.manualPercentage ?? effectivePercentage}
+                                  onChange={(e) => handleUpdateItemConfig(item.typeId, {
+                                    manualPercentage: parseInt(e.target.value) || 90,
+                                    useManualPrice: true
+                                  })}
+                                  className="w-20 h-8 text-sm"
+                                />
+                                <span className="text-sm text-muted-foreground">%</span>
+                                {config.useManualPrice && config.manualPercentage !== undefined && (
+                                  <Badge variant="secondary" className="text-xs bg-accent/20 text-accent">
+                                    Custom
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                value={config.useManualPrice && config.manualPrice !== undefined ? 'manual' : priceConfig.pricingType}
+                                onValueChange={(value) => {
+                                  if (value === 'manual') {
+                                    handleUpdateItemConfig(item.typeId, { useManualPrice: true });
+                                  } else {
+                                    handleUpdateItemConfig(item.typeId, { 
+                                      useManualPrice: false,
+                                      manualPrice: undefined 
+                                    });
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="w-28 h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="buy">Buy</SelectItem>
+                                  <SelectItem value="sell">Sell</SelectItem>
+                                  <SelectItem value="manual">Manual</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
+                              <Switch
+                                checked={config.excluded}
+                                onCheckedChange={(checked) => handleUpdateItemConfig(item.typeId, { excluded: checked })}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {config.useManualPrice && config.manualPercentage !== undefined && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleUpdateItemConfig(item.typeId, {
+                                    manualPercentage: undefined,
+                                    useManualPrice: false
+                                  })}
+                                  className="h-8 text-xs"
+                                  title="Reset to default"
+                                >
+                                  Reset
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
+
+                {paginatedItems.length === 0 && (
+                  <div className="text-center py-12">
+                    <WarningCircle size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
+                    <p className="text-muted-foreground">No items found</p>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Try adjusting your search or filter criteria
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
