@@ -19,10 +19,12 @@ import {
   ArrowDown,
   CurrencyDollar,
   CalendarBlank,
-  Funnel
+  Funnel,
+  ChartPie
 } from '@phosphor-icons/react';
 import { useKV } from '@github/spark/hooks';
 import { toast } from 'sonner';
+import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface WalletDivision {
   divisionId: number;
@@ -56,6 +58,16 @@ interface MonthlyData {
   totalProfit: number;
 }
 
+const DIVISION_COLORS = [
+  'oklch(0.65 0.2 35)',
+  'oklch(0.45 0.15 240)',
+  'oklch(0.5 0.2 140)',
+  'oklch(0.55 0.25 300)',
+  'oklch(0.6 0.25 15)',
+  'oklch(0.7 0.15 180)',
+  'oklch(0.5 0.2 60)',
+];
+
 export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
   const { user } = useAuth();
   const [walletDivisions] = useKV<WalletDivision[]>('wallet-divisions', []);
@@ -63,7 +75,7 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
   const [selectedDivision, setSelectedDivision] = useState<number>(0);
   const [selectedPeriod, setSelectedPeriod] = useState('12m');
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeView, setActiveView] = useState<'divisions' | 'chart' | 'transactions'>('divisions');
+  const [activeView, setActiveView] = useState<'balance' | 'profit' | 'transactions'>('balance');
 
   // Mock data for demonstration
   const mockDivisions: WalletDivision[] = [
@@ -239,310 +251,347 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
 
       {/* Two-column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Column - Filters and Controls */}
-        <div className="space-y-4">
-          {/* Total Balance Card */}
+        {/* Left Column - Division Cards List */}
+        <div className="space-y-3">
           <Card className="bg-gradient-to-br from-accent/10 to-accent/5 border-accent/30">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Bank size={18} />
-                Total Balance
+                Total Corporation Balance
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-accent">{formatISK(totalBalance)}</div>
+              <div className="text-3xl font-bold text-accent">{formatISK(totalBalance)}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                {divisions.length} divisions
+                Across {divisions.length} divisions
               </p>
             </CardContent>
           </Card>
 
-          {/* Filters & Period Card */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Funnel size={18} />
-                Filters & Period
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Period</label>
-                <div className="flex gap-2 mt-1">
-                  <Button
-                    size="sm"
-                    variant={selectedPeriod === '3m' ? 'default' : 'outline'}
-                    onClick={() => setSelectedPeriod('3m')}
-                    className="flex-1 h-8 text-xs"
-                  >
-                    3M
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={selectedPeriod === '6m' ? 'default' : 'outline'}
-                    onClick={() => setSelectedPeriod('6m')}
-                    className="flex-1 h-8 text-xs"
-                  >
-                    6M
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={selectedPeriod === '12m' ? 'default' : 'outline'}
-                    onClick={() => setSelectedPeriod('12m')}
-                    className="flex-1 h-8 text-xs"
-                  >
-                    12M
-                  </Button>
-                </div>
-              </div>
+          <div className="space-y-2">
+            {divisions.map((division) => {
+              const percentage = (division.balance / totalBalance) * 100;
+              const isSelected = selectedDivision === division.divisionId;
+              const divisionMonthlyProfit = monthlyData
+                .slice(-(selectedPeriod === '12m' ? 12 : selectedPeriod === '6m' ? 6 : 3))
+                .reduce((sum, m) => sum + (m.divisions[division.divisionId]?.profit || 0), 0);
               
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Division</label>
-                <Select value={selectedDivision.toString()} onValueChange={(v) => setSelectedDivision(parseInt(v))}>
-                  <SelectTrigger className="h-8 text-xs mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">All Divisions</SelectItem>
-                    {divisions.map((div) => (
-                      <SelectItem key={div.divisionId} value={div.divisionId.toString()}>
-                        {div.divisionName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Search</label>
-                <Input
-                  placeholder="Search transactions..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-8 text-xs mt-1"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Stats Grid - Compact */}
-          <div className="grid grid-cols-2 gap-3">
-            <Card>
-              <CardHeader className="pb-2 pt-3">
-                <CardTitle className="text-xs font-medium flex items-center gap-1">
-                  <ArrowUp className="h-3 w-3 text-green-400" />
-                  Income
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pb-3">
-                <div className="text-lg font-bold text-green-400">{formatISK(periodStats.totalIncome)}</div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2 pt-3">
-                <CardTitle className="text-xs font-medium flex items-center gap-1">
-                  <ArrowDown className="h-3 w-3 text-red-400" />
-                  Expenses
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pb-3">
-                <div className="text-lg font-bold text-red-400">{formatISK(periodStats.totalExpenses)}</div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2 pt-3">
-                <CardTitle className="text-xs font-medium flex items-center gap-1">
-                  <TrendUp className="h-3 w-3 text-accent" />
-                  Profit
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pb-3">
-                <div className="text-lg font-bold text-accent">{formatISK(periodStats.totalProfit)}</div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2 pt-3">
-                <CardTitle className="text-xs font-medium flex items-center gap-1">
-                  <ChartLine className="h-3 w-3 text-muted-foreground" />
-                  Growth
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pb-3">
-                <div className={`text-lg font-bold ${periodStats.growth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {periodStats.growth >= 0 ? '+' : ''}{periodStats.growth.toFixed(1)}%
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* View Type Toggle */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Display</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-2">
-                <Button
-                  size="sm"
-                  variant={activeView === 'divisions' ? 'default' : 'outline'}
-                  onClick={() => setActiveView('divisions')}
-                  className="h-8 text-xs"
+              return (
+                <Card 
+                  key={division.divisionId} 
+                  className={`cursor-pointer transition-all hover:shadow-md ${
+                    isSelected ? 'border-accent bg-accent/5' : ''
+                  }`}
+                  onClick={() => setSelectedDivision(division.divisionId)}
                 >
-                  Divisions
-                </Button>
-                <Button
-                  size="sm"
-                  variant={activeView === 'chart' ? 'default' : 'outline'}
-                  onClick={() => setActiveView('chart')}
-                  className="h-8 text-xs"
-                >
-                  Chart
-                </Button>
-                <Button
-                  size="sm"
-                  variant={activeView === 'transactions' ? 'default' : 'outline'}
-                  onClick={() => setActiveView('transactions')}
-                  className="h-8 text-xs"
-                >
-                  Transactions
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Column - Charts and Data Display */}
-        <div className="space-y-4">
-          {activeView === 'divisions' && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Division Balances</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {divisions.map((division) => {
-                    const percentage = (division.balance / totalBalance) * 100;
-                    return (
-                      <div key={division.divisionId} className="p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center justify-center w-7 h-7 rounded-full bg-accent/20 text-accent font-bold text-xs">
-                              {division.divisionId}
-                            </div>
-                            <div>
-                              <h4 className="font-medium text-sm">{division.divisionName}</h4>
-                              <p className="text-xs text-muted-foreground">{percentage.toFixed(1)}%</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-base font-bold">{formatISK(division.balance)}</p>
-                          </div>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-start gap-3">
+                        <div 
+                          className="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold"
+                          style={{ 
+                            backgroundColor: `${DIVISION_COLORS[(division.divisionId - 1) % DIVISION_COLORS.length]}20`,
+                            color: DIVISION_COLORS[(division.divisionId - 1) % DIVISION_COLORS.length]
+                          }}
+                        >
+                          {division.divisionId}
                         </div>
-                        <div className="w-full bg-muted rounded-full h-1.5 mt-2">
-                          <div 
-                            className="bg-accent h-1.5 rounded-full transition-all" 
-                            style={{ width: `${Math.min(percentage, 100)}%` }}
-                          />
+                        <div>
+                          <h4 className="font-semibold text-sm leading-tight">{division.divisionName}</h4>
+                          <p className="text-xs text-muted-foreground mt-0.5">{percentage.toFixed(1)}% of total</p>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="text-right">
+                        <p className="text-base font-bold">{formatISK(division.balance)}</p>
+                        <p className={`text-xs font-medium mt-0.5 ${divisionMonthlyProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {divisionMonthlyProfit >= 0 ? '+' : ''}{formatISK(divisionMonthlyProfit)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-1.5">
+                      <div 
+                        className="h-1.5 rounded-full transition-all" 
+                        style={{ 
+                          width: `${Math.min(percentage, 100)}%`,
+                          backgroundColor: DIVISION_COLORS[(division.divisionId - 1) % DIVISION_COLORS.length]
+                        }}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right Column - Charts and Analytics */}
+        <div className="space-y-4">
+          {/* Compact Controls Row */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Display Type */}
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant={activeView === 'balance' ? 'default' : 'outline'}
+                onClick={() => setActiveView('balance')}
+                className="h-7 text-xs px-2"
+              >
+                Balance
+              </Button>
+              <Button
+                size="sm"
+                variant={activeView === 'profit' ? 'default' : 'outline'}
+                onClick={() => setActiveView('profit')}
+                className="h-7 text-xs px-2"
+              >
+                Profit
+              </Button>
+              <Button
+                size="sm"
+                variant={activeView === 'transactions' ? 'default' : 'outline'}
+                onClick={() => setActiveView('transactions')}
+                className="h-7 text-xs px-2"
+              >
+                Txns
+              </Button>
+            </div>
+
+            <div className="h-4 w-px bg-border" />
+
+            {/* Period */}
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant={selectedPeriod === '3m' ? 'default' : 'outline'}
+                onClick={() => setSelectedPeriod('3m')}
+                className="h-7 text-xs px-2"
+              >
+                3M
+              </Button>
+              <Button
+                size="sm"
+                variant={selectedPeriod === '6m' ? 'default' : 'outline'}
+                onClick={() => setSelectedPeriod('6m')}
+                className="h-7 text-xs px-2"
+              >
+                6M
+              </Button>
+              <Button
+                size="sm"
+                variant={selectedPeriod === '12m' ? 'default' : 'outline'}
+                onClick={() => setSelectedPeriod('12m')}
+                className="h-7 text-xs px-2"
+              >
+                12M
+              </Button>
+            </div>
+
+            <div className="h-4 w-px bg-border" />
+
+            {/* Division Selector */}
+            <Select value={selectedDivision.toString()} onValueChange={(v) => setSelectedDivision(parseInt(v))}>
+              <SelectTrigger className="h-7 text-xs w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">All Divisions</SelectItem>
+                {divisions.map((div) => (
+                  <SelectItem key={div.divisionId} value={div.divisionId.toString()}>
+                    Div {div.divisionId}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Chart Display */}
+          {activeView === 'balance' && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ChartLine size={16} />
+                  {selectedDivision === 0 ? 'Division Balance Distribution' : `${divisions.find(d => d.divisionId === selectedDivision)?.divisionName} - Balance Trend`}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {selectedDivision === 0 ? (
+                  <ResponsiveContainer width="100%" height={320}>
+                    <PieChart>
+                      <Pie
+                        data={divisions.map(div => ({
+                          name: div.divisionName,
+                          value: div.balance,
+                          divisionId: div.divisionId
+                        }))}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {divisions.map((division, index) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={DIVISION_COLORS[(division.divisionId - 1) % DIVISION_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        formatter={(value: number) => formatISK(value)}
+                        contentStyle={{ 
+                          backgroundColor: 'oklch(0.12 0.02 220)', 
+                          border: '1px solid oklch(0.2 0.02 220)',
+                          borderRadius: '8px'
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <ResponsiveContainer width="100%" height={320}>
+                    <LineChart 
+                      data={monthlyData
+                        .slice(-(selectedPeriod === '12m' ? 12 : selectedPeriod === '6m' ? 6 : 3))
+                        .map(m => ({
+                          month: m.month,
+                          balance: m.divisions[selectedDivision]?.profit || 0
+                        }))}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.2 0.02 220)" />
+                      <XAxis 
+                        dataKey="month" 
+                        stroke="oklch(0.7 0.02 220)"
+                        style={{ fontSize: '12px' }}
+                      />
+                      <YAxis 
+                        stroke="oklch(0.7 0.02 220)"
+                        style={{ fontSize: '12px' }}
+                        tickFormatter={(value) => formatISK(value)}
+                      />
+                      <Tooltip 
+                        formatter={(value: number) => formatISK(value)}
+                        contentStyle={{ 
+                          backgroundColor: 'oklch(0.12 0.02 220)', 
+                          border: '1px solid oklch(0.2 0.02 220)',
+                          borderRadius: '8px'
+                        }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="balance" 
+                        stroke={DIVISION_COLORS[(selectedDivision - 1) % DIVISION_COLORS.length]}
+                        strokeWidth={2}
+                        dot={{ fill: DIVISION_COLORS[(selectedDivision - 1) % DIVISION_COLORS.length], r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           )}
 
-          {activeView === 'chart' && (
-            <>
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">Monthly P/L Analysis</CardTitle>
-                    <Badge variant="secondary" className="text-xs">
-                      {selectedPeriod === '12m' ? '12M' : selectedPeriod === '6m' ? '6M' : '3M'}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {monthlyData.slice(-(selectedPeriod === '12m' ? 12 : selectedPeriod === '6m' ? 6 : 3)).map((month, idx) => (
-                      <div key={idx} className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <CalendarBlank size={14} className="text-muted-foreground" />
-                            <span className="font-medium text-sm">{month.month}</span>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <div className="text-right">
-                              <p className="text-xs text-green-400">{formatISK(month.totalIncome)}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-xs text-red-400">{formatISK(month.totalExpenses)}</p>
-                            </div>
-                            <div className="text-right min-w-[80px]">
-                              <p className={`font-bold text-xs ${month.totalProfit >= 0 ? 'text-accent' : 'text-red-400'}`}>
-                                {formatISK(month.totalProfit)}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex gap-0.5 h-6">
-                          <div 
-                            className="bg-green-500/30 rounded flex items-center justify-center text-xs font-medium"
-                            style={{ width: `${(month.totalIncome / (month.totalIncome + month.totalExpenses)) * 100}%` }}
-                          />
-                          <div 
-                            className="bg-red-500/30 rounded flex items-center justify-center text-xs font-medium"
-                            style={{ width: `${(month.totalExpenses / (month.totalIncome + month.totalExpenses)) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Division Performance</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {divisions.map((division) => {
-                      const divisionMonthlyProfit = monthlyData
-                        .slice(-(selectedPeriod === '12m' ? 12 : selectedPeriod === '6m' ? 6 : 3))
-                        .reduce((sum, m) => sum + (m.divisions[division.divisionId]?.profit || 0), 0);
-                      
-                      return (
-                        <div key={division.divisionId} className="p-2 border rounded">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-sm">{division.divisionName}</span>
-                            <span className={`font-bold text-sm ${divisionMonthlyProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                              {formatISK(divisionMonthlyProfit)}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            </>
+          {activeView === 'profit' && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendUp size={16} />
+                  {selectedDivision === 0 ? 'Total Profit/Loss Trend' : `${divisions.find(d => d.divisionId === selectedDivision)?.divisionName} - P/L Trend`}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={320}>
+                  <LineChart 
+                    data={monthlyData
+                      .slice(-(selectedPeriod === '12m' ? 12 : selectedPeriod === '6m' ? 6 : 3))
+                      .map(m => {
+                        if (selectedDivision === 0) {
+                          return {
+                            month: m.month,
+                            income: m.totalIncome,
+                            expenses: m.totalExpenses,
+                            profit: m.totalProfit
+                          };
+                        } else {
+                          const divData = m.divisions[selectedDivision];
+                          return {
+                            month: m.month,
+                            income: divData?.income || 0,
+                            expenses: divData?.expenses || 0,
+                            profit: divData?.profit || 0
+                          };
+                        }
+                      })}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.2 0.02 220)" />
+                    <XAxis 
+                      dataKey="month" 
+                      stroke="oklch(0.7 0.02 220)"
+                      style={{ fontSize: '12px' }}
+                    />
+                    <YAxis 
+                      stroke="oklch(0.7 0.02 220)"
+                      style={{ fontSize: '12px' }}
+                      tickFormatter={(value) => formatISK(value)}
+                    />
+                    <Tooltip 
+                      formatter={(value: number) => formatISK(value)}
+                      contentStyle={{ 
+                        backgroundColor: 'oklch(0.12 0.02 220)', 
+                        border: '1px solid oklch(0.2 0.02 220)',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Legend 
+                      wrapperStyle={{ fontSize: '12px' }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="income" 
+                      stroke="oklch(0.6 0.25 140)"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      name="Income"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="expenses" 
+                      stroke="oklch(0.6 0.25 15)"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      name="Expenses"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="profit" 
+                      stroke="oklch(0.65 0.2 35)"
+                      strokeWidth={3}
+                      dot={{ r: 4 }}
+                      name="Profit"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
           )}
 
           {activeView === 'transactions' && (
             <Card>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <CardTitle className="text-base">Recent Transactions</CardTitle>
                   <Button variant="outline" size="sm" className="h-7 text-xs">
                     <Download size={14} className="mr-1" />
                     Export
                   </Button>
                 </div>
+                <Input
+                  placeholder="Search transactions..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="h-8 text-xs mt-2"
+                />
               </CardHeader>
               <CardContent>
                 <div className="rounded-md border">
@@ -550,7 +599,7 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
                     <thead>
                       <tr className="border-b">
                         <th className="text-left p-2">Date</th>
-                        <th className="text-left p-2">Division</th>
+                        <th className="text-left p-2">Div</th>
                         <th className="text-left p-2">Description</th>
                         <th className="text-right p-2">Amount</th>
                       </tr>
@@ -560,12 +609,12 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
                         const division = divisions.find(d => d.divisionId === transaction.divisionId);
                         return (
                           <tr key={transaction.id} className="hover:bg-muted/50">
-                            <td className="p-2 text-xs">{formatDate(transaction.date)}</td>
+                            <td className="p-2 text-xs whitespace-nowrap">{formatDate(transaction.date)}</td>
                             <td className="p-2">
-                              <Badge variant="secondary" className="text-xs h-5">{division?.divisionName || `Div ${transaction.divisionId}`}</Badge>
+                              <Badge variant="secondary" className="text-xs h-5">{transaction.divisionId}</Badge>
                             </td>
                             <td className="p-2 text-xs">{transaction.description}</td>
-                            <td className={`p-2 text-right font-mono font-medium ${transaction.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            <td className={`p-2 text-right font-mono font-medium whitespace-nowrap ${transaction.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                               {transaction.amount >= 0 ? '+' : ''}{formatISK(transaction.amount)}
                             </td>
                           </tr>
@@ -582,6 +631,59 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
               </CardContent>
             </Card>
           )}
+
+          {/* Stats Summary Card */}
+          <div className="grid grid-cols-2 gap-2">
+            <Card>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <ArrowUp className="h-4 w-4 text-green-400" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Income</p>
+                    <p className="text-sm font-bold text-green-400">{formatISK(periodStats.totalIncome)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <ArrowDown className="h-4 w-4 text-red-400" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Expenses</p>
+                    <p className="text-sm font-bold text-red-400">{formatISK(periodStats.totalExpenses)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <TrendUp className="h-4 w-4 text-accent" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Profit</p>
+                    <p className="text-sm font-bold text-accent">{formatISK(periodStats.totalProfit)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <ChartLine className="h-4 w-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Growth</p>
+                    <p className={`text-sm font-bold ${periodStats.growth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {periodStats.growth >= 0 ? '+' : ''}{periodStats.growth.toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
