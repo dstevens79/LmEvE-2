@@ -37,11 +37,14 @@ A database-first corporation management tool for EVE Online with ESI integration
 
 React 19 • TypeScript • Tailwind CSS • shadcn/ui • Framer Motion • Recharts • GitHub Spark KV
 
-## Quick Start
-1. Tested on ubuntu 20.04.6 LTS - get this one... 
+## Quick Start 
+NOTE : If your using two machines or vm setup follow the ssh setup, if its all on one machine dont worry about it
+either way you wont mess it up if its all on one machine if you do every step
+
+1. Tested on dual ubuntu 20.04.6 LTS Virtual Machines from fresh OS installs (one for db one for lmeve-2)
 2. Configure Application and App Secret at Eve Developer site
 
-3. System Pre Prep
+3. System Pre Prep 
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y curl wget git ufw build-essential
 
@@ -63,8 +66,25 @@ Check that Apache works:
 
 → Visit http://<your-server-ip>/ — you should see the Apache default page.
 
-On the same or another computer or vm instance (both are natively supported in the setup) - Configure MySQL
-Run the secure MY_SQL setup:
+IF THE TARGET DATABASE COMPUTER IS NOT A LOCAL LMEVE INSTANCE
+{
+  Configure SSH on both machines:
+  To install SSH, run:
+    sudo apt install -y openssh-server
+  
+  Then enable and start it:
+    sudo systemctl enable ssh
+    sudo systemctl start ssh
+  
+  Check that it’s running:
+    sudo systemctl status ssh
+  Firewall access (if using UFW and not disabled):
+    sudo ufw allow OpenSSH
+    sudo ufw reload
+}
+Then....
+Run the secure MY_SQL setup on the TARGET DATABASE MACHINE:
+{
   sudo mysql_secure_installation
   Set root password
   Remove anonymous users
@@ -79,6 +99,9 @@ Now your Inside MySQL:
   GRANT ALL PRIVILEGES ON lmeve.* TO 'lmeveuser'@'localhost';
   FLUSH PRIVILEGES;
   EXIT;
+}
+
+Now all the rest is normal and done on the LMEVE machine or instance : 
 
 Install Node.js + npm (latest stable)
 Ubuntu 20.04 has older npm — pull Node v20.x (includes npm 10+):
@@ -105,6 +128,7 @@ Create a new site file:
   sudo nano /etc/apache2/sites-available/lmeve.conf
 
 Paste or type in:
+
   <VirtualHost *:80>
     ServerName localhost
     DocumentRoot /var/www/eve-online-api-moder/dist
