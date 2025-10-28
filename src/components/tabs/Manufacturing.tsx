@@ -66,6 +66,21 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
   const [selectedJob, setSelectedJob] = useState<ManufacturingJob | null>(null);
   const [editingTask, setEditingTask] = useState<ManufacturingTask | null>(null);
   const [taskFilter, setTaskFilter] = useState<'my-tasks' | 'all-tasks'>('my-tasks');
+  
+  // Handler for station click - navigate to assets tab with station selected
+  const handleStationClick = (stationId: number) => {
+    // Store the selected station for the assets tab
+    spark.kv.set('assets-selected-station', stationId);
+    
+    // Navigate to assets tab by setting active tab in App.tsx
+    spark.kv.set('active-tab', 'assets');
+    
+    // Force page reload to ensure tab switch happens
+    window.location.hash = 'assets';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    
+    toast.success('Navigating to Assets tab');
+  };
 
   // Initialize sample data if empty
   React.useEffect(() => {
@@ -133,6 +148,8 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           estimatedDuration: 18000,
           createdDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
           corporationId: 498125261,
+          stationId: 1,
+          stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
           materials: [
             { typeId: 34, typeName: 'Tritanium', quantity: 250000, totalValue: 1250000, category: 'Mineral' },
             { typeId: 35, typeName: 'Pyerite', quantity: 120000, totalValue: 720000, category: 'Mineral' },
@@ -156,6 +173,8 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           startedDate: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
           createdDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
           corporationId: 498125261,
+          stationId: 3,
+          stationName: 'Dodixie IX - Moon 20 - Federation Navy Assembly Plant',
           materials: [
             { typeId: 34, typeName: 'Tritanium', quantity: 450000, totalValue: 2250000, category: 'Mineral' },
             { typeId: 35, typeName: 'Pyerite', quantity: 180000, totalValue: 1080000, category: 'Mineral' },
@@ -179,6 +198,8 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           startedDate: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
           createdDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
           corporationId: 498125261,
+          stationId: 2,
+          stationName: 'Amarr VIII (Oris) - Emperor Family Academy',
           materials: [
             { typeId: 34, typeName: 'Tritanium', quantity: 320000, totalValue: 1600000, category: 'Mineral' },
             { typeId: 35, typeName: 'Pyerite', quantity: 150000, totalValue: 900000, category: 'Mineral' },
@@ -200,6 +221,8 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           estimatedDuration: 14400,
           createdDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
           corporationId: 498125261,
+          stationId: 1,
+          stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
           materials: [
             { typeId: 34, typeName: 'Tritanium', quantity: 580000, totalValue: 2900000, category: 'Mineral' },
             { typeId: 35, typeName: 'Pyerite', quantity: 220000, totalValue: 1320000, category: 'Mineral' },
@@ -462,6 +485,7 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           getJobProgress={getJobProgress}
           getStatusBadge={getStatusBadge}
           getPayModifierDisplay={getPayModifierDisplay}
+          onStationClick={handleStationClick}
           isMobileView={isMobileView}
         />
       )}

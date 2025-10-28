@@ -411,40 +411,6 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
             </Card>
           ) : (
             <>
-              {/* Stats Bar - Moved Above Filters */}
-              <Card>
-                <CardContent className="p-0 px-2 py-0.5">
-                  <div className={`grid ${isMobileView ? 'grid-cols-2' : 'grid-cols-4'} gap-2`}>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-foreground">
-                        {formatNumber(stats.count)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {activeFilters.length > 0 || searchQuery ? 'Filtered Items' : 'Total Items'}
-                      </div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-foreground">
-                        {formatNumber(stats.totalQuantity)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">Total Quantity</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-accent">
-                        {formatISK(stats.totalValue)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">Total Value</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-foreground">
-                        {formatVolume(stats.totalVolume)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">Total Volume</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
               {/* Filter Bar - Search Inline with Buttons */}
               <Card>
                 <CardContent className="p-0 px-2 py-0.5">

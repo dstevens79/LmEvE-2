@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Factory, Users, Play, Clock, CheckCircle } from '@phosphor-icons/react';
+import { Factory, Users, Play, Clock, CheckCircle, Building } from '@phosphor-icons/react';
 import { ManufacturingTask, User } from '@/lib/types';
 
 interface JobActivityViewProps {
@@ -14,6 +14,7 @@ interface JobActivityViewProps {
   getJobProgress: (task: ManufacturingTask) => number;
   getStatusBadge: (status: string) => React.ReactNode;
   getPayModifierDisplay: (modifier: string | null) => string | null;
+  onStationClick?: (stationId: number) => void;
   isMobileView?: boolean;
 }
 
@@ -26,6 +27,7 @@ export function JobActivityView({
   getJobProgress,
   getStatusBadge,
   getPayModifierDisplay,
+  onStationClick,
   isMobileView
 }: JobActivityViewProps) {
   
@@ -110,8 +112,9 @@ export function JobActivityView({
             <div className="col-span-2">Pilot</div>
             <div className="col-span-2">Item</div>
             <div className="col-span-1">Quantity</div>
-            <div className="col-span-2">Progress</div>
-            <div className="col-span-2">Duration</div>
+            <div className="col-span-2">Station</div>
+            <div className="col-span-1">Progress</div>
+            <div className="col-span-1">Duration</div>
             <div className="col-span-1">Pay</div>
             <div className="col-span-1">Actions</div>
           </div>
@@ -164,8 +167,28 @@ export function JobActivityView({
                 </span>
               </div>
 
-              {/* Progress */}
+              {/* Station */}
               <div className="col-span-2 flex items-center">
+                {task.stationName && task.stationId ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onStationClick?.(task.stationId!)}
+                    className="h-auto p-1 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 -ml-1"
+                    title="View in Assets"
+                  >
+                    <Building size={12} className="mr-1 flex-shrink-0" />
+                    <span className="truncate">
+                      {task.stationName.split(' - ')[0]}
+                    </span>
+                  </Button>
+                ) : (
+                  <span className="text-xs text-muted-foreground">No station</span>
+                )}
+              </div>
+
+              {/* Progress */}
+              <div className="col-span-1 flex items-center">
                 {task.status === 'in_progress' ? (
                   <div className="w-full space-y-1">
                     <Progress value={getJobProgress(task)} className="h-2" />
@@ -174,24 +197,17 @@ export function JobActivityView({
                     </span>
                   </div>
                 ) : (
-                  <span className="text-sm text-muted-foreground">
-                    {task.status === 'completed' ? 'Complete' : 'Pending'}
+                  <span className="text-xs text-muted-foreground">
+                    {task.status === 'completed' ? 'Done' : 'Pending'}
                   </span>
                 )}
               </div>
 
               {/* Duration */}
-              <div className="col-span-2 flex items-center">
-                <div className="space-y-0.5">
-                  <span className="text-sm text-foreground">
-                    {formatDuration(task.estimatedDuration)}
-                  </span>
-                  {task.startedDate && (
-                    <div className="text-xs text-muted-foreground">
-                      Started: {new Date(task.startedDate).toLocaleDateString()}
-                    </div>
-                  )}
-                </div>
+              <div className="col-span-1 flex items-center">
+                <span className="text-xs text-foreground">
+                  {formatDuration(task.estimatedDuration)}
+                </span>
               </div>
 
               {/* Pay Modifier */}

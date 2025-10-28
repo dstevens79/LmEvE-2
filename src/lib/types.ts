@@ -155,6 +155,10 @@ export interface ManufacturingTask {
   assignedToName?: string;
   status: 'assigned' | 'in_progress' | 'completed' | 'unassigned';
   
+  // Station/Location details
+  stationId?: number;
+  stationName?: string;
+  
   // Pay modifier - simplified (only one can be applied)
   payModifier?: 'rush' | 'specialDelivery' | 'excessWork' | null;
   
