@@ -1,6 +1,7 @@
 import { SyncStateManager } from './sync-state-manager';
 import { ESIDataFetchService } from './esi-data-service';
 import { ESIDataStorageService } from './database';
+import { SyncErrorLogger } from './sync-error-logger';
 
 export interface SyncExecutionContext {
   processId: string;
@@ -28,9 +29,11 @@ export interface SyncResult {
 
 export class SyncExecutor {
   private stateManager: SyncStateManager;
+  private errorLogger: SyncErrorLogger;
   
   constructor() {
     this.stateManager = SyncStateManager.getInstance();
+    this.errorLogger = SyncErrorLogger.getInstance();
   }
 
   async executeSyncProcess(
@@ -67,6 +70,18 @@ export class SyncExecutor {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`❌ Sync process ${processType} failed:`, errorMessage);
+      
+      // Log error with appropriate type detection
+      const errorType = this.detectErrorType(error);
+      await this.errorLogger.logError({
+        processId,
+        processName: processType.replace('_', ' ').toUpperCase(),
+        errorType,
+        errorMessage,
+        errorDetails: error instanceof Error ? error.stack : undefined,
+        corporationId
+      });
+      
       await this.stateManager.failSync(processId, errorMessage);
       return {
         success: false,
@@ -74,6 +89,31 @@ export class SyncExecutor {
         errorMessage
       };
     }
+  }
+
+  private detectErrorType(error: any): 'esi_api' | 'database' | 'auth' | 'network' | 'validation' | 'unknown' {
+    if (!error) return 'unknown';
+    
+    const errorStr = error.toString().toLowerCase();
+    const message = error.message?.toLowerCase() || '';
+    
+    if (errorStr.includes('401') || errorStr.includes('403') || message.includes('auth')) {
+      return 'auth';
+    }
+    if (errorStr.includes('esi') || errorStr.includes('evetech') || error.response?.config?.url?.includes('esi')) {
+      return 'esi_api';
+    }
+    if (errorStr.includes('database') || errorStr.includes('sql') || message.includes('query')) {
+      return 'database';
+    }
+    if (errorStr.includes('network') || errorStr.includes('fetch') || message.includes('timeout')) {
+      return 'network';
+    }
+    if (errorStr.includes('validation') || message.includes('invalid')) {
+      return 'validation';
+    }
+    
+    return 'unknown';
   }
 
   private async syncMembers(context: SyncExecutionContext): Promise<SyncResult> {

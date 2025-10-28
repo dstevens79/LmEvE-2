@@ -5,6 +5,7 @@ import { LMeveUser, UserRole, CorporationConfig } from './types';
 import { createUserWithRole, isSessionValid, refreshUserSession } from './roles';
 import { getESIAuthService, initializeESIAuth } from './esi-auth';
 import { createDefaultCorporationConfig } from './corp-validation';
+import { CorporationTokenManager } from './corp-token-manager';
 
 interface CharacterInfo {
   characterId?: number;
@@ -214,6 +215,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         
         toast.success(`Corporation "${corpConfig.corporationName}" has been registered automatically.`);
       }
+      
+      // Store token in token manager
+      const tokenManager = CorporationTokenManager.getInstance();
+      await tokenManager.storeToken(esiUser);
       
       // Check if this replaces an existing manual login
       if (currentUser && currentUser.authMethod === 'manual') {

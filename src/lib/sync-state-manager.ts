@@ -247,6 +247,8 @@ export function useSyncState() {
 
   return {
     state,
+    syncStatuses: state.statuses,
+    syncHistory: state.history,
     getSyncStatus: (processId: string) => 
       SyncStateManager.getInstance().getSyncStatus(processId),
     isProcessRunning: (processId: string) => 

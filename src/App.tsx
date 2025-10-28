@@ -33,7 +33,8 @@ import {
   Monitor,
   List,
   Palette,
-  Planet
+  Planet,
+  ChartLine
 } from '@phosphor-icons/react';
 import { useKV } from '@github/spark/hooks';
 import { TabType } from '@/lib/types';
@@ -60,6 +61,7 @@ import { Corporations } from '@/components/Corporations';
 import { Theme } from '@/components/tabs/Theme';
 import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
 import { Projects } from '@/components/tabs/Projects';
+import { SyncMonitoring } from '@/components/tabs/SyncMonitoring';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useKV<TabType>('active-tab', 'dashboard');
@@ -322,6 +324,7 @@ function AppContent() {
     { id: 'market', label: 'Market', icon: TrendUp, component: Market },
     { id: 'wallet', label: 'Wallet', icon: CurrencyDollar, component: Wallet },
     { id: 'notifications', label: 'Notifications', icon: Bell, component: Notifications },
+    { id: 'sync-monitoring', label: 'Sync Monitoring', icon: ChartLine, component: SyncMonitoring },
     { id: 'corporations', label: 'Corporations', icon: Building, component: Corporations },
     { id: 'theme', label: 'Theme', icon: Palette, component: Theme },
   ];

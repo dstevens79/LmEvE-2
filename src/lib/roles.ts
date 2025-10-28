@@ -215,6 +215,9 @@ export function canAccessTab(user: LMeveUser | null, tab: string): boolean {
     case 'notifications':
       return hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
       
+    case 'sync-monitoring':
+      return hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
+      
     case 'corporations':
       return hasPermission(user, 'canManageSystem') || hasPermission(user, 'canConfigureESI');
       

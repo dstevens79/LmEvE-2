@@ -5,7 +5,7 @@ export interface TabComponentProps {
 }
 
 // Tab types for navigation
-export type TabType = 'dashboard' | 'members' | 'assets' | 'manufacturing' | 'mining' | 'planetary' | 'projects' | 'logistics' | 'market' | 'wallet' | 'notifications' | 'corporations' | 'theme' | 'settings';
+export type TabType = 'dashboard' | 'members' | 'assets' | 'manufacturing' | 'mining' | 'planetary' | 'projects' | 'logistics' | 'market' | 'wallet' | 'notifications' | 'sync-monitoring' | 'corporations' | 'theme' | 'settings';
 
 // Member management types
 export interface Member {
