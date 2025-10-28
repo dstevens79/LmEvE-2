@@ -40,7 +40,7 @@ import { useKV } from '@github/spark/hooks';
 import { TabType } from '@/lib/types';
 import { DatabaseProvider } from '@/lib/DatabaseContext';
 import { LMeveDataProvider } from '@/lib/LMeveDataContext';
-import { useAuth, AuthProvider } from '@/lib/auth-provider';
+import { useAuth } from '@/lib/auth-provider';
 import { ESICallback } from '@/components/ESICallback';
 import { canAccessTab, canAccessSettingsTab } from '@/lib/roles';
 import { EVELoginButton } from '@/components/EVELoginButton';
@@ -1001,13 +1001,8 @@ function AppContent() {
   );
 }
 
-// Main App component with AuthProvider
 function App() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
-  );
+  return <AppContent />;
 }
 
 export default App;
