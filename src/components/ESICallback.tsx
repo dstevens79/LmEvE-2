@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Rocket, Warning, CheckCircle, CircleNotch } from '@phosphor-icons/react';
+import { Rocket, Warning, CheckCircle, CircleNotch, Info } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -15,6 +15,7 @@ export function ESICallback({ onLoginSuccess, onLoginError }: ESICallbackProps) 
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
   const [error, setError] = useState<string | null>(null);
   const [characterName, setCharacterName] = useState<string | null>(null);
+  const [scopeWarnings, setScopeWarnings] = useState<string[]>([]);
 
   useEffect(() => {
     const processCallback = async () => {
@@ -45,9 +46,26 @@ export function ESICallback({ onLoginSuccess, onLoginError }: ESICallbackProps) 
         const user = await handleESICallback(code, state);
         
         setCharacterName(user.characterName || 'Unknown Character');
+        
+        // Check for scope warnings
+        const warnings: string[] = [];
+        if (user.corporationScopes && user.corporationScopes.length === 0 && 
+            (user.role === 'corp_director' || user.role === 'corp_admin')) {
+          warnings.push('Limited corporation access - some features may be unavailable');
+        }
+        
+        if (warnings.length > 0) {
+          setScopeWarnings(warnings);
+        }
+        
         setStatus('success');
         
-        console.log('✅ ESI authentication successful');
+        console.log('✅ ESI authentication successful', {
+          character: user.characterName,
+          role: user.role,
+          characterScopes: user.characterScopes?.length || 0,
+          corporationScopes: user.corporationScopes?.length || 0
+        });
         
         // Delay to show success message
         setTimeout(() => {
@@ -107,7 +125,7 @@ export function ESICallback({ onLoginSuccess, onLoginError }: ESICallbackProps) 
           {status === 'processing' && (
             <div className="text-center text-muted-foreground">
               <p className="mb-2">Authenticating with EVE Online...</p>
-              <p className="text-sm">This may take a few moments.</p>
+              <p className="text-sm">Validating scopes and permissions...</p>
             </div>
           )}
           
@@ -120,6 +138,17 @@ export function ESICallback({ onLoginSuccess, onLoginError }: ESICallbackProps) 
                 Your EVE Online authentication was successful. 
                 You will be redirected to the dashboard shortly.
               </p>
+              
+              {scopeWarnings.length > 0 && (
+                <Alert className="mt-4">
+                  <Info size={16} />
+                  <AlertDescription>
+                    {scopeWarnings.map((warning, idx) => (
+                      <div key={idx}>{warning}</div>
+                    ))}
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
           )}
           
@@ -134,7 +163,15 @@ export function ESICallback({ onLoginSuccess, onLoginError }: ESICallbackProps) 
               
               <div className="text-center">
                 <p className="text-sm text-muted-foreground mb-4">
-                  Please try signing in again or contact your administrator if the problem persists.
+                  {error?.includes('scope') ? (
+                    <>
+                      This error is related to ESI permissions. Make sure you granted all requested permissions during login.
+                      <br />
+                      <strong>Tip:</strong> Corporation scopes require Director or CEO roles in-game.
+                    </>
+                  ) : (
+                    'Please try signing in again or contact your administrator if the problem persists.'
+                  )}
                 </p>
                 <Button onClick={handleRetry} variant="outline" className="w-full">
                   <Rocket size={16} className="mr-2" />

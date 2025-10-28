@@ -701,6 +701,8 @@ export interface LMeveUser {
   refreshToken?: string;
   tokenExpiry?: string;
   scopes?: string[];
+  characterScopes?: string[];       // Character-only scopes
+  corporationScopes?: string[];     // Corporation scopes (requires corp roles)
   
   // Session management
   lastLogin: string;

@@ -125,15 +125,37 @@ export function createDefaultCorporationConfig(
  */
 export function validateRequiredScopes(
   userScopes: string[],
-  corporationConfig?: CorporationConfig
+  corporationConfig?: CorporationConfig,
+  userRole?: UserRole
 ): {
   isValid: boolean;
   missingScopes: string[];
 } {
-  const requiredScopes = corporationConfig?.registeredScopes || [
-    'esi-characters.read_corporation_roles.v1',
-    'esi-corporations.read_corporation_membership.v1'
-  ];
+  // Define required scopes based on role
+  let requiredScopes: string[] = [];
+  
+  if (userRole === 'corp_admin' || userRole === 'corp_director') {
+    // Directors and admins need full corporation access
+    requiredScopes = corporationConfig?.registeredScopes || [
+      'esi-characters.read_corporation_roles.v1',
+      'esi-corporations.read_corporation_membership.v1',
+      'esi-assets.read_corporation_assets.v1',
+      'esi-industry.read_corporation_jobs.v1',
+      'esi-corporations.read_blueprints.v1'
+    ];
+  } else if (userRole === 'corp_manager') {
+    // Managers need some corporation access
+    requiredScopes = [
+      'esi-characters.read_corporation_roles.v1',
+      'esi-corporations.read_corporation_membership.v1',
+      'esi-industry.read_corporation_jobs.v1'
+    ];
+  } else {
+    // Regular members only need basic character scopes
+    requiredScopes = [
+      'esi-characters.read_corporation_roles.v1'
+    ];
+  }
 
   const missingScopes = requiredScopes.filter(scope => 
     !userScopes.includes(scope)

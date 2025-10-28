@@ -25,25 +25,21 @@ const SSO_AUTH_URL = `${SSO_BASE_URL}/v2/oauth/authorize`;
 const SSO_TOKEN_URL = `${SSO_BASE_URL}/v2/oauth/token`;
 const SSO_VERIFY_URL = `${SSO_BASE_URL}/oauth/verify`;
 
-// Required scopes for different authentication levels
-const BASIC_SCOPES = [
-  // Character info only - for basic site access
+// Character-specific scopes (do not require corporation roles)
+const CHARACTER_SCOPES = [
   'esi-characters.read_character_info.v1',
-  'esi-characters.read_corporation_roles.v1'
-];
-
-const ENHANCED_SCOPES = [
-  ...BASIC_SCOPES,
-  // Character jobs and wallet for manufacturing assignments
+  'esi-characters.read_corporation_roles.v1',
   'esi-industry.read_character_jobs.v1',
   'esi-wallet.read_character_wallet.v1',
   'esi-assets.read_assets.v1',
-  'esi-characters.read_blueprints.v1'
+  'esi-characters.read_blueprints.v1',
+  'esi-characters.read_notifications.v1',
+  'esi-planets.manage_planets.v1',
+  'esi-skills.read_skills.v1'
 ];
 
+// Corporation scopes (require Director/CEO roles in the corporation)
 const CORPORATION_SCOPES = [
-  ...ENHANCED_SCOPES,
-  // Corporation management scopes for directors/CEOs
   'esi-corporations.read_corporation_membership.v1',
   'esi-corporations.read_titles.v1',
   'esi-assets.read_corporation_assets.v1',
@@ -65,15 +61,34 @@ const CORPORATION_SCOPES = [
   'esi-corporations.track_members.v1'
 ];
 
+// Required scopes for different authentication levels
+const BASIC_SCOPES = [
+  'esi-characters.read_character_info.v1',
+  'esi-characters.read_corporation_roles.v1'
+];
+
+const ENHANCED_SCOPES = [
+  ...BASIC_SCOPES,
+  'esi-industry.read_character_jobs.v1',
+  'esi-wallet.read_character_wallet.v1',
+  'esi-assets.read_assets.v1',
+  'esi-characters.read_blueprints.v1'
+];
+
+const FULL_SCOPES = [
+  ...CHARACTER_SCOPES,
+  ...CORPORATION_SCOPES
+];
+
 // Map scope types to scope arrays
 const SCOPE_SETS = {
   basic: BASIC_SCOPES,
   enhanced: ENHANCED_SCOPES,
-  corporation: CORPORATION_SCOPES
+  corporation: FULL_SCOPES
 };
 
 // Legacy compatibility - remove after testing
-const REQUIRED_SCOPES = CORPORATION_SCOPES;
+const REQUIRED_SCOPES = FULL_SCOPES;
 
 export class ESIAuthService {
   private clientId: string;
@@ -223,16 +238,46 @@ export class ESIAuthService {
         throw new Error(validation.reason || 'Corporation validation failed');
       }
 
-      // Validate required scopes
+      // Separate character and corporation scopes
+      const userScopes = tokenResponse.scope?.split(' ') || characterData.scopes;
+      const characterOnlyScopes = userScopes.filter(scope => 
+        CHARACTER_SCOPES.includes(scope)
+      );
+      const corpOnlyScopes = userScopes.filter(scope => 
+        CORPORATION_SCOPES.includes(scope)
+      );
+      
+      // Validate required scopes based on user role
       const scopeValidation = validateRequiredScopes(
-        characterData.scopes, 
-        validation.corporationConfig
+        userScopes, 
+        validation.corporationConfig,
+        validation.suggestedRole
       );
       
       if (!scopeValidation.isValid) {
-        console.warn('⚠️ Missing required scopes:', scopeValidation.missingScopes);
-        // Still allow login but warn about limited functionality
+        console.warn('⚠️ Missing required scopes for role:', {
+          role: validation.suggestedRole,
+          missingScopes: scopeValidation.missingScopes
+        });
+        
+        // For corporation roles (director/admin), missing corp scopes is a hard fail
+        if (['corp_director', 'corp_admin'].includes(validation.suggestedRole) && 
+            scopeValidation.missingScopes.some(scope => CORPORATION_SCOPES.includes(scope))) {
+          throw new Error(
+            `Missing required corporation scopes for ${validation.suggestedRole} role. ` +
+            `Please re-authenticate with corporation permissions. ` +
+            `Missing: ${scopeValidation.missingScopes.join(', ')}`
+          );
+        }
+        // For other roles, warn but allow login with reduced functionality
       }
+      
+      console.log('✅ Scope validation:', {
+        totalScopes: userScopes.length,
+        characterScopes: characterOnlyScopes.length,
+        corporationScopes: corpOnlyScopes.length,
+        hasAllRequired: scopeValidation.isValid
+      });
 
       // Get corporation name
       let corporationName = '';
@@ -265,7 +310,9 @@ export class ESIAuthService {
         accessToken: tokenResponse.access_token,
         refreshToken: tokenResponse.refresh_token,
         tokenExpiry: new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString(),
-        scopes: tokenResponse.scope?.split(' ') || characterData.scopes
+        scopes: userScopes,
+        characterScopes: characterOnlyScopes,
+        corporationScopes: corpOnlyScopes
       };
 
       const user = createUserWithRole(userData, validation.suggestedRole);

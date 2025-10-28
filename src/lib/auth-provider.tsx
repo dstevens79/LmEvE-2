@@ -102,10 +102,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [esiConfiguration, registeredCorporations]);
 
-  // Session validation
+  // Auto-refresh token when it's about to expire
   useEffect(() => {
-    if (currentUser && !isSessionValid(currentUser)) {
-      console.log('⚠️ User session expired');
+    if (!currentUser || currentUser.authMethod !== 'esi' || !currentUser.refreshToken) {
+      return;
+    }
+    
+    // Check token expiration every minute
+    const intervalId = setInterval(() => {
+      if (isTokenExpired()) {
+        console.log('⏰ Token expiring soon - auto-refreshing');
+        refreshUserToken().catch(error => {
+          console.error('❌ Auto-refresh failed:', error);
+        });
+      }
+    }, 60 * 1000); // Check every minute
+    
+    // Also check immediately on mount
+    if (isTokenExpired()) {
+      console.log('⏰ Token already expired - refreshing immediately');
+      refreshUserToken().catch(error => {
+        console.error('❌ Initial refresh failed:', error);
+      });
+    }
+    
+    return () => clearInterval(intervalId);
+  }, [currentUser, isTokenExpired, refreshUserToken]);
+  
+  // Session validation for manual logins
+  useEffect(() => {
+    if (currentUser && currentUser.authMethod === 'manual' && !isSessionValid(currentUser)) {
+      console.log('⚠️ Manual user session expired');
       setCurrentUser(null);
       toast.info('Session expired. Please sign in again.');
     }
@@ -290,17 +317,63 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const esiService = getESIAuthService();
       const tokenResponse = await esiService.refreshToken(currentUser.refreshToken);
       
+      // Parse and separate scopes
+      const userScopes = tokenResponse.scope?.split(' ') || currentUser.scopes || [];
+      const CHARACTER_SCOPES_LIST = [
+        'esi-characters.read_character_info.v1',
+        'esi-characters.read_corporation_roles.v1',
+        'esi-industry.read_character_jobs.v1',
+        'esi-wallet.read_character_wallet.v1',
+        'esi-assets.read_assets.v1',
+        'esi-characters.read_blueprints.v1',
+        'esi-characters.read_notifications.v1',
+        'esi-planets.manage_planets.v1',
+        'esi-skills.read_skills.v1'
+      ];
+      const CORP_SCOPES_LIST = [
+        'esi-corporations.read_corporation_membership.v1',
+        'esi-corporations.read_titles.v1',
+        'esi-assets.read_corporation_assets.v1',
+        'esi-industry.read_corporation_jobs.v1',
+        'esi-wallet.read_corporation_wallets.v1',
+        'esi-killmails.read_corporation_killmails.v1',
+        'esi-universe.read_structures.v1',
+        'esi-markets.read_corporation_orders.v1',
+        'esi-contracts.read_corporation_contracts.v1',
+        'esi-industry.read_corporation_mining.v1',
+        'esi-planets.read_customs_offices.v1',
+        'esi-corporations.read_blueprints.v1',
+        'esi-corporations.read_containers_logs.v1',
+        'esi-corporations.read_divisions.v1',
+        'esi-corporations.read_facilities.v1',
+        'esi-corporations.read_medals.v1',
+        'esi-corporations.read_outposts.v1',
+        'esi-corporations.read_standings.v1',
+        'esi-corporations.track_members.v1'
+      ];
+      
+      const characterOnlyScopes = userScopes.filter(scope => CHARACTER_SCOPES_LIST.includes(scope));
+      const corpOnlyScopes = userScopes.filter(scope => CORP_SCOPES_LIST.includes(scope));
+      
       const updatedUser = refreshUserSession({
         ...currentUser,
         accessToken: tokenResponse.access_token,
         refreshToken: tokenResponse.refresh_token || currentUser.refreshToken,
-        tokenExpiry: new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString()
+        tokenExpiry: new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString(),
+        scopes: userScopes,
+        characterScopes: characterOnlyScopes,
+        corporationScopes: corpOnlyScopes
       });
       
       setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
       setCurrentUser(updatedUser);
       
-      console.log('✅ Token refreshed successfully');
+      console.log('✅ Token refreshed successfully', {
+        totalScopes: userScopes.length,
+        characterScopes: characterOnlyScopes.length,
+        corporationScopes: corpOnlyScopes.length,
+        expiresIn: tokenResponse.expires_in
+      });
       triggerAuthChange();
       
     } catch (error) {

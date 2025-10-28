@@ -12,16 +12,30 @@ This document outlines all areas where test/fake data needs to be replaced with 
 ## 1. Authentication & Token Management
 
 ### 1.1 ESI OAuth Flow
-- ⚠️ **ESI callback handling** (`src/components/ESICallback.tsx`)
-  - Current: Basic OAuth callback processing
-  - Needed: Full token refresh cycle, scope validation
-  - Dependencies: Access token storage, refresh token handling
+- ✅ **ESI callback handling** (`src/components/ESICallback.tsx`)
+  - Status: Fully implemented with scope validation
+  - Implementation:
+    - Full token refresh cycle with automatic refresh before expiration
+    - Character vs Corporation scope separation and validation
+    - Role-based scope requirements (Directors/CEOs need corp scopes)
+    - Enhanced error messages for scope-related issues
+    - Scope warnings for limited permissions
+  - Scopes separated into:
+    - Character scopes (personal data, no corp role required)
+    - Corporation scopes (requires Director/CEO roles)
+  - Priority: HIGH ✅
 
 ### 1.2 Token Refresh
-- ⚠️ **Token expiration check** (`src/lib/auth-provider.tsx`)
-  - Current: Basic expiration checking
-  - Needed: Automatic token refresh before expiration
-  - Priority: HIGH (required for all authenticated ESI calls)
+- ✅ **Token expiration check** (`src/lib/auth-provider.tsx`)
+  - Status: Fully implemented with automatic refresh
+  - Implementation:
+    - Automatic token refresh 5 minutes before expiration
+    - Interval-based checking (every 60 seconds)
+    - Immediate refresh on mount if token expired
+    - Scope preservation during refresh
+    - Graceful logout on refresh failure
+    - Separate session validation for manual logins
+  - Priority: HIGH ✅
 
 ---
 
