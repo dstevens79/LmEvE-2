@@ -5068,10 +5068,6 @@ echo "See README.md for detailed setup instructions"
                       onCheckedChange={(checked) => updateNotificationEvent('manufacturing', checked)}
                     />
                   </div>
-                      checked={notificationSettings.events.manufacturing}
-                      onCheckedChange={(checked) => updateNotificationEvent('manufacturing', checked)}
-                    />
-                  </div>
                   
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
