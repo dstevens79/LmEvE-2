@@ -1,19 +1,17 @@
 import { DatabaseManager } from './database';
-  Member,
-  Manufac
-  Market
-  ManufacturingJob,
-  MiningOperation,
-  MarketPrice,
+import { 
+  Member, 
+  Asset, 
+  ManufacturingJob, 
+  MiningOperation, 
+  MarketPrice, 
   WalletTransaction,
-  database: boole
-  mock: boolean;
+  WalletDivision,
+  PlanetaryColony
+} from './types';
 
-  corporationId:
-  useCache?: bool
-
-
-  data: T[];
+export interface DataSource {
+  esi: boolean;
   database: boolean;
   cache: boolean;
   mock: boolean;
@@ -30,180 +28,162 @@ export interface FetchOptions {
 export interface FetchResult<T> {
   data: T[];
   source: DataSource;
+  timestamp: string;
+  error?: string;
+}
 
-      isFullyConf
- 
+interface SetupStatus {
+  hasEverBeenGreen: boolean;
+}
 
+class IntegratedDataService {
+  private dbManager: DatabaseManager | null = null;
+  private cache: Map<string, { data: any; expires: number }> = new Map();
+  private setupStatus: SetupStatus = { hasEverBeenGreen: false };
+  private readonly CACHE_TTL = 5 * 60 * 1000;
+
+  constructor() {
+    this.loadSetupStatus();
   }
-  private saveSetupStatus(): 
-      localStorage.setItem('l
-      console.error('Fail
+
+  setDatabaseManager(dbManager: DatabaseManager) {
+    this.dbManager = dbManager;
   }
-  updateSetupStatus(
- 
 
+  private loadSetupStatus() {
+    try {
+      const saved = localStorage.getItem('lmeve-setup-status');
+      if (saved) {
+        this.setupStatus = JSON.parse(saved);
+      }
+    } catch (error) {
+      console.error('Failed to load setup status:', error);
+    }
+  }
 
+  private saveSetupStatus() {
+    try {
+      localStorage.setItem('lmeve-setup-status', JSON.stringify(this.setupStatus));
+    } catch (error) {
+      console.error('Failed to save setup status:', error);
+    }
+  }
+
+  isFullyConfigured(): boolean {
+    return this.setupStatus.hasEverBeenGreen;
+  }
+
+  updateSetupStatus(hasEverBeenGreen: boolean) {
+    if (hasEverBeenGreen && !this.setupStatus.hasEverBeenGreen) {
       this.setupStatus.hasEverBeenGreen = true;
+      this.saveSetupStatus();
       this.clearCache();
-
+      console.log('✅ System is now fully configured - mock data disabled permanently');
+    }
   }
 
+  private shouldUseMockData(): boolean {
+    return !this.setupStatus.hasEverBeenGreen;
   }
-  private shouldUseMockData(): boolean 
-  }
-  s
 
-    });
+  private getCacheKey(type: string, options: FetchOptions): string {
+    return `${type}_${options.corporationId}`;
+  }
 
-    this.cache.clear();
-  }
-  private getCacheKey(type: string
-  }
-  private getFromCach
+  private getFromCache<T>(key: string): T | null {
+    const cached = this.cache.get(key);
     if (cached && cached.expires > Date.now()) {
-     
-
+      return cached.data as T;
     }
+    return null;
   }
-  private setCache<T>(key: stri
+
+  private setCache<T>(key: string, data: T) {
+    this.cache.set(key, {
       data,
+      expires: Date.now() + this.CACHE_TTL,
     });
   }
-  asyn
-   
 
+  async fetchMembers(options: FetchOptions): Promise<FetchResult<Member>> {
+    const cacheKey = this.getCacheKey('members', options);
+    const source: DataSource = { esi: false, database: false, cache: false, mock: false };
+
+    if (options.useCache !== false) {
+      const cached = this.getFromCache<Member[]>(cacheKey);
       if (cached) {
-         
-          timestamp: new Date().toISOString()
-      }
-
-     
-   
-
-          source.database = true;
-            data: result
-            timestamp: new
-        }
-        console.log('📭 No members in dat
-      
-
-      } catch (error) {
         return {
-          source,
-          error: error i
-     
-
-      console.log('📝 Using
-   
-
-          corporationId: options.
-          role: 'director',
-   
-
-          skillPoints: 50000000,
-        }
-   
-
-        timestamp: new Date().toISOString()
-    }
-    return {
-      source: { ...source, database:
-      e
-  }
-
-    const source: DataSource =
-    if (options.useCach
-      if (cached) {
-   
-
-      }
-
-   
-
-        if (result.success && result.data && resul
-          source.database = true;
-            data: result.data as Asset[],
-            timestamp: new Date().toISOString
-        }
-     
-          data: [
-          timestamp: new Date
-     
-        return {
-   
-
-      }
-
-      conso
-        {
-       
-          quantity: 1000000,
-   
-
-          category: 'mineral',
-          lastUpdate: new Date().toISOString()
-      ];
-
-        source,
-      };
-
-      data: [],
-      timestamp: new Da
-    };
-
-    const 
-
-     
-
+          data: cached,
           source: { ...source, cache: true },
+          timestamp: new Date().toISOString()
         };
+      }
     }
+
     if (this.dbManager && this.setupStatus.hasEverBeenGreen) {
+      try {
+        console.log('🗄️ Fetching members from database (Phase 2: database-first)...');
+        const result = await this.dbManager.query('SELECT * FROM corporation_members WHERE corporation_id = ?', [options.corporationId]);
         
-        
-          this.setCache(cacheKey, result.data as Manufactur
+        if (result.success && result.data && result.data.length > 0) {
+          this.setCache(cacheKey, result.data as Member[]);
+          source.database = true;
           return {
-            source
+            data: result.data as Member[],
+            source,
+            timestamp: new Date().toISOString()
           };
-        
-        return {
-          so
         }
         
+        console.log('📭 No members in database - empty result (data will be populated by sync process)');
+        return {
           data: [],
-          timest
+          source: { ...source, database: true },
+          timestamp: new Date().toISOString()
         };
+      } catch (error) {
+        console.error('❌ Database fetch failed:', error);
+        return {
+          data: [],
+          source,
+          timestamp: new Date().toISOString(),
+          error: error instanceof Error ? error.message : 'Database error'
+        };
+      }
     }
-    if (this.shouldUseMockData()) {
-      cons
-          id: '1',
-          blueprintName: 'Raven Blueprint',
-          produc
-          startDate
-          status:
-          facilityId: 60003760,
-          installerName: 'Sample Character Alpha',
-          
-       
-     
 
-          id: '2',
-          blueprintName: 'Tritanium Blueprint',
-          productTypeName: 'Tritanium
-         
-          status: 
+    if (this.shouldUseMockData()) {
+      console.log('📝 Using mock member data (system not yet configured)');
+      const mockMembers: Member[] = [
+        {
+          id: 90000001,
           characterId: 90000001,
           characterName: 'Sample Character Alpha',
           corporationId: options.corporationId,
           corporationName: 'Sample Corporation',
-          role: 'director',
-          joinDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+          roles: ['Director', 'Accountant'],
           lastLogin: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          status: 'active' as const,
+          isActive: true,
+          joinDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
           location: 'Jita IV - Moon 4',
-          shipType: 'Raven',
-          skillPoints: 50000000,
-          roles: ['Director', 'Accountant']
+          ship: 'Raven',
+          totalSkillPoints: 50000000,
+          accessLevel: 'director'
+        },
+        {
+          id: 90000002,
+          characterId: 90000002,
+          characterName: 'Sample Character Beta',
+          corporationId: options.corporationId,
+          corporationName: 'Sample Corporation',
+          roles: ['Member'],
+          lastLogin: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+          isActive: true,
+          joinDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+          location: 'Amarr VIII (Oris)',
+          ship: 'Retriever',
+          totalSkillPoints: 25000000,
+          accessLevel: 'member'
         }
       ];
       source.mock = true;
@@ -285,6 +265,20 @@ export interface FetchResult<T> {
           category: 'mineral',
           estimatedValue: 5500000,
           lastUpdate: new Date().toISOString()
+        },
+        {
+          id: '2',
+          typeId: 35,
+          typeName: 'Pyerite',
+          quantity: 500000,
+          location: 'Jita IV - Moon 4',
+          locationId: 60003760,
+          hangar: 'Hangar 1',
+          owner: 'Sample Corporation',
+          ownerId: options.corporationId,
+          category: 'mineral',
+          estimatedValue: 2500000,
+          lastUpdate: new Date().toISOString()
         }
       ];
       source.mock = true;
@@ -364,9 +358,9 @@ export interface FetchResult<T> {
           endDate: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
           status: 'active',
           facility: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
-      data: [],
+          facilityId: 60003760,
           installerId: 90000001,
-      error: 'No data source available'
+          installerName: 'Sample Character Alpha',
           cost: 250000000,
           productQuantity: 1,
           materialEfficiency: 10,
@@ -390,83 +384,230 @@ export interface FetchResult<T> {
           installerId: 90000001,
           installerName: 'Sample Character Alpha',
           cost: 5000000,
-
+          productQuantity: 100,
           materialEfficiency: 10,
-
+          timeEfficiency: 20,
           duration: 12 * 60 * 60,
-
+          materials: [],
           priority: 'high'
-
+        }
       ];
-
+      source.mock = true;
       return {
-
+        data: mockJobs,
         source,
         timestamp: new Date().toISOString()
       };
+    }
 
-
-
+    return {
       data: [],
       source: { ...source, database: true },
       timestamp: new Date().toISOString(),
       error: 'System not configured and database unavailable'
     };
+  }
 
-
-  async fetchWalletTransactions(options: FetchOptions & { divisionId?: number }): Promise<FetchResult<WalletTransaction>> {
-    const cacheKey = this.getCacheKey(`wallet_trans_${options.divisionId || 'all'}`, options);
-    const source: DataSource = { esi: false, database: false, cache: false };
+  async fetchPlanetaryColonies(options: FetchOptions): Promise<FetchResult<PlanetaryColony>> {
+    const cacheKey = this.getCacheKey('planetary', options);
+    const source: DataSource = { esi: false, database: false, cache: false, mock: false };
 
     if (options.useCache !== false) {
-      const cached = this.getFromCache<WalletTransaction[]>(cacheKey);
+      const cached = this.getFromCache<PlanetaryColony[]>(cacheKey);
       if (cached) {
         return {
-
+          data: cached,
           source: { ...source, cache: true },
           timestamp: new Date().toISOString()
         };
       }
     }
 
-    if (options.accessToken && !options.forceDB) {
-
-        console.log('🌐 Fetching wallet transactions from ESI...');
-        const division = options.divisionId || 1;
-        const esiTransactions = await eveApi.getCorporationWalletTransactions(
-
-          division,
-
-        );
-
-        const transactions: WalletTransaction[] = esiTransactions.map((tx, index) => ({
-          id: `esi_${tx.transaction_id}`,
-          date: tx.date,
-          divisionId: division,
-          amount: tx.unit_price * tx.quantity * (tx.is_buy ? -1 : 1),
-          balance: 0,
-          description: `${tx.is_buy ? 'Buy' : 'Sell'} ${tx.quantity}x items`,
-
-          secondPartyId: tx.client_id,
-
-        }));
-
-        this.setCache(cacheKey, transactions);
-        source.esi = true;
-
-
-          data: transactions,
-
-          timestamp: new Date().toISOString()
-
-      } catch (error) {
-        console.warn('⚠️ ESI fetch failed, falling back to database:', error);
-      }
-
-
-    if (this.dbManager && !options.forceESI) {
+    if (this.dbManager && this.setupStatus.hasEverBeenGreen) {
       try {
-        console.log('🗄️ Fetching wallet transactions from database...');
+        console.log('🗄️ Fetching planetary colonies from database (Phase 2: database-first)...');
+        const result = await this.dbManager.query('SELECT * FROM planetary_colonies WHERE corporation_id = ?', [options.corporationId]);
+        
+        if (result.success && result.data && result.data.length > 0) {
+          this.setCache(cacheKey, result.data as PlanetaryColony[]);
+          source.database = true;
+          return {
+            data: result.data as PlanetaryColony[],
+            source,
+            timestamp: new Date().toISOString()
+          };
+        }
+        
+        console.log('📭 No planetary colonies in database - empty result (data will be populated by sync process)');
+        return {
+          data: [],
+          source: { ...source, database: true },
+          timestamp: new Date().toISOString()
+        };
+      } catch (error) {
+        console.error('❌ Database fetch failed:', error);
+        return {
+          data: [],
+          source,
+          timestamp: new Date().toISOString(),
+          error: error instanceof Error ? error.message : 'Database error'
+        };
+      }
+    }
+
+    if (this.shouldUseMockData()) {
+      console.log('📝 Using mock planetary colony data (system not yet configured)');
+      const mockColonies: PlanetaryColony[] = [
+        {
+          id: '1',
+          planetId: 40161465,
+          planetName: 'Auga VII',
+          planetType: 'barren',
+          ownerId: 90000001,
+          ownerName: 'Sample Character Alpha',
+          upgradeLevel: 5,
+          numberOfPins: 15,
+          lastUpdate: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+          expiryTime: new Date(Date.now() + 18 * 60 * 60 * 1000).toISOString(),
+          productionStatus: 'active',
+          extractorStatus: 'running'
+        },
+        {
+          id: '2',
+          planetId: 40161466,
+          planetName: 'Auga VIII',
+          planetType: 'temperate',
+          ownerId: 90000002,
+          ownerName: 'Sample Character Beta',
+          upgradeLevel: 4,
+          numberOfPins: 12,
+          lastUpdate: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+          expiryTime: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+          productionStatus: 'active',
+          extractorStatus: 'running'
+        }
+      ];
+      source.mock = true;
+      return {
+        data: mockColonies,
+        source,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    return {
+      data: [],
+      source: { ...source, database: true },
+      timestamp: new Date().toISOString(),
+      error: 'System not configured and database unavailable'
+    };
+  }
+
+  async fetchMarketPrices(options: FetchOptions): Promise<FetchResult<MarketPrice>> {
+    const cacheKey = this.getCacheKey('market_prices', options);
+    const source: DataSource = { esi: false, database: false, cache: false, mock: false };
+
+    if (options.useCache !== false) {
+      const cached = this.getFromCache<MarketPrice[]>(cacheKey);
+      if (cached) {
+        return {
+          data: cached,
+          source: { ...source, cache: true },
+          timestamp: new Date().toISOString()
+        };
+      }
+    }
+
+    if (this.dbManager && this.setupStatus.hasEverBeenGreen) {
+      try {
+        console.log('🗄️ Fetching market prices from database (Phase 2: database-first)...');
+        const result = await this.dbManager.query('SELECT * FROM market_prices ORDER BY last_updated DESC LIMIT 1000', []);
+        
+        if (result.success && result.data && result.data.length > 0) {
+          this.setCache(cacheKey, result.data as MarketPrice[]);
+          source.database = true;
+          return {
+            data: result.data as MarketPrice[],
+            source,
+            timestamp: new Date().toISOString()
+          };
+        }
+        
+        console.log('📭 No market prices in database - empty result (data will be populated by sync process)');
+        return {
+          data: [],
+          source: { ...source, database: true },
+          timestamp: new Date().toISOString()
+        };
+      } catch (error) {
+        console.error('❌ Database fetch failed:', error);
+        return {
+          data: [],
+          source,
+          timestamp: new Date().toISOString(),
+          error: error instanceof Error ? error.message : 'Database error'
+        };
+      }
+    }
+
+    if (this.shouldUseMockData()) {
+      console.log('📝 Using mock market price data (system not yet configured)');
+      const mockPrices: MarketPrice[] = [
+        {
+          typeId: 34,
+          typeName: 'Tritanium',
+          buyPrice: 5.45,
+          sellPrice: 5.55,
+          averagePrice: 5.50,
+          volume: 1000000000,
+          orderCount: 1500,
+          lastUpdated: new Date().toISOString()
+        },
+        {
+          typeId: 35,
+          typeName: 'Pyerite',
+          buyPrice: 4.95,
+          sellPrice: 5.05,
+          averagePrice: 5.00,
+          volume: 500000000,
+          orderCount: 1200,
+          lastUpdated: new Date().toISOString()
+        }
+      ];
+      source.mock = true;
+      return {
+        data: mockPrices,
+        source,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    return {
+      data: [],
+      source: { ...source, database: true },
+      timestamp: new Date().toISOString(),
+      error: 'System not configured and database unavailable'
+    };
+  }
+
+  async fetchWalletTransactions(options: FetchOptions & { divisionId?: number }): Promise<FetchResult<WalletTransaction>> {
+    const cacheKey = this.getCacheKey(`wallet_trans_${options.divisionId || 'all'}`, options);
+    const source: DataSource = { esi: false, database: false, cache: false, mock: false };
+
+    if (options.useCache !== false) {
+      const cached = this.getFromCache<WalletTransaction[]>(cacheKey);
+      if (cached) {
+        return {
+          data: cached,
+          source: { ...source, cache: true },
+          timestamp: new Date().toISOString()
+        };
+      }
+    }
+
+    if (this.dbManager && this.setupStatus.hasEverBeenGreen) {
+      try {
+        console.log('🗄️ Fetching wallet transactions from database (Phase 2: database-first)...');
         const query = options.divisionId
           ? 'SELECT * FROM wallet_transactions WHERE corporation_id = ? AND division_id = ? ORDER BY date DESC LIMIT 1000'
           : 'SELECT * FROM wallet_transactions WHERE corporation_id = ? ORDER BY date DESC LIMIT 1000';
@@ -476,105 +617,163 @@ export interface FetchResult<T> {
         
         const result = await this.dbManager.query(query, params);
         
-
+        if (result.success && result.data && result.data.length > 0) {
+          this.setCache(cacheKey, result.data as WalletTransaction[]);
           source.database = true;
           return {
             data: result.data as WalletTransaction[],
-
+            source,
             timestamp: new Date().toISOString()
-
+          };
         }
+        
+        console.log('📭 No wallet transactions in database - empty result (data will be populated by sync process)');
+        return {
+          data: [],
+          source: { ...source, database: true },
+          timestamp: new Date().toISOString()
+        };
       } catch (error) {
-        console.warn('⚠️ Database fetch failed:', error);
+        console.error('❌ Database fetch failed:', error);
+        return {
+          data: [],
+          source,
+          timestamp: new Date().toISOString(),
+          error: error instanceof Error ? error.message : 'Database error'
+        };
+      }
+    }
 
+    if (this.shouldUseMockData()) {
+      console.log('📝 Using mock wallet transaction data (system not yet configured)');
+      const mockTransactions: WalletTransaction[] = [
+        {
+          id: '1',
+          date: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          divisionId: 1,
+          amount: 50000000,
+          balance: 1000000000,
+          description: 'Market sale',
+          firstPartyId: options.corporationId,
+          secondPartyId: 90000003
+        },
+        {
+          id: '2',
+          date: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+          divisionId: 1,
+          amount: -25000000,
+          balance: 950000000,
+          description: 'Market purchase',
+          firstPartyId: options.corporationId,
+          secondPartyId: 90000004
+        }
+      ];
+      source.mock = true;
+      return {
+        data: mockTransactions,
+        source,
+        timestamp: new Date().toISOString()
+      };
     }
 
     return {
-
-      source,
+      data: [],
+      source: { ...source, database: true },
       timestamp: new Date().toISOString(),
-      error: 'No data source available'
-
+      error: 'System not configured and database unavailable'
+    };
   }
 
   async fetchWalletBalance(options: FetchOptions): Promise<FetchResult<WalletDivision>> {
     const cacheKey = this.getCacheKey('wallet_balance', options);
-    const source: DataSource = { esi: false, database: false, cache: false };
+    const source: DataSource = { esi: false, database: false, cache: false, mock: false };
 
     if (options.useCache !== false) {
       const cached = this.getFromCache<WalletDivision[]>(cacheKey);
       if (cached) {
         return {
           data: cached,
-
+          source: { ...source, cache: true },
           timestamp: new Date().toISOString()
-
+        };
       }
+    }
 
-
-    if (options.accessToken && !options.forceDB) {
+    if (this.dbManager && this.setupStatus.hasEverBeenGreen) {
       try {
-        console.log('🌐 Fetching wallet balances from ESI...');
-        const wallets = await eveApi.getCorporationWallets(options.corporationId, options.accessToken);
-
-        const divisions: WalletDivision[] = wallets.map((wallet, index) => ({
-          divisionId: index + 1,
-          divisionName: `Wallet Division ${index + 1}`,
-
-        }));
-
-        this.setCache(cacheKey, divisions);
-        source.esi = true;
-
-
-          data: divisions,
-
-          timestamp: new Date().toISOString()
-
-      } catch (error) {
-        console.warn('⚠️ ESI fetch failed, falling back to database:', error);
-      }
-
-
-    if (this.dbManager && !options.forceESI) {
-      try {
-        console.log('🗄️ Fetching wallet balances from database...');
+        console.log('🗄️ Fetching wallet balances from database (Phase 2: database-first)...');
         const result = await this.dbManager.query(
           'SELECT * FROM wallet_divisions WHERE corporation_id = ?',
           [options.corporationId]
-
+        );
         
-        if (result.success && result.data) {
+        if (result.success && result.data && result.data.length > 0) {
+          this.setCache(cacheKey, result.data as WalletDivision[]);
           source.database = true;
           return {
             data: result.data as WalletDivision[],
             source,
             timestamp: new Date().toISOString()
-
+          };
         }
+        
+        console.log('📭 No wallet divisions in database - empty result (data will be populated by sync process)');
+        return {
+          data: [],
+          source: { ...source, database: true },
+          timestamp: new Date().toISOString()
+        };
+      } catch (error) {
+        console.error('❌ Database fetch failed:', error);
+        return {
+          data: [],
+          source,
+          timestamp: new Date().toISOString(),
+          error: error instanceof Error ? error.message : 'Database error'
+        };
+      }
+    }
 
-        console.warn('⚠️ Database fetch failed:', error);
-
+    if (this.shouldUseMockData()) {
+      console.log('📝 Using mock wallet balance data (system not yet configured)');
+      const mockDivisions: WalletDivision[] = [
+        {
+          divisionId: 1,
+          divisionName: 'Master Wallet',
+          balance: 1000000000
+        },
+        {
+          divisionId: 2,
+          divisionName: 'Manufacturing',
+          balance: 250000000
+        }
+      ];
+      source.mock = true;
+      return {
+        data: mockDivisions,
+        source,
+        timestamp: new Date().toISOString()
+      };
     }
 
     return {
-
-      source,
+      data: [],
+      source: { ...source, database: true },
       timestamp: new Date().toISOString(),
-      error: 'No data source available'
-
+      error: 'System not configured and database unavailable'
+    };
   }
 
   clearCache(type?: string) {
-
+    if (type) {
       const keysToDelete = Array.from(this.cache.keys()).filter(key => key.startsWith(type));
       keysToDelete.forEach(key => this.cache.delete(key));
       console.log(`🗑️ Cleared cache for ${type} (${keysToDelete.length} entries)`);
-
+    } else {
       this.cache.clear();
       console.log('🗑️ Cleared all cache');
     }
-
+  }
 }
 
 export const integratedDataService = new IntegratedDataService();
