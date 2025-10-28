@@ -709,7 +709,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                         {process.lastSync && (
-                        {process.lastSync && (
+                          <>
                             <span>•</span>
                             <span>Last: {formatLastSync(process.lastSync)}</span>
                           </>

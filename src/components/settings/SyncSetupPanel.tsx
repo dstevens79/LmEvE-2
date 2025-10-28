@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { 
   CheckCircle, 
   Warning, 
@@ -25,7 +26,10 @@ import {
   CurrencyDollar,
   Crosshair,
   Archive,
-  Activity
+  Activity,
+  FileText,
+  Globe,
+  UserCheck
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-provider';
@@ -83,6 +87,24 @@ const SYNC_PROCESSES: SyncProcessConfig[] = [
     enabled: false
   },
   {
+    id: 'item_pricing',
+    name: 'Market Item Costs',
+    description: 'Sync market pricing data for items from target station',
+    icon: TrendUp,
+    color: 'text-emerald-400',
+    defaultInterval: 120,
+    enabled: false
+  },
+  {
+    id: 'contracts',
+    name: 'Corporation Contracts',
+    description: 'Sync corporation contracts and buyback validation',
+    icon: FileText,
+    color: 'text-indigo-400',
+    defaultInterval: 10,
+    enabled: false
+  },
+  {
     id: 'wallet',
     name: 'Wallet Transactions',
     description: 'Sync wallet journal and transactions across divisions',
@@ -101,6 +123,15 @@ const SYNC_PROCESSES: SyncProcessConfig[] = [
     enabled: false
   },
   {
+    id: 'planetary',
+    name: 'Planetary Interaction',
+    description: 'Sync planetary colonies and extraction data',
+    icon: Globe,
+    color: 'text-teal-400',
+    defaultInterval: 180,
+    enabled: false
+  },
+  {
     id: 'container_logs',
     name: 'Container Logs',
     description: 'Sync container access logs for project tracking',
@@ -116,6 +147,15 @@ const SYNC_PROCESSES: SyncProcessConfig[] = [
     icon: Crosshair,
     color: 'text-red-400',
     defaultInterval: 60,
+    enabled: false
+  },
+  {
+    id: 'personal_esi',
+    name: 'Personal ESI Data',
+    description: 'Sync personal pilot data for registered ESI users',
+    icon: UserCheck,
+    color: 'text-pink-400',
+    defaultInterval: 30,
     enabled: false
   }
 ];
@@ -236,6 +276,31 @@ export function SyncSetupPanel() {
     } catch (error) {
       console.error('Failed to toggle process:', error);
       toast.error('Failed to toggle sync process');
+    }
+  };
+
+  const handleUpdateInterval = async (processId: string, intervalMinutes: number) => {
+    if (!scheduler) return;
+    
+    const config = processConfigs.get(processId);
+    if (!config) return;
+    
+    // Enforce minimum 2-minute interval
+    if (intervalMinutes < 2) {
+      toast.error('Minimum interval is 2 minutes');
+      return;
+    }
+    
+    try {
+      await scheduler.updateProcessInterval(processId, intervalMinutes);
+      
+      const updatedConfig = { ...config, intervalMinutes };
+      setProcessConfigs(new Map(processConfigs).set(processId, updatedConfig));
+      
+      toast.success('Updated sync interval');
+    } catch (error) {
+      console.error('Failed to update interval:', error);
+      toast.error('Failed to update sync interval');
     }
   };
 
@@ -421,7 +486,7 @@ export function SyncSetupPanel() {
             const hasSuccess = status.status === 'success' && !running;
 
             return (
-              <div key={process.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+              <div key={process.id} className="flex items-center justify-between py-3 border-b border-border/50 last:border-0">
                 <div className="flex items-center gap-3 flex-1">
                   {/* LED Status Indicator */}
                   <div className="flex items-center gap-2">
@@ -444,7 +509,7 @@ export function SyncSetupPanel() {
                     <IconComponent size={16} className={`${process.color} ${!config?.enabled ? 'opacity-50' : ''}`} />
                   </div>
                   
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-[140px]">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{process.name}</span>
                       {running && (
@@ -454,7 +519,38 @@ export function SyncSetupPanel() {
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {/* Interval Configuration */}
+                  <div className="flex items-center gap-1 min-w-[100px]">
+                    <Input
+                      type="number"
+                      min="2"
+                      value={config?.intervalMinutes || process.defaultInterval}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value);
+                        if (!isNaN(value)) {
+                          handleUpdateInterval(processId, value);
+                        }
+                      }}
+                      disabled={running}
+                      className="h-7 w-16 text-xs text-center px-1"
+                    />
+                    <span className="text-xs text-muted-foreground">min</span>
+                  </div>
+                  
+                  {/* Last run time */}
+                  {status.lastRunTime && (
+                    <div className="min-w-[120px] text-right">
+                      <span className="text-muted-foreground">Last: </span>
+                      <span>{formatDistanceToNow(status.lastRunTime, { addSuffix: true })}</span>
+                    </div>
+                  )}
+                  {!status.lastRunTime && (
+                    <div className="min-w-[120px] text-right">
+                      <span className="text-muted-foreground">Never run</span>
+                    </div>
+                  )}
+                  
                   {/* Time till next sync */}
                   {config?.enabled && nextRun && !running && (
                     <div className="flex items-center gap-1 min-w-[100px] justify-end">
@@ -469,14 +565,6 @@ export function SyncSetupPanel() {
                     <span className="text-xs text-accent min-w-[100px] text-right">Running now...</span>
                   )}
                   
-                  {/* Last run time */}
-                  {status.lastRunTime && (
-                    <div className="min-w-[120px] text-right">
-                      <span className="text-muted-foreground">Last: </span>
-                      <span>{formatDistanceToNow(status.lastRunTime, { addSuffix: true })}</span>
-                    </div>
-                  )}
-                  
                   {/* Quick Actions */}
                   <div className="flex items-center gap-1">
                     <Button
@@ -484,7 +572,7 @@ export function SyncSetupPanel() {
                       disabled={running || !config?.enabled}
                       variant="ghost"
                       size="sm"
-                      className="h-6 px-2 text-xs"
+                      className="h-7 px-2 text-xs"
                       title="Run now"
                     >
                       <Play size={12} />
