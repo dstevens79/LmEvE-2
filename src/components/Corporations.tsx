@@ -465,56 +465,52 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
           {registeredCorps.length > 0 ? (
             <div className="space-y-2">
               {registeredCorps.map((corp) => (
-                <div key={corp.corporationId} className="p-3 border border-border rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      {corp.corporationId && (
-                        <img 
-                          src={`https://images.evetech.net/corporations/${corp.corporationId}/logo?size=64`}
-                          alt={corp.corporationName}
-                          className="w-8 h-8 rounded border border-accent/30"
-                        />
-                      )}
-                      <div>
-                        <h5 className="font-medium text-sm">{corp.corporationName}</h5>
-                        <p className="text-xs text-muted-foreground">
-                          ID: {corp.corporationId} • Registered: {new Date(corp.registrationDate).toLocaleDateString()}
-                        </p>
-                      </div>
+                <div key={corp.corporationId} className="p-3 border border-border rounded-lg space-y-2">
+                  <div className="flex items-center gap-3">
+                    {corp.corporationId && (
+                      <img 
+                        src={`https://images.evetech.net/corporations/${corp.corporationId}/logo?size=64`}
+                        alt={corp.corporationName}
+                        className="w-10 h-10 rounded border border-accent/30 flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h5 className="font-medium text-sm truncate">{corp.corporationName}</h5>
+                      <p className="text-xs text-muted-foreground">
+                        ID: {corp.corporationId}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={corp.isActive ? "default" : "secondary"} className="text-xs h-5">
-                        {corp.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                      {canEditCorpScopes && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs"
-                            onClick={() => updateCorporation(corp.corporationId, { isActive: !corp.isActive })}
-                          >
-                            {corp.isActive ? 'Disable' : 'Enable'}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="h-7 w-7 p-0"
-                            onClick={() => {
-                              if (confirm(`Are you sure you want to remove ${corp.corporationName}?`)) {
-                                deleteCorporation(corp.corporationId);
-                                toast.success('Corporation removed');
-                              }
-                            }}
-                          >
-                            <X size={14} />
-                          </Button>
-                        </>
-                      )}
-                    </div>
+                    <Badge variant={corp.isActive ? "default" : "secondary"} className="text-xs h-6 flex-shrink-0">
+                      {corp.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                    {canEditCorpScopes && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs flex-shrink-0"
+                          onClick={() => updateCorporation(corp.corporationId, { isActive: !corp.isActive })}
+                        >
+                          {corp.isActive ? 'Disable' : 'Enable'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="h-8 w-8 p-0 flex-shrink-0"
+                          onClick={() => {
+                            if (confirm(`Are you sure you want to remove ${corp.corporationName}?`)) {
+                              deleteCorporation(corp.corporationId);
+                              toast.success('Corporation removed');
+                            }
+                          }}
+                        >
+                          <X size={14} />
+                        </Button>
+                      </>
+                    )}
                   </div>
                   
-                  <div className="mt-2 p-2 bg-muted/30 rounded text-xs space-y-1.5">
+                  <div className="p-2 bg-muted/30 rounded text-xs space-y-1.5">
                     <div>
                       <p className="font-medium mb-1">Scopes ({corp.registeredScopes.length}):</p>
                       <div className="flex flex-wrap gap-1">
