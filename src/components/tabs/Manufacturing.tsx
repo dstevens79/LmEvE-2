@@ -103,9 +103,9 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
     }
   };
 
-  // Initialize sample data if empty
+  // Initialize sample data if empty - includes test pilots and realistic industry jobs
   React.useEffect(() => {
-    // Sample members for task assignment
+    // Sample members/pilots for task assignment (cached locally for testing)
     if ((members || []).length === 0) {
       const sampleMembers: Member[] = [
         {
@@ -145,14 +145,34 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           joinedDate: '2023-03-22',
           totalSkillPoints: 45000000,
           securityStatus: 2.1
+        },
+        {
+          id: 3,
+          characterId: 987654321,
+          characterName: 'Engineer Chen',
+          name: 'Engineer Chen',
+          corporationId: 498125261,
+          corporationName: 'Test Alliance Please Ignore',
+          roles: ['Member'],
+          titles: ['Senior Manufacturer', 'Blueprint Researcher'],
+          title: 'Senior Manufacturer',
+          lastLogin: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+          location: 'Jita IV - Moon 4',
+          ship: 'Charon',
+          isActive: true,
+          accessLevel: 'member',
+          joinedDate: '2023-02-10',
+          totalSkillPoints: 72000000,
+          securityStatus: 3.5
         }
       ];
       
-      // Save sample members to KV storage
+      // Save sample members to KV storage (cached locally for testing)
       spark.kv.set('corp-members', sampleMembers);
     }
 
-    // Sample manufacturing tasks - simple structure
+    // Sample manufacturing tasks representing actual industry jobs from ESI
+    // These would normally be populated from Data Sync -> manufacturing endpoint
     if ((manufacturingTasks || []).length === 0) {
       const sampleTasks: ManufacturingTask[] = [
         {
@@ -169,7 +189,7 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           estimatedDuration: 18000,
           createdDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
           corporationId: 498125261,
-          stationId: 1,
+          stationId: 60003760,
           stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
           materials: [
             { typeId: 34, typeName: 'Tritanium', quantity: 250000, totalValue: 1250000, category: 'Mineral' },
@@ -194,7 +214,7 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           startedDate: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
           createdDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
           corporationId: 498125261,
-          stationId: 3,
+          stationId: 60011866,
           stationName: 'Dodixie IX - Moon 20 - Federation Navy Assembly Plant',
           materials: [
             { typeId: 34, typeName: 'Tritanium', quantity: 450000, totalValue: 2250000, category: 'Mineral' },
@@ -210,16 +230,15 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
             typeName: 'Vexor',
             quantity: 2
           },
-          assignedTo: '456789123',
-          assignedToName: 'Pilot Johnson', 
-          status: 'completed',
+          assignedTo: '987654321',
+          assignedToName: 'Engineer Chen', 
+          status: 'in_progress',
           payModifier: 'specialDelivery',
           estimatedDuration: 10800,
-          completedDate: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-          startedDate: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
+          startedDate: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
           createdDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
           corporationId: 498125261,
-          stationId: 2,
+          stationId: 60008494,
           stationName: 'Amarr VIII (Oris) - Emperor Family Academy',
           materials: [
             { typeId: 34, typeName: 'Tritanium', quantity: 320000, totalValue: 1600000, category: 'Mineral' },
@@ -242,7 +261,7 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           estimatedDuration: 14400,
           createdDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
           corporationId: 498125261,
-          stationId: 1,
+          stationId: 60003760,
           stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
           materials: [
             { typeId: 34, typeName: 'Tritanium', quantity: 580000, totalValue: 2900000, category: 'Mineral' },
@@ -250,6 +269,32 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
             { typeId: 36, typeName: 'Mexallon', quantity: 95000, totalValue: 950000, category: 'Mineral' },
             { typeId: 38, typeName: 'Nocxium', quantity: 18000, totalValue: 360000, category: 'Mineral' },
             { typeId: 16272, typeName: 'Capital Construction Parts', quantity: 150, totalValue: 7500000, category: 'Component' }
+          ]
+        },
+        {
+          id: 'task-5',
+          targetItem: {
+            typeId: 11567,
+            typeName: 'Raven',
+            quantity: 3
+          },
+          assignedTo: null,
+          assignedToName: 'Unassigned',
+          status: 'unassigned',
+          payModifier: null,
+          estimatedDuration: 28800,
+          createdDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+          corporationId: 498125261,
+          stationId: 60003760,
+          stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+          materials: [
+            { typeId: 34, typeName: 'Tritanium', quantity: 1200000, totalValue: 6000000, category: 'Mineral' },
+            { typeId: 35, typeName: 'Pyerite', quantity: 580000, totalValue: 3480000, category: 'Mineral' },
+            { typeId: 36, typeName: 'Mexallon', quantity: 220000, totalValue: 2200000, category: 'Mineral' },
+            { typeId: 37, typeName: 'Isogen', quantity: 95000, totalValue: 950000, category: 'Mineral' },
+            { typeId: 38, typeName: 'Nocxium', quantity: 42000, totalValue: 840000, category: 'Mineral' },
+            { typeId: 39, typeName: 'Zydrine', quantity: 18000, totalValue: 360000, category: 'Mineral' },
+            { typeId: 40, typeName: 'Megacyte', quantity: 7500, totalValue: 150000, category: 'Mineral' }
           ]
         }
       ];

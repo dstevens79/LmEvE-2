@@ -26,7 +26,7 @@ import {
   Circle
 } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/auth-provider';
-import { TabComponentProps } from '@/lib/types';
+import { TabComponentProps, ManufacturingTask } from '@/lib/types';
 import { useKV } from '@github/spark/hooks';
 import { ItemInfoPopup } from '@/components/popups/ItemInfoPopup';
 import { BlueprintInfoPopup } from '@/components/popups/BlueprintInfoPopup';
@@ -171,6 +171,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   const [hangarItems, setHangarItems] = useState<AssetItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<AssetItem | null>(null);
   const [selectedBlueprint, setSelectedBlueprint] = useState<any | null>(null);
+  const [manufacturingTasks] = useKV<ManufacturingTask[]>('manufacturing-tasks', []);
 
   const filterOptions: FilterOption[] = [
     { 
@@ -295,6 +296,54 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   };
 
   const stats = getTotalStats();
+
+  // Calculate supply needs from manufacturing tasks for the current station
+  const getSupplyNeeds = (): SupplyNeed[] => {
+    const needs: Map<number, SupplyNeed> = new Map();
+    
+    // Filter tasks by current station and active status
+    const stationTasks = (manufacturingTasks || []).filter(task => 
+      task.stationId === selectedStation && 
+      (task.status === 'assigned' || task.status === 'in_progress')
+    );
+
+    // Aggregate materials from all active tasks at this station
+    stationTasks.forEach(task => {
+      if (!task.materials) return;
+      
+      task.materials.forEach(material => {
+        const existing = needs.get(material.typeId);
+        if (existing) {
+          existing.needed += material.quantity;
+          existing.shortage = existing.needed - existing.available;
+        } else {
+          // Simulate available quantity (in real implementation, check against assets)
+          const available = Math.floor(material.quantity * Math.random() * 0.8); // 0-80% available
+          const shortage = Math.max(0, material.quantity - available);
+          
+          needs.set(material.typeId, {
+            typeId: material.typeId,
+            typeName: material.typeName,
+            needed: material.quantity,
+            available,
+            shortage,
+            source: `${task.targetItem.typeName} (${task.targetItem.quantity}x)`,
+            priority: shortage > material.quantity * 0.5 ? 'high' : shortage > 0 ? 'medium' : 'low'
+          });
+        }
+      });
+    });
+
+    return Array.from(needs.values()).sort((a, b) => {
+      // Sort by priority then shortage
+      const priorityOrder = { high: 0, medium: 1, low: 2 };
+      const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+      if (priorityDiff !== 0) return priorityDiff;
+      return b.shortage - a.shortage;
+    });
+  };
+
+  const supplyNeeds = getSupplyNeeds();
 
   if (!user && onLoginClick) {
     return (
@@ -618,7 +667,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
               </div>
             )}
             <div className="max-h-80 overflow-y-auto">
-              {MOCK_SUPPLY_NEEDS.length === 0 ? (
+              {supplyNeeds.length === 0 ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="text-center space-y-2">
                     <Stack size={32} className="mx-auto text-muted-foreground" />
@@ -629,7 +678,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                 </div>
               ) : (
                 <div className="divide-y divide-border/50">
-                  {MOCK_SUPPLY_NEEDS.map((supply) => {
+                  {supplyNeeds.map((supply) => {
                     if (isMobileView) {
                       return (
                         <div key={supply.typeId} className="px-4 py-3 hover:bg-muted/30">

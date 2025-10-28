@@ -2,10 +2,11 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Factory, Users, Play, Clock, CheckCircle, Building } from '@phosphor-icons/react';
+import { Factory, Users, UserMinus, Clock, CheckCircle, Building } from '@phosphor-icons/react';
 import { ManufacturingTask, User, Member } from '@/lib/types';
 import { ItemInfoPopup } from '@/components/popups/ItemInfoPopup';
 import { PersonInfoPopup } from '@/components/popups/PersonInfoPopup';
+import { toast } from 'sonner';
 
 interface JobActivityViewProps {
   tasks: ManufacturingTask[];
@@ -46,17 +47,16 @@ export function JobActivityView({
       )
     : tasks;
 
-  const handleStartTask = (taskId: string) => {
+  const handleUnassignTask = (taskId: string, taskName: string) => {
     onUpdateTask(taskId, { 
-      status: 'in_progress', 
-      startedDate: new Date().toISOString() 
+      assignedTo: null,
+      assignedToName: 'Unassigned',
+      status: 'unassigned',
+      assignedDate: undefined,
+      startedDate: undefined
     });
-  };
-
-  const handleCompleteTask = (taskId: string) => {
-    onUpdateTask(taskId, { 
-      status: 'completed', 
-      completedDate: new Date().toISOString() 
+    toast.success(`Unassigned ${taskName}`, {
+      description: 'Job moved to unassigned jobs'
     });
   };
 
@@ -112,7 +112,7 @@ export function JobActivityView({
         <div>
           <h3 className="text-lg font-semibold">Manufacturing Job Activity</h3>
           <p className="text-sm text-muted-foreground">
-            Monitor ongoing production activities and assigned tasks
+            Monitor ongoing production - progress tracked via Data Sync
           </p>
         </div>
         
@@ -276,26 +276,16 @@ export function JobActivityView({
 
               {/* Actions */}
               <div className="col-span-1 flex items-center">
-                {task.status === 'assigned' && (
+                {(task.status === 'assigned' || task.status === 'in_progress') && task.assignedTo && (
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => handleStartTask(task.id)}
-                    className="text-green-400 hover:text-green-300 h-8 w-8 p-0"
-                    title="Start Task"
+                    onClick={() => handleUnassignTask(task.id, task.targetItem.typeName)}
+                    className="text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 h-8 px-2 text-xs"
+                    title="Unassign and move to unassigned jobs"
                   >
-                    <Play size={14} />
-                  </Button>
-                )}
-                {task.status === 'in_progress' && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleCompleteTask(task.id)}
-                    className="text-blue-400 hover:text-blue-300 h-8 w-8 p-0"
-                    title="Mark Complete"
-                  >
-                    <CheckCircle size={14} />
+                    <UserMinus size={14} className="mr-1" />
+                    Unassign
                   </Button>
                 )}
                 {task.status === 'completed' && (
@@ -357,24 +347,14 @@ export function JobActivityView({
                 </div>
                 
                 <div className="flex gap-2">
-                  {task.status === 'assigned' && (
+                  {(task.status === 'assigned' || task.status === 'in_progress') && task.assignedTo && (
                     <Button
                       size="sm"
-                      onClick={() => handleStartTask(task.id)}
-                      className="bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                      onClick={() => handleUnassignTask(task.id, task.targetItem.typeName)}
+                      className="bg-orange-500/20 text-orange-400 hover:bg-orange-500/30"
                     >
-                      <Play size={14} className="mr-1" />
-                      Start
-                    </Button>
-                  )}
-                  {task.status === 'in_progress' && (
-                    <Button
-                      size="sm"
-                      onClick={() => handleCompleteTask(task.id)}
-                      className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                    >
-                      <CheckCircle size={14} className="mr-1" />
-                      Complete
+                      <UserMinus size={14} className="mr-1" />
+                      Unassign
                     </Button>
                   )}
                 </div>

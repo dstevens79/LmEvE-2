@@ -35,7 +35,7 @@ export const DEFAULT_ESI_ROUTES: ESIRouteConfig = {
     path: '/corporations/{corporation_id}/industry/jobs/',
     versions: ['v1'],
     currentVersion: 'v1',
-    description: 'Industry jobs (manufacturing, research, reactions)',
+    description: 'Industry jobs (manufacturing, research, reactions) - tracks job start/progress/completion automatically',
     scopes: ['esi-industry.read_corporation_jobs.v1']
   },
   mining: {
