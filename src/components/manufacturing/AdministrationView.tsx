@@ -62,124 +62,86 @@ export function AdministrationView({
 
   return (
     <div className="space-y-6">
-      {/* Manufacturing Overview */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Factory size={20} />
-            Manufacturing Overview
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Quick Stats */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Users size={16} className="text-muted-foreground" />
-                  <span className="text-sm font-medium">Active Members</span>
-                </div>
-                <span className="text-lg font-bold text-green-400">
-                  {members.filter(m => m.isActive).length}
-                </span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Star size={16} className="text-muted-foreground" />
-                  <span className="text-sm font-medium">Directors</span>
-                </div>
-                <span className="text-lg font-bold text-purple-400">
-                  {members.filter(m => m.accessLevel === 'director').length}
-                </span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Clock size={16} className="text-muted-foreground" />
-                  <span className="text-sm font-medium">Recent Activity</span>
-                </div>
-                <span className="text-lg font-bold text-blue-400">
-                  {members.filter(m => 
-                    new Date(m.lastLogin).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000
-                  ).length}
-                </span>
-              </div>
-            </div>
-            
-            {/* Task Assignment */}
-            <div className="space-y-4">
-              <h4 className="font-semibold text-foreground">Quick Actions</h4>
-              <Button onClick={onAssignTask} className="w-full">
-                <Plus size={16} className="mr-2" />
-                Assign New Task
-              </Button>
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">Recent Activity:</p>
-                <div className="text-xs space-y-1">
-                  <div className="flex justify-between">
-                    <span>Tasks This Week:</span>
-                    <span className="text-accent">8 completed</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Average Time:</span>
-                    <span className="text-accent">2.3h per task</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {/* Production Summary */}
-            <div className="space-y-4">
-              <h4 className="font-semibold text-foreground">Production Summary</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">This Month:</span>
-                  <span className="text-foreground font-medium">127 items</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Total Value:</span>
-                  <span className="text-green-400 font-medium">2.4B ISK</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Efficiency:</span>
-                  <span className="text-blue-400 font-medium">94.2%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Pay Multipliers Settings */}
-      <Card className="bg-card border-border">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="font-semibold flex items-center gap-2">
-              <Star size={18} />
-              Pay Multipliers
+      {/* Top Summary Row - 4 Cards Side by Side */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Production Summary Card */}
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
+            <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+              <Factory size={16} />
+              Production Summary
             </h4>
-            <div className="flex gap-2">
-              {!editingPayModifiers ? (
-                <Button variant="outline" size="sm" onClick={() => setEditingPayModifiers(true)}>
-                  Edit Values
-                </Button>
-              ) : (
-                <>
-                  <Button variant="outline" size="sm" onClick={cancelEditModifiers}>
-                    Cancel
-                  </Button>
-                  <Button size="sm" onClick={handleSaveModifiers}>
-                    <Save size={14} className="mr-1" />
-                    Save
-                  </Button>
-                </>
-              )}
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">This Month:</span>
+                <span className="text-foreground font-medium">127 items</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total Value:</span>
+                <span className="text-green-400 font-medium">2.4B ISK</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Efficiency:</span>
+                <span className="text-blue-400 font-medium">94.2%</span>
+              </div>
             </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          </CardContent>
+        </Card>
+
+        {/* Quick Actions Card */}
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
+            <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+              <Plus size={16} />
+              Quick Actions
+            </h4>
+            <Button onClick={onAssignTask} className="w-full mb-3">
+              <Plus size={16} className="mr-2" />
+              Assign New Task
+            </Button>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Tasks This Week:</span>
+                <span className="text-accent font-medium">8 completed</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Average Time:</span>
+                <span className="text-accent font-medium">2.3h per task</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Pay Multipliers Card - Vertical Display */}
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold flex items-center gap-2 text-sm">
+                <Star size={16} />
+                Pay Multipliers
+              </h4>
+              <div className="flex gap-1">
+                {!editingPayModifiers ? (
+                  <Button variant="outline" size="sm" onClick={() => setEditingPayModifiers(true)} className="h-7 text-xs px-2">
+                    Edit
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" size="sm" onClick={cancelEditModifiers} className="h-7 text-xs px-2">
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleSaveModifiers} className="h-7 text-xs px-2">
+                      <Save size={12} className="mr-1" />
+                      Save
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+            
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">RUSH</span>
+                <span className="text-xs text-muted-foreground">RUSH</span>
                 {editingPayModifiers ? (
                   <Input
                     type="number"
@@ -189,22 +151,17 @@ export function AdministrationView({
                       ...prev,
                       rush: parseFloat(e.target.value) || 1
                     }))}
-                    className="w-20 h-8 text-xs text-center bg-input border-border text-foreground"
+                    className="w-16 h-7 text-xs text-center bg-input border-border text-foreground"
                   />
                 ) : (
-                  <Badge variant="outline" className="text-orange-400 border-orange-500/50 bg-orange-500/10">
+                  <Badge variant="outline" className="text-xs text-orange-400 border-orange-500/50 bg-orange-500/10 h-6">
                     +{Math.round((tempModifiers.rush - 1) * 100)}%
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                For urgent priority manufacturing tasks
-              </p>
-            </div>
-            
-            <div className="space-y-2">
+              
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Special Delivery</span>
+                <span className="text-xs text-muted-foreground">Special Delivery</span>
                 {editingPayModifiers ? (
                   <Input
                     type="number"
@@ -214,22 +171,17 @@ export function AdministrationView({
                       ...prev,
                       specialDelivery: parseFloat(e.target.value) || 1
                     }))}
-                    className="w-20 h-8 text-xs text-center bg-input border-border text-foreground"
+                    className="w-16 h-7 text-xs text-center bg-input border-border text-foreground"
                   />
                 ) : (
-                  <Badge variant="outline" className="text-blue-400 border-blue-500/50 bg-blue-500/10">
+                  <Badge variant="outline" className="text-xs text-blue-400 border-blue-500/50 bg-blue-500/10 h-6">
                     +{Math.round((tempModifiers.specialDelivery - 1) * 100)}%
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                For special delivery requirements
-              </p>
-            </div>
-            
-            <div className="space-y-2">
+              
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Excess Work</span>
+                <span className="text-xs text-muted-foreground">Excess Work</span>
                 {editingPayModifiers ? (
                   <Input
                     type="number"
@@ -239,54 +191,49 @@ export function AdministrationView({
                       ...prev,
                       excessWork: parseFloat(e.target.value) || 1
                     }))}
-                    className="w-20 h-8 text-xs text-center bg-input border-border text-foreground"
+                    className="w-16 h-7 text-xs text-center bg-input border-border text-foreground"
                   />
                 ) : (
-                  <Badge variant="outline" className="text-green-400 border-green-500/50 bg-green-500/10">
+                  <Badge variant="outline" className="text-xs text-green-400 border-green-500/50 bg-green-500/10 h-6">
                     +{Math.round((tempModifiers.excessWork - 1) * 100)}%
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                For high volume or overtime work
-              </p>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Pay Rates Per Hour */}
-      <Card className="bg-card border-border">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="font-semibold flex items-center gap-2">
-              <TrendUp size={18} />
-              Pay Rates Per Hour by Job Type
-            </h4>
-            <div className="flex gap-2">
-              {!editingPayRates ? (
-                <Button variant="outline" size="sm" onClick={() => setEditingPayRates(true)}>
-                  Edit Rates
-                </Button>
-              ) : (
-                <>
-                  <Button variant="outline" size="sm" onClick={cancelEditRates}>
-                    Cancel
+        {/* Pay Rates Per Hour Card - Vertical Display */}
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold flex items-center gap-2 text-sm">
+                <TrendUp size={16} />
+                Pay Rates/Hour
+              </h4>
+              <div className="flex gap-1">
+                {!editingPayRates ? (
+                  <Button variant="outline" size="sm" onClick={() => setEditingPayRates(true)} className="h-7 text-xs px-2">
+                    Edit
                   </Button>
-                  <Button size="sm" onClick={handleSaveRates}>
-                    <Save size={14} className="mr-1" />
-                    Save
-                  </Button>
-                </>
-              )}
+                ) : (
+                  <>
+                    <Button variant="outline" size="sm" onClick={cancelEditRates} className="h-7 text-xs px-2">
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={handleSaveRates} className="h-7 text-xs px-2">
+                      <Save size={12} className="mr-1" />
+                      Save
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {Object.entries(tempRates).map(([jobType, rate]) => (
-              <div key={jobType} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground capitalize">
+            
+            <div className="space-y-2">
+              {Object.entries(tempRates).map(([jobType, rate]) => (
+                <div key={jobType} className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground capitalize">
                     {jobType.replace(/([A-Z])/g, ' $1').trim()}
                   </span>
                   {editingPayRates ? (
@@ -298,21 +245,21 @@ export function AdministrationView({
                         ...prev,
                         [jobType]: parseInt(e.target.value) || 0
                       }))}
-                      className="w-24 h-8 text-xs text-center bg-input border-border text-foreground"
+                      className="w-20 h-7 text-xs text-center bg-input border-border text-foreground"
                     />
                   ) : (
-                    <Badge variant="outline" className="text-accent border-accent/50 bg-accent/10">
+                    <Badge variant="outline" className="text-xs text-accent border-accent/50 bg-accent/10 h-6">
                       {formatISK(rate)}/h
                     </Badge>
                   )}
                 </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* Active Members */}
+      {/* Available Members */}
       <Card className="bg-card border-border">
         <CardContent className="p-6">
           <h4 className="font-semibold mb-4 flex items-center gap-2">
@@ -378,53 +325,6 @@ export function AdministrationView({
           )}
         </CardContent>
       </Card>
-
-      {/* Quick Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-card border-border">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Active Members</p>
-                <p className="text-xl font-bold text-green-400">
-                  {members.filter(m => m.isActive).length}
-                </p>
-              </div>
-              <Users size={20} className="text-muted-foreground" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Directors</p>
-                <p className="text-xl font-bold text-purple-400">
-                  {members.filter(m => m.accessLevel === 'director').length}
-                </p>
-              </div>
-              <Star size={20} className="text-muted-foreground" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Recent Activity</p>
-                <p className="text-xl font-bold text-blue-400">
-                  {members.filter(m => 
-                    new Date(m.lastLogin).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000
-                  ).length}
-                </p>
-              </div>
-              <Clock size={20} className="text-muted-foreground" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }
