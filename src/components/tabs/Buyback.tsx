@@ -1019,28 +1019,6 @@ export function Buyback({ isMobileView }: BuybackProps) {
         </TabsContent>
 
         <TabsContent value="contracts" className="mt-6 space-y-6">
-          {isAdmin && (
-            <Card className="border-accent/50">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold mb-1">Sync Corporation Contracts</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Check ESI for matching contracts with validation keys
-                    </p>
-                  </div>
-                  <Button
-                    onClick={handleSyncContracts}
-                    className="bg-accent hover:bg-accent/90 text-accent-foreground"
-                  >
-                    <ArrowsClockwise size={16} className="mr-2" />
-                    Sync Now
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           <Card>
             <CardHeader>
               <CardTitle>New Contracts</CardTitle>
