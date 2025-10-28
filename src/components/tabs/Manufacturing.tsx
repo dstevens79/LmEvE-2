@@ -127,6 +127,19 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
     }
   }, [user]);
 
+  // Map ESI activity IDs to task types
+  const getActivityType = (activityId?: number): 'manufacturing' | 'research' | 'invention' | 'copy' | 'reaction' => {
+    switch (activityId) {
+      case 1: return 'manufacturing';
+      case 3: return 'research';
+      case 4: return 'research';
+      case 5: return 'copy';
+      case 8: return 'invention';
+      case 9: return 'reaction';
+      default: return 'manufacturing';
+    }
+  };
+
   // Convert ManufacturingJob to ManufacturingTask for UI display
   const convertJobToTask = React.useCallback((job: ManufacturingJob): ManufacturingTask => {
     const installer = members.find(m => m.characterId === job.installerId);
@@ -172,19 +185,6 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
   const manufacturingTasks = React.useMemo(() => {
     return manufacturingJobs.map(job => convertJobToTask(job));
   }, [manufacturingJobs, convertJobToTask]);
-
-  // Map ESI activity IDs to task types
-  const getActivityType = (activityId?: number): 'manufacturing' | 'research' | 'invention' | 'copy' | 'reaction' => {
-    switch (activityId) {
-      case 1: return 'manufacturing';
-      case 3: return 'research';
-      case 4: return 'research';
-      case 5: return 'copy';
-      case 8: return 'invention';
-      case 9: return 'reaction';
-      default: return 'manufacturing';
-    }
-  };
 
   const eveDataHook = null; // Removed eve data integration for simplification
 
