@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LoginPrompt } from '@/components/LoginPrompt';
 import { useAuth } from '@/lib/auth-provider';
 import { TabComponentProps } from '@/lib/types';
-import { useIntegratedData } from '@/hooks/useIntegratedData';
+import { useLMeveData } from '@/lib/LMeveDataContext';
 import { DataSourceIndicator } from '@/components/DataSourceIndicator';
 import { 
   TrendUp,
@@ -76,9 +76,11 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
   const { 
     walletDivisions, 
     walletTransactions, 
-    fetchWalletDivisions, 
-    fetchWalletTransactions 
-  } = useIntegratedData();
+    refreshWallet,
+    refreshWalletDivisions,
+    loading,
+    dataSource
+  } = useLMeveData();
   
   const [selectedDivision, setSelectedDivision] = useState<number>(0);
   const [selectedPeriod, setSelectedPeriod] = useState('12m');
@@ -86,11 +88,13 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
   const [activeView, setActiveView] = useState<'balance' | 'profit' | 'transactions'>('balance');
 
   useEffect(() => {
-    if (user) {
-      fetchWalletDivisions();
-      fetchWalletTransactions();
+    if (user && walletDivisions.length === 0 && !loading.wallet) {
+      refreshWalletDivisions();
     }
-  }, [user, fetchWalletDivisions, fetchWalletTransactions]);
+    if (user && walletTransactions.length === 0 && !loading.wallet) {
+      refreshWallet();
+    }
+  }, [user]);
 
   // Mock data for demonstration
   const mockDivisions: WalletDivision[] = [
@@ -266,23 +270,21 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
         </div>
         <div className="flex items-center gap-3">
           <DataSourceIndicator 
-            source={walletDivisions.source}
-            timestamp={walletDivisions.timestamp}
-            error={walletDivisions.error}
+            source={dataSource.wallet}
           />
           <Button
             variant="outline"
             size="sm"
             onClick={() => {
-              fetchWalletDivisions({ useCache: false });
-              fetchWalletTransactions(undefined, { useCache: false });
+              refreshWalletDivisions();
+              refreshWallet();
               toast.success('Refreshing wallet data...');
             }}
-            disabled={walletDivisions.loading || walletTransactions.loading}
+            disabled={loading.wallet}
           >
             <ArrowClockwise 
               size={16} 
-              className={walletDivisions.loading || walletTransactions.loading ? 'animate-spin' : ''}
+              className={loading.wallet ? 'animate-spin' : ''}
             />
           </Button>
         </div>
