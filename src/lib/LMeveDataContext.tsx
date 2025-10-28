@@ -291,6 +291,9 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refreshMembers = async () => {
+    setLoading(prev => ({ ...prev, members: true }));
+    try {
       const data = await fetchMembersWithESI();
       setMembers(data);
     } finally {
