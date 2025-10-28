@@ -4740,6 +4740,170 @@ echo "See README.md for detailed setup instructions"
                       </div>
                     </div>
                   </div>
+
+                  {/* Market Value / Item Pricing Process */}
+                  <div className="p-4 border border-border rounded-lg">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <TrendUp size={16} className="text-emerald-400" />
+                        <div>
+                          <h5 className="font-medium">Market Value Configuration</h5>
+                          <p className="text-sm text-muted-foreground">Sync market pricing data for items from target station</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={(syncSettings.syncIntervals?.item_pricing || 0) > 0}
+                          onCheckedChange={(checked) => updateSyncInterval('item_pricing', checked ? 120 : 0)}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Interval</p>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min="0"
+                            max="1440"
+                            value={syncSettings.syncIntervals?.item_pricing || 120}
+                            onChange={(e) => updateSyncInterval('item_pricing', parseInt(e.target.value) || 120)}
+                            className="w-16 text-center text-sm h-8"
+                            disabled={(syncSettings.syncIntervals?.item_pricing || 0) === 0}
+                          />
+                          <span className="text-muted-foreground">min</span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Last Sync</p>
+                        <p className="font-medium">Never</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Records</p>
+                        <p className="font-medium">0 items</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Status</p>
+                        <Badge variant="secondary" className="text-xs">Idle</Badge>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                      <div><strong>Process:</strong> getMarketPrices.php</div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <strong>ESI Endpoint:</strong> 
+                        <Select 
+                          value={esiRoutes.getRoute('item_pricing')?.currentVersion || 'v1'}
+                          onValueChange={(version) => updateESIRouteVersion('item_pricing', version)}
+                        >
+                          <SelectTrigger className="w-16 h-6 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(esiRoutes.getRoute('item_pricing')?.versions || ['v1']).map(version => (
+                              <SelectItem key={version} value={version}>{version}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <span>/markets/{'{region_id}'}/orders/</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => validateESIRoute('item_pricing')}
+                          disabled={validatingRoutes}
+                        >
+                          {validatingRoutes ? '...' : 'Validate'}
+                        </Button>
+                        {esiRouteValidation.item_pricing !== undefined && (
+                          <Badge variant={esiRouteValidation.item_pricing ? "default" : "destructive"} className="text-xs h-5">
+                            {esiRouteValidation.item_pricing ? '✓' : '✗'}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Contracts Process */}
+                  <div className="p-4 border border-border rounded-lg">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <FileText size={16} className="text-indigo-400" />
+                        <div>
+                          <h5 className="font-medium">Corporation Contracts</h5>
+                          <p className="text-sm text-muted-foreground">Sync corporation contracts and buyback validation</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={(syncSettings.syncIntervals?.contracts || 0) > 0}
+                          onCheckedChange={(checked) => updateSyncInterval('contracts', checked ? 10 : 0)}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Interval</p>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min="0"
+                            max="1440"
+                            value={syncSettings.syncIntervals?.contracts || 10}
+                            onChange={(e) => updateSyncInterval('contracts', parseInt(e.target.value) || 10)}
+                            className="w-16 text-center text-sm h-8"
+                            disabled={(syncSettings.syncIntervals?.contracts || 0) === 0}
+                          />
+                          <span className="text-muted-foreground">min</span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Last Sync</p>
+                        <p className="font-medium">Never</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Records</p>
+                        <p className="font-medium">0 contracts</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Status</p>
+                        <Badge variant="secondary" className="text-xs">Idle</Badge>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                      <div><strong>Process:</strong> getContracts.php</div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <strong>ESI Endpoint:</strong> 
+                        <Select 
+                          value={esiRoutes.getRoute('contracts')?.currentVersion || 'v1'}
+                          onValueChange={(version) => updateESIRouteVersion('contracts', version)}
+                        >
+                          <SelectTrigger className="w-16 h-6 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(esiRoutes.getRoute('contracts')?.versions || ['v1']).map(version => (
+                              <SelectItem key={version} value={version}>{version}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <span>/corporations/{'{corporation_id}'}/contracts/</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => validateESIRoute('contracts')}
+                          disabled={validatingRoutes}
+                        >
+                          {validatingRoutes ? '...' : 'Validate'}
+                        </Button>
+                        {esiRouteValidation.contracts !== undefined && (
+                          <Badge variant={esiRouteValidation.contracts ? "default" : "destructive"} className="text-xs h-5">
+                            {esiRouteValidation.contracts ? '✓' : '✗'}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -4805,6 +4969,8 @@ echo "See README.md for detailed setup instructions"
                       updateSyncInterval('market', 10);
                       updateSyncInterval('killmails', 120);
                       updateSyncInterval('income', 30);
+                      updateSyncInterval('item_pricing', 120);
+                      updateSyncInterval('contracts', 10);
                       setSyncSettings(prev => ({
                         ...prev,
                         masterPoller: { ...prev.masterPoller, interval: 5, enabled: true }
@@ -4841,6 +5007,8 @@ echo "See README.md for detailed setup instructions"
                       updateSyncInterval('market', 0);
                       updateSyncInterval('killmails', 0);
                       updateSyncInterval('income', 0);
+                      updateSyncInterval('item_pricing', 0);
+                      updateSyncInterval('contracts', 0);
                       setSyncSettings(prev => ({
                         ...prev,
                         masterPoller: { ...prev.masterPoller, enabled: false }
