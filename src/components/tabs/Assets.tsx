@@ -68,6 +68,16 @@ interface FilterOption {
   active: boolean;
 }
 
+interface SupplyNeed {
+  typeId: number;
+  typeName: string;
+  needed: number;
+  available: number;
+  shortage: number;
+  source: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
 const MOCK_STATIONS: Station[] = [
   { id: 1, name: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant', system: 'Jita', region: 'The Forge', hasOffice: true },
   { id: 2, name: 'Amarr VIII (Oris) - Emperor Family Academy', system: 'Amarr', region: 'Domain', hasOffice: true },
@@ -87,6 +97,14 @@ const MOCK_HANGARS: CorpHangar[] = [
   { division: 5, name: 'Ships & Modules', itemCount: 156, totalVolume: 234567.8, totalValue: 1200000000 },
   { division: 6, name: 'Ammo & Drones', itemCount: 423, totalVolume: 12345.6, totalValue: 180000000 },
   { division: 7, name: 'Miscellaneous', itemCount: 91, totalVolume: 5678.9, totalValue: 95000000 },
+];
+
+const MOCK_SUPPLY_NEEDS: SupplyNeed[] = [
+  { typeId: 34, typeName: 'Tritanium', needed: 5000000, available: 3200000, shortage: 1800000, source: 'Manufacturing Job #1234', priority: 'high' },
+  { typeId: 35, typeName: 'Pyerite', needed: 2500000, available: 2100000, shortage: 400000, source: 'Manufacturing Job #1234', priority: 'medium' },
+  { typeId: 36, typeName: 'Mexallon', needed: 500000, available: 450000, shortage: 50000, source: 'Manufacturing Job #1235', priority: 'low' },
+  { typeId: 37, typeName: 'Isogen', needed: 150000, available: 0, shortage: 150000, source: 'Manufacturing Job #1235', priority: 'high' },
+  { typeId: 38, typeName: 'Nocxium', needed: 50000, available: 48000, shortage: 2000, source: 'Manufacturing Job #1236', priority: 'low' },
 ];
 
 const generateMockItems = (hangar: CorpHangar, count: number = 50): AssetItem[] => {
@@ -287,38 +305,28 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Package size={24} />
-          Corporation Hangars
-        </h2>
-        <p className="text-muted-foreground text-sm">
-          Browse and manage items across all corporation hangar divisions
-        </p>
-      </div>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Building size={18} />
-            Station Selection
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Package size={24} />
+            Corporation Hangars
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            Browse and manage items across all corporation hangar divisions
+          </p>
+        </div>
+        <div className="w-96">
           <Select 
             value={selectedStation.toString()} 
             onValueChange={(value) => setSelectedStation(parseInt(value))}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger>
               <SelectValue placeholder="Select a station">
                 {currentStation && (
-                  <div className="flex items-start gap-2">
-                    <Building size={16} className="mt-0.5 shrink-0" />
-                    <div className="text-left">
-                      <div className="font-medium text-sm">{currentStation.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {currentStation.system} • {currentStation.region}
-                      </div>
+                  <div className="flex items-center gap-2">
+                    <Building size={16} className="shrink-0" />
+                    <div className="text-left truncate">
+                      <div className="font-medium text-sm truncate">{currentStation.name}</div>
                     </div>
                   </div>
                 )}
@@ -340,8 +348,8 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
               ))}
             </SelectContent>
           </Select>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <div className={`grid ${isMobileView ? 'grid-cols-1 gap-4' : 'grid-cols-12 gap-4'}`}>
         {/* Left Side - Hangar List */}
@@ -374,19 +382,8 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                         <div className="font-medium text-sm mb-1 truncate">
                           {hangar.name}
                         </div>
-                        <div className="text-xs text-muted-foreground space-y-0.5">
-                          <div className="flex items-center justify-between">
-                            <span>Items:</span>
-                            <span className="font-medium">{hangar.itemCount}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span>Volume:</span>
-                            <span className="font-medium">{formatVolume(hangar.totalVolume)}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span>Value:</span>
-                            <span className="font-medium text-accent">{formatISK(hangar.totalValue)}</span>
-                          </div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {hangar.itemCount} items • {formatVolume(hangar.totalVolume)} • {formatISK(hangar.totalValue)}
                         </div>
                       </div>
                     </div>
@@ -518,11 +515,11 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                 <CardContent className="p-0">
                   <div className="border-t border-border">
                     {!isMobileView && (
-                      <div className="flex items-center gap-2 px-4 py-2 bg-muted/30 border-b border-border font-medium text-xs text-muted-foreground">
-                        <span className="flex-1">Item Name</span>
-                        <span className="w-32 text-right">Quantity</span>
-                        <span className="w-32 text-right">Volume</span>
-                        <span className="w-32 text-right">Est. Value</span>
+                      <div className="flex items-center gap-3 px-4 py-2 bg-muted/30 border-b border-border font-medium text-xs text-muted-foreground">
+                        <span className="w-64">Item Name</span>
+                        <span className="w-24 text-right">Quantity</span>
+                        <span className="w-24 text-right">Volume</span>
+                        <span className="w-24 text-right">Est. Value</span>
                         <span className="w-24">Category</span>
                       </div>
                     )}
@@ -574,18 +571,18 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                             }
 
                             return (
-                              <div key={item.itemId} className="flex items-center gap-2 px-4 py-2.5 hover:bg-muted/30 text-sm">
-                                <div className="flex items-center gap-2 flex-1">
+                              <div key={item.itemId} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 text-sm">
+                                <div className="flex items-center gap-2 w-64">
                                   <Cube size={16} className="text-muted-foreground flex-shrink-0" />
-                                  <span className="font-medium">{item.typeName}</span>
+                                  <span className="font-medium truncate">{item.typeName}</span>
                                 </div>
-                                <span className="w-32 text-right text-muted-foreground">
+                                <span className="w-24 text-right text-muted-foreground">
                                   {formatNumber(item.quantity)}
                                 </span>
-                                <span className="w-32 text-right text-muted-foreground">
+                                <span className="w-24 text-right text-muted-foreground">
                                   {formatVolume(item.volume)}
                                 </span>
-                                <span className="w-32 text-right text-accent">
+                                <span className="w-24 text-right text-accent">
                                   {formatISK(item.estimatedValue)}
                                 </span>
                                 <div className="w-24">
@@ -606,6 +603,114 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
           )}
         </div>
       </div>
+
+      {/* Supplies Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Stack size={18} />
+            Required Supplies for {currentStation.name}
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Materials needed for active manufacturing jobs at this station
+          </p>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="border-t border-border">
+            {!isMobileView && (
+              <div className="flex items-center gap-3 px-4 py-2 bg-muted/30 border-b border-border font-medium text-xs text-muted-foreground">
+                <span className="w-48">Material</span>
+                <span className="w-32 text-right">Needed</span>
+                <span className="w-32 text-right">Available</span>
+                <span className="w-32 text-right">Shortage</span>
+                <span className="flex-1">Source</span>
+                <span className="w-20">Priority</span>
+              </div>
+            )}
+            <div className="max-h-80 overflow-y-auto">
+              {MOCK_SUPPLY_NEEDS.length === 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center space-y-2">
+                    <Stack size={32} className="mx-auto text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      No supply requirements for active jobs at this station
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="divide-y divide-border/50">
+                  {MOCK_SUPPLY_NEEDS.map((supply) => {
+                    if (isMobileView) {
+                      return (
+                        <div key={supply.typeId} className="px-4 py-3 hover:bg-muted/30">
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-start gap-2 flex-1">
+                              <Stack size={16} className="mt-0.5 text-muted-foreground flex-shrink-0" />
+                              <div>
+                                <div className="font-medium text-sm">{supply.typeName}</div>
+                                <div className="text-xs text-muted-foreground mt-0.5">{supply.source}</div>
+                              </div>
+                            </div>
+                            <Badge 
+                              variant={supply.priority === 'high' ? 'destructive' : supply.priority === 'medium' ? 'default' : 'secondary'}
+                              className="text-xs ml-2"
+                            >
+                              {supply.priority}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div>
+                              <div className="text-muted-foreground">Needed</div>
+                              <div className="font-medium">{formatNumber(supply.needed)}</div>
+                            </div>
+                            <div>
+                              <div className="text-muted-foreground">Available</div>
+                              <div className="font-medium">{formatNumber(supply.available)}</div>
+                            </div>
+                            <div>
+                              <div className="text-muted-foreground">Shortage</div>
+                              <div className="font-medium text-destructive">{formatNumber(supply.shortage)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={supply.typeId} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 text-sm">
+                        <div className="flex items-center gap-2 w-48">
+                          <Stack size={16} className="text-muted-foreground flex-shrink-0" />
+                          <span className="font-medium truncate">{supply.typeName}</span>
+                        </div>
+                        <span className="w-32 text-right text-muted-foreground">
+                          {formatNumber(supply.needed)}
+                        </span>
+                        <span className="w-32 text-right text-muted-foreground">
+                          {formatNumber(supply.available)}
+                        </span>
+                        <span className="w-32 text-right text-destructive font-medium">
+                          {formatNumber(supply.shortage)}
+                        </span>
+                        <span className="flex-1 text-xs text-muted-foreground truncate">
+                          {supply.source}
+                        </span>
+                        <div className="w-20">
+                          <Badge 
+                            variant={supply.priority === 'high' ? 'destructive' : supply.priority === 'medium' ? 'default' : 'secondary'}
+                            className="text-xs"
+                          >
+                            {supply.priority}
+                          </Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
