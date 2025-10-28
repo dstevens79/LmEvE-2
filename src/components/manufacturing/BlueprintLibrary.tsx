@@ -48,11 +48,17 @@ export function BlueprintLibrary({ isMobileView, onAssignJob }: BlueprintLibrary
   );
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [stationFilter, setStationFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'original' | 'copy'>('all');
   const [selectedBlueprint, setSelectedBlueprint] = useState<Blueprint | null>(null);
   const [sortBy, setSortBy] = useState<'name' | 'me' | 'te' | 'runs'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  const stationsWithBlueprints = useMemo(() => {
+    const stations = new Set(blueprints.map(bp => bp.location));
+    return ['all', ...Array.from(stations).sort()];
+  }, [blueprints]);
 
   const categories = useMemo(() => {
     const cats = new Set(blueprints.map(bp => bp.category));
@@ -62,16 +68,20 @@ export function BlueprintLibrary({ isMobileView, onAssignJob }: BlueprintLibrary
   const filteredAndSortedBlueprints = useMemo(() => {
     let filtered = blueprints.filter(bp => {
       const matchesSearch = bp.typeName.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStation = stationFilter === 'all' || bp.location === stationFilter;
       const matchesCategory = categoryFilter === 'all' || bp.category === categoryFilter;
       const matchesType = typeFilter === 'all' || 
         (typeFilter === 'original' && bp.isOriginal) || 
         (typeFilter === 'copy' && bp.isCopy);
       
-      return matchesSearch && matchesCategory && matchesType;
+      return matchesSearch && matchesStation && matchesCategory && matchesType;
     });
 
     filtered.sort((a, b) => {
       let comparison = 0;
+      
+      comparison = a.location.localeCompare(b.location);
+      if (comparison !== 0) return comparison;
       
       switch (sortBy) {
         case 'name':
@@ -92,7 +102,7 @@ export function BlueprintLibrary({ isMobileView, onAssignJob }: BlueprintLibrary
     });
 
     return filtered;
-  }, [blueprints, searchTerm, categoryFilter, typeFilter, sortBy, sortOrder]);
+  }, [blueprints, searchTerm, stationFilter, categoryFilter, typeFilter, sortBy, sortOrder]);
 
   const stats = useMemo(() => {
     const total = blueprints.length;
@@ -138,7 +148,7 @@ export function BlueprintLibrary({ isMobileView, onAssignJob }: BlueprintLibrary
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {selectedBlueprint && (
         <BlueprintInfoPopup
           blueprint={selectedBlueprint}
@@ -148,16 +158,16 @@ export function BlueprintLibrary({ isMobileView, onAssignJob }: BlueprintLibrary
       )}
       
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <FileText size={24} className="text-accent" />
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <FileText size={20} className="text-accent" />
               Blueprint Library
             </CardTitle>
             <div className="flex items-center gap-2">
               {lastUpdate && (
                 <span className="text-xs text-muted-foreground">
-                  Updated: {new Date(lastUpdate).toLocaleTimeString()}
+                  {new Date(lastUpdate).toLocaleTimeString()}
                 </span>
               )}
               <Button
@@ -165,167 +175,186 @@ export function BlueprintLibrary({ isMobileView, onAssignJob }: BlueprintLibrary
                 variant="outline"
                 onClick={refreshBlueprints}
                 disabled={isLoading}
+                className="h-7 px-2"
               >
-                <ArrowClockwise size={16} className={isLoading ? 'animate-spin' : ''} />
-                {!isMobileView && <span className="ml-2">Refresh</span>}
+                <ArrowClockwise size={14} className={isLoading ? 'animate-spin' : ''} />
+                {!isMobileView && <span className="ml-1 text-xs">Refresh</span>}
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-card border border-border rounded-lg p-3">
-              <div className="text-2xl font-bold text-accent">{stats.total}</div>
-              <div className="text-xs text-muted-foreground">Total Blueprints</div>
+        <CardContent className="pt-0">
+          <div className="flex items-start gap-3 mb-3">
+            <div className="flex-1 space-y-2">
+              <div className="relative">
+                <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search blueprints..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8 h-8 text-sm"
+                />
+              </div>
+              
+              <Select value={stationFilter} onValueChange={setStationFilter}>
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="Station" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stationsWithBlueprints.map(station => (
+                    <SelectItem key={station} value={station}>
+                      {station === 'all' ? 'All Stations' : station}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <div className="flex gap-2">
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                  <SelectTrigger className="h-8 text-sm flex-1">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map(cat => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat === 'all' ? 'All Categories' : cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as 'all' | 'original' | 'copy')}>
+                  <SelectTrigger className="h-8 text-sm flex-1">
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="original">Originals</SelectItem>
+                    <SelectItem value="copy">Copies</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="bg-card border border-border rounded-lg p-3">
-              <div className="text-2xl font-bold text-blue-400">{stats.originals}</div>
-              <div className="text-xs text-muted-foreground">Originals</div>
-            </div>
-            <div className="bg-card border border-border rounded-lg p-3">
-              <div className="text-2xl font-bold text-purple-400">{stats.copies}</div>
-              <div className="text-xs text-muted-foreground">Copies</div>
-            </div>
-            <div className="bg-card border border-border rounded-lg p-3">
-              <div className="text-2xl font-bold text-green-400">{stats.perfect}</div>
-              <div className="text-xs text-muted-foreground">Perfect (10/20)</div>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-            <div className="relative md:col-span-2">
-              <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search blueprints..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
+            <div className="bg-card border border-border rounded-lg p-2.5 space-y-1.5 min-w-[140px]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">Total</span>
+                <span className="text-lg font-bold text-accent">{stats.total}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">Originals</span>
+                <span className="text-sm font-semibold text-blue-400">{stats.originals}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">Copies</span>
+                <span className="text-sm font-semibold text-purple-400">{stats.copies}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">Perfect</span>
+                <span className="text-sm font-semibold text-green-400">{stats.perfect}</span>
+              </div>
             </div>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map(cat => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat === 'all' ? 'All Categories' : cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as 'all' | 'original' | 'copy')}>
-              <SelectTrigger>
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="original">Originals Only</SelectItem>
-                <SelectItem value="copy">Copies Only</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
           {error && (
-            <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 mb-4">
-              <p className="text-sm text-destructive">{error}</p>
+            <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 mb-3">
+              <p className="text-xs text-destructive">{error}</p>
             </div>
           )}
 
           {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <ArrowClockwise size={32} className="animate-spin mx-auto mb-2" />
-              <p>Loading blueprints from ESI...</p>
+            <div className="text-center py-8 text-muted-foreground">
+              <ArrowClockwise size={24} className="animate-spin mx-auto mb-2" />
+              <p className="text-sm">Loading blueprints from ESI...</p>
             </div>
           ) : filteredAndSortedBlueprints.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Package size={32} className="mx-auto mb-2 opacity-50" />
-              <p>No blueprints found</p>
+            <div className="text-center py-8 text-muted-foreground">
+              <Package size={24} className="mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No blueprints found</p>
             </div>
           ) : (
             <div className="border border-border rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="cursor-pointer" onClick={() => toggleSort('name')}>
+                    <TableHead className="cursor-pointer h-8 text-xs" onClick={() => toggleSort('name')}>
                       <div className="flex items-center gap-1">
                         Blueprint Name
                         <SortIcon field="name" />
                       </div>
                     </TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="cursor-pointer" onClick={() => toggleSort('me')}>
+                    <TableHead className="h-8 text-xs">Type</TableHead>
+                    <TableHead className="h-8 text-xs">Category</TableHead>
+                    <TableHead className="cursor-pointer h-8 text-xs" onClick={() => toggleSort('me')}>
                       <div className="flex items-center gap-1">
                         ME
                         <SortIcon field="me" />
                       </div>
                     </TableHead>
-                    <TableHead className="cursor-pointer" onClick={() => toggleSort('te')}>
+                    <TableHead className="cursor-pointer h-8 text-xs" onClick={() => toggleSort('te')}>
                       <div className="flex items-center gap-1">
                         TE
                         <SortIcon field="te" />
                       </div>
                     </TableHead>
-                    <TableHead className="cursor-pointer" onClick={() => toggleSort('runs')}>
+                    <TableHead className="cursor-pointer h-8 text-xs" onClick={() => toggleSort('runs')}>
                       <div className="flex items-center gap-1">
                         Runs
                         <SortIcon field="runs" />
                       </div>
                     </TableHead>
-                    <TableHead>Location</TableHead>
+                    <TableHead className="h-8 text-xs">Location</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredAndSortedBlueprints.map((bp) => (
                     <TableRow 
                       key={bp.id}
-                      className="cursor-pointer hover:bg-muted/50 transition-colors"
+                      className="cursor-pointer hover:bg-muted/50 transition-colors h-9"
                       onClick={() => setSelectedBlueprint(bp)}
                     >
-                      <TableCell className="font-medium">
+                      <TableCell className="font-medium py-1.5">
                         <div className="flex items-center gap-2">
-                          {bp.isOriginal && <Star size={14} className="text-yellow-400" weight="fill" />}
-                          <span className="hover:text-accent transition-colors">{bp.typeName}</span>
+                          {bp.isOriginal && <Star size={12} className="text-yellow-400" weight="fill" />}
+                          <span className="hover:text-accent transition-colors text-sm">{bp.typeName}</span>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Badge variant={bp.isOriginal ? 'default' : 'secondary'} className="text-xs">
+                      <TableCell className="py-1.5">
+                        <Badge variant={bp.isOriginal ? 'default' : 'secondary'} className="text-xs h-5 px-1.5">
                           {bp.isOriginal ? (
                             <>
-                              <FileText size={12} className="mr-1" />
+                              <FileText size={10} className="mr-0.5" />
                               BPO
                             </>
                           ) : (
                             <>
-                              <Copy size={12} className="mr-1" />
+                              <Copy size={10} className="mr-0.5" />
                               BPC
                             </>
                           )}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">{bp.category}</span>
+                      <TableCell className="py-1.5">
+                        <span className="text-xs text-muted-foreground">{bp.category}</span>
                       </TableCell>
-                      <TableCell>
-                        <span className={`font-mono font-semibold ${getEfficiencyColor(bp.materialEfficiency, 10)}`}>
+                      <TableCell className="py-1.5">
+                        <span className={`font-mono font-semibold text-sm ${getEfficiencyColor(bp.materialEfficiency, 10)}`}>
                           {bp.materialEfficiency}
                         </span>
                       </TableCell>
-                      <TableCell>
-                        <span className={`font-mono font-semibold ${getEfficiencyColor(bp.timeEfficiency, 20)}`}>
+                      <TableCell className="py-1.5">
+                        <span className={`font-mono font-semibold text-sm ${getEfficiencyColor(bp.timeEfficiency, 20)}`}>
                           {bp.timeEfficiency}
                         </span>
                       </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-sm">
+                      <TableCell className="py-1.5">
+                        <span className="font-mono text-xs">
                           {bp.isOriginal ? '∞' : bp.runs.toLocaleString()}
                         </span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="py-1.5">
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <MapPin size={12} />
-                          <span className="truncate max-w-[200px]" title={bp.location}>
+                          <MapPin size={10} />
+                          <span className="truncate max-w-[160px]" title={bp.location}>
                             {bp.locationFlag}
                           </span>
                         </div>
@@ -337,7 +366,7 @@ export function BlueprintLibrary({ isMobileView, onAssignJob }: BlueprintLibrary
             </div>
           )}
 
-          <div className="mt-4 text-xs text-muted-foreground text-center">
+          <div className="mt-2 text-xs text-muted-foreground text-center">
             Showing {filteredAndSortedBlueprints.length} of {blueprints.length} blueprints
           </div>
         </CardContent>
