@@ -1,6 +1,6 @@
 import React from 'react';
 import { LoginPrompt } from '@/components/LoginPrompt';
-import { useAuth } from '@/lib/auth';
+import { useAuth } from '@/lib/auth-provider';
 
 interface TabComponentProps {
   onLoginClick?: () => void;
