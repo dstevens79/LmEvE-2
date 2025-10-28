@@ -1018,6 +1018,118 @@ export const lmeveSchemas: DatabaseSchema[] = [
     engine: 'InnoDB',
     charset: 'utf8mb4',
     collation: 'utf8mb4_unicode_ci'
+  },
+
+  // Corporation members - ESI-synced member data (matches LMeve original schema)
+  {
+    tableName: 'corporation_members',
+    columns: [
+      { name: 'id', type: 'BIGINT', nullable: false, primaryKey: true, autoIncrement: true },
+      { name: 'corporation_id', type: 'BIGINT', nullable: false },
+      { name: 'character_id', type: 'BIGINT', nullable: false },
+      { name: 'character_name', type: 'VARCHAR', size: 255, nullable: false },
+      { name: 'location_id', type: 'BIGINT', nullable: true },
+      { name: 'logoff_date', type: 'DATETIME', nullable: true },
+      { name: 'logon_date', type: 'DATETIME', nullable: true },
+      { name: 'ship_type_id', type: 'INT', nullable: true },
+      { name: 'start_date', type: 'DATETIME', nullable: true },
+      { name: 'title', type: 'VARCHAR', size: 255, nullable: true },
+      { name: 'last_updated', type: 'DATETIME', nullable: false, defaultValue: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP' }
+    ],
+    indexes: [
+      { name: 'idx_corp_char', columns: ['corporation_id', 'character_id'], type: 'UNIQUE' },
+      { name: 'idx_corporation_id', columns: ['corporation_id'], type: 'INDEX' },
+      { name: 'idx_character_id', columns: ['character_id'], type: 'INDEX' },
+      { name: 'idx_last_updated', columns: ['last_updated'], type: 'INDEX' }
+    ],
+    foreignKeys: [
+      { name: 'fk_corp_members_corporation', column: 'corporation_id', referencedTable: 'corporations', referencedColumn: 'corporation_id', onDelete: 'CASCADE' }
+    ],
+    engine: 'InnoDB',
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_unicode_ci'
+  },
+
+  // Corporation assets - ESI-synced asset data (matches LMeve original schema)
+  {
+    tableName: 'corporation_assets',
+    columns: [
+      { name: 'id', type: 'BIGINT', nullable: false, primaryKey: true, autoIncrement: true },
+      { name: 'corporation_id', type: 'BIGINT', nullable: false },
+      { name: 'item_id', type: 'BIGINT', nullable: false },
+      { name: 'type_id', type: 'INT', nullable: false },
+      { name: 'quantity', type: 'BIGINT', nullable: false },
+      { name: 'location_id', type: 'BIGINT', nullable: false },
+      { name: 'location_flag', type: 'VARCHAR', size: 100, nullable: true },
+      { name: 'location_type', type: 'VARCHAR', size: 50, nullable: true },
+      { name: 'is_singleton', type: 'BOOLEAN', nullable: false, defaultValue: false },
+      { name: 'is_blueprint_copy', type: 'BOOLEAN', nullable: true },
+      { name: 'last_updated', type: 'DATETIME', nullable: false, defaultValue: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP' }
+    ],
+    indexes: [
+      { name: 'idx_corp_item', columns: ['corporation_id', 'item_id'], type: 'UNIQUE' },
+      { name: 'idx_corporation_id', columns: ['corporation_id'], type: 'INDEX' },
+      { name: 'idx_type_id', columns: ['type_id'], type: 'INDEX' },
+      { name: 'idx_location_id', columns: ['location_id'], type: 'INDEX' },
+      { name: 'idx_last_updated', columns: ['last_updated'], type: 'INDEX' }
+    ],
+    foreignKeys: [
+      { name: 'fk_corp_assets_corporation', column: 'corporation_id', referencedTable: 'corporations', referencedColumn: 'corporation_id', onDelete: 'CASCADE' }
+    ],
+    engine: 'InnoDB',
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_unicode_ci'
+  },
+
+  // Industry jobs - ESI-synced industry job data (matches LMeve original schema)
+  {
+    tableName: 'industry_jobs',
+    columns: [
+      { name: 'id', type: 'BIGINT', nullable: false, primaryKey: true, autoIncrement: true },
+      { name: 'corporation_id', type: 'BIGINT', nullable: false },
+      { name: 'job_id', type: 'BIGINT', nullable: false, unique: true },
+      { name: 'installer_id', type: 'BIGINT', nullable: false },
+      { name: 'facility_id', type: 'BIGINT', nullable: false },
+      { name: 'station_id', type: 'BIGINT', nullable: true },
+      { name: 'activity_id', type: 'INT', nullable: false },
+      { name: 'blueprint_id', type: 'BIGINT', nullable: false },
+      { name: 'blueprint_type_id', type: 'INT', nullable: false },
+      { name: 'blueprint_location_id', type: 'BIGINT', nullable: true },
+      { name: 'output_location_id', type: 'BIGINT', nullable: true },
+      { name: 'runs', type: 'INT', nullable: false },
+      { name: 'cost', type: 'DECIMAL', size: 20, nullable: true },
+      { name: 'licensed_runs', type: 'INT', nullable: true },
+      { name: 'probability', type: 'DECIMAL', size: 5, nullable: true },
+      { name: 'product_type_id', type: 'INT', nullable: true },
+      { name: 'status', type: 'VARCHAR', size: 50, nullable: false },
+      { name: 'time_in_seconds', type: 'INT', nullable: true },
+      { name: 'duration', type: 'INT', nullable: false },
+      { name: 'start_date', type: 'DATETIME', nullable: false },
+      { name: 'end_date', type: 'DATETIME', nullable: false },
+      { name: 'pause_date', type: 'DATETIME', nullable: true },
+      { name: 'completed_date', type: 'DATETIME', nullable: true },
+      { name: 'completed_character_id', type: 'BIGINT', nullable: true },
+      { name: 'successful_runs', type: 'INT', nullable: true },
+      { name: 'last_updated', type: 'DATETIME', nullable: false, defaultValue: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP' }
+    ],
+    indexes: [
+      { name: 'idx_job_id', columns: ['job_id'], type: 'UNIQUE' },
+      { name: 'idx_corporation_id', columns: ['corporation_id'], type: 'INDEX' },
+      { name: 'idx_installer_id', columns: ['installer_id'], type: 'INDEX' },
+      { name: 'idx_facility_id', columns: ['facility_id'], type: 'INDEX' },
+      { name: 'idx_blueprint_type_id', columns: ['blueprint_type_id'], type: 'INDEX' },
+      { name: 'idx_product_type_id', columns: ['product_type_id'], type: 'INDEX' },
+      { name: 'idx_status', columns: ['status'], type: 'INDEX' },
+      { name: 'idx_start_date', columns: ['start_date'], type: 'INDEX' },
+      { name: 'idx_end_date', columns: ['end_date'], type: 'INDEX' },
+      { name: 'idx_last_updated', columns: ['last_updated'], type: 'INDEX' }
+    ],
+    foreignKeys: [
+      { name: 'fk_industry_jobs_corporation', column: 'corporation_id', referencedTable: 'corporations', referencedColumn: 'corporation_id', onDelete: 'CASCADE' }
+    ],
+    engine: 'InnoDB',
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_unicode_ci'
   }
 ];
 

@@ -20,7 +20,7 @@ Based on analysis of the original LMeve project at https://github.com/dstevens79
 
 ## Database Tables Added
 
-The implementation includes **18 core database tables** with **384 total columns**, **37 indexes**, and **6 foreign key relationships**:
+The implementation includes **21 core database tables** with **468 total columns**, **47 indexes**, and **9 foreign key relationships**:
 
 ### Core Tables
 1. **`users`** - Authentication and user management
@@ -53,6 +53,11 @@ The implementation includes **18 core database tables** with **384 total columns
 
 ### System Management
 18. **`activity_log`** - System and user activity tracking
+
+### ESI Data Tables (LMeve Original Schema Compatibility)
+19. **`corporation_members`** - ESI-synced corporation member data
+20. **`corporation_assets`** - ESI-synced corporation asset data
+21. **`industry_jobs`** - ESI-synced industry job data
 
 ## Key Features
 
