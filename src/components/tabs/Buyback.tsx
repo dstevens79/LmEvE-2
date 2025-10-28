@@ -652,109 +652,120 @@ export function Buyback({ isMobileView }: BuybackProps) {
         </p>
       </div>
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Status Counts</h3>
-              
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                <Clock size={28} className="text-blue-400 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">New</p>
-                  <p className="text-2xl font-bold">{stats.newContracts}</p>
-                </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold uppercase tracking-wide">Status Counts</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex items-center justify-between py-2 border-b border-border/50">
+              <div className="flex items-center gap-2">
+                <Clock size={18} className="text-blue-400" />
+                <span className="text-sm font-medium">New</span>
               </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                <HourglassMedium size={28} className="text-yellow-400 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Waiting on Pilot</p>
-                  <p className="text-2xl font-bold">{stats.waitingContracts}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                <Coins size={28} className="text-orange-400 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Awaiting Payment</p>
-                  <p className="text-2xl font-bold">{stats.awaitingPaymentContracts}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                <CheckCircle size={28} className="text-green-500 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Completed</p>
-                  <p className="text-2xl font-bold">{stats.completedContracts}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                <Receipt size={28} className="text-accent flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Total Contracts</p>
-                  <p className="text-2xl font-bold">{stats.totalContracts}</p>
-                </div>
-              </div>
+              <span className="text-lg font-bold">{stats.newContracts}</span>
             </div>
 
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Average Wait Times</h3>
-              
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                <HourglassMedium size={28} className="text-yellow-400 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Waiting on Pilot</p>
-                  <p className="text-2xl font-bold">{stats.avgWaitingTime}</p>
-                </div>
+            <div className="flex items-center justify-between py-2 border-b border-border/50">
+              <div className="flex items-center gap-2">
+                <HourglassMedium size={18} className="text-yellow-400" />
+                <span className="text-sm font-medium">Waiting on Pilot</span>
               </div>
-
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                <Coins size={28} className="text-orange-400 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Awaiting Payment</p>
-                  <p className="text-2xl font-bold">{stats.avgPaymentTime}</p>
-                </div>
-              </div>
+              <span className="text-lg font-bold">{stats.waitingContracts}</span>
             </div>
 
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">ISK Values</h3>
-              
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                <Coins size={28} className="text-blue-400 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-muted-foreground">Open Payout</p>
-                  <p className="text-xl font-bold text-blue-400 truncate" title={formatISK(stats.openPayout)}>
+            <div className="flex items-center justify-between py-2 border-b border-border/50">
+              <div className="flex items-center gap-2">
+                <Coins size={18} className="text-orange-400" />
+                <span className="text-sm font-medium">Awaiting Payment</span>
+              </div>
+              <span className="text-lg font-bold">{stats.awaitingPaymentContracts}</span>
+            </div>
+
+            <div className="flex items-center justify-between py-2 border-b border-border/50">
+              <div className="flex items-center gap-2">
+                <CheckCircle size={18} className="text-green-500" />
+                <span className="text-sm font-medium">Completed</span>
+              </div>
+              <span className="text-lg font-bold">{stats.completedContracts}</span>
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <Receipt size={18} className="text-accent" />
+                <span className="text-sm font-medium">Total Contracts</span>
+              </div>
+              <span className="text-lg font-bold">{stats.totalContracts}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wide">Average Wait Times</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center gap-3">
+                  <HourglassMedium size={24} className="text-yellow-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-muted-foreground">Waiting on Pilot</p>
+                    <p className="text-xl font-bold">{stats.avgWaitingTime}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Coins size={24} className="text-orange-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-muted-foreground">Awaiting Payment</p>
+                    <p className="text-xl font-bold">{stats.avgPaymentTime}</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wide">ISK Values</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center">
+                  <div className="flex justify-center mb-1">
+                    <Coins size={20} className="text-blue-400" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-1">Open Payout</p>
+                  <p className="text-sm font-bold text-blue-400 truncate" title={formatISK(stats.openPayout)}>
                     {formatISK(stats.openPayout)}
                   </p>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                <Coins size={28} className="text-green-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-muted-foreground">Completed Payout</p>
-                  <p className="text-xl font-bold text-green-500 truncate" title={formatISK(stats.totalPayout)}>
+                <div className="text-center">
+                  <div className="flex justify-center mb-1">
+                    <Coins size={20} className="text-green-500" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-1">Completed</p>
+                  <p className="text-sm font-bold text-green-500 truncate" title={formatISK(stats.totalPayout)}>
                     {formatISK(stats.totalPayout)}
                   </p>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                <TrendUp size={28} className="text-accent flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-muted-foreground">Cumulative Payout</p>
-                  <p className="text-xl font-bold truncate" title={formatISK(stats.cumulativePayout)}>
+                <div className="text-center">
+                  <div className="flex justify-center mb-1">
+                    <TrendUp size={20} className="text-accent" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-1">Cumulative</p>
+                  <p className="text-sm font-bold truncate" title={formatISK(stats.cumulativePayout)}>
                     {formatISK(stats.cumulativePayout)}
                   </p>
                 </div>
               </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} max-w-2xl`}>
