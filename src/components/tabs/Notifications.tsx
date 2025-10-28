@@ -218,10 +218,10 @@ export function Notifications({ isMobileView }: NotificationsProps) {
                       return (
                         <div 
                           key={event.id}
-                          className="grid grid-cols-[1fr,auto,auto,auto] gap-2 px-4 py-3 border-b border-border last:border-b-0 hover:bg-muted/20"
+                          className="grid grid-cols-[1fr,auto,auto,auto] gap-2 px-4 py-3 border-b border-border last:border-b-0 hover:bg-muted/20 items-center"
                         >
-                          <div className="flex items-start gap-3">
-                            <EventIcon size={18} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                          <div className="flex items-center gap-3">
+                            <EventIcon size={18} className="text-muted-foreground flex-shrink-0" />
                             <div>
                               <div className="text-sm font-medium">{event.label}</div>
                               <div className="text-xs text-muted-foreground">{event.description}</div>
