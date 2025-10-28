@@ -58,7 +58,6 @@ import { Notifications } from '@/components/tabs/Notifications';
 import { Corporations } from '@/components/Corporations';
 import { Theme } from '@/components/tabs/Theme';
 import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
-import { Projects } from '@/components/tabs/Projects';
 import { Buyback } from '@/components/tabs/Buyback';
 
 function AppContent() {
@@ -316,7 +315,6 @@ function AppContent() {
     { id: 'assets', label: 'Assets', icon: Package, component: Assets },
     { id: 'manufacturing', label: 'Manufacturing', icon: Factory, component: Manufacturing, badge: '3' },
     { id: 'planetary', label: 'Planetary Interaction', icon: Planet, component: PlanetaryInteraction, badge: '5' },
-    { id: 'projects', label: 'Projects', icon: Archive, component: Projects, badge: '2' },
     { id: 'market', label: 'Market', icon: TrendUp, component: Market },
     { id: 'wallet', label: 'Wallet', icon: CurrencyDollar, component: Wallet },
     { id: 'buyback', label: 'Buyback', icon: Receipt, component: Buyback },
