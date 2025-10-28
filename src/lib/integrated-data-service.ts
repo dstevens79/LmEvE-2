@@ -265,6 +265,10 @@ class IntegratedDataService {
           category: 'mineral',
           estimatedValue: 5500000,
           lastUpdate: new Date().toISOString()
+        },
+        {
+          id: '2',
+          typeId: 35,
           typeName: 'Pyerite',
           quantity: 500000,
           location: 'Jita IV - Moon 4',
@@ -275,10 +279,6 @@ class IntegratedDataService {
           category: 'mineral',
           estimatedValue: 2500000,
           lastUpdate: new Date().toISOString()
-        }
-      ];
-      source.mock = true;
-      return {
         }
       ];
       source.mock = true;
@@ -296,6 +296,10 @@ class IntegratedDataService {
       error: 'System not configured and database unavailable'
     };
   }
+
+  async fetchManufacturingJobs(options: FetchOptions): Promise<FetchResult<ManufacturingJob>> {
+    const cacheKey = this.getCacheKey('manufacturing', options);
+    const source: DataSource = { esi: false, database: false, cache: false, mock: false };
 
     if (options.useCache !== false) {
       const cached = this.getFromCache<ManufacturingJob[]>(cacheKey);
@@ -345,10 +349,12 @@ class IntegratedDataService {
       const mockJobs: ManufacturingJob[] = [
         {
           id: '1',
+          jobId: 1001,
           blueprintId: 645,
           blueprintName: 'Raven Blueprint',
           productTypeId: 638,
           productTypeName: 'Raven',
+          productQuantity: 1,
           runs: 1,
           startDate: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
           endDate: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
@@ -358,71 +364,91 @@ class IntegratedDataService {
           installerId: 90000001,
           installerName: 'Sample Character Alpha',
           cost: 250000000,
-          facilityId: 60003760,
           materialEfficiency: 10,
-          installerName: 'Sample Character Alpha',
+          timeEfficiency: 20,
           duration: 24 * 60 * 60,
           materials: [],
-          priority: 'normal'
+          priority: 'normal',
+          activityId: 1
         },
         {
           id: '2',
+          jobId: 1002,
           blueprintId: 11535,
-          blueprintName: 'Tritanium Blueprint',
-          productTypeId: 34,
-          productTypeName: 'Tritanium',
+          blueprintName: 'Hammerhead II Blueprint',
+          productTypeId: 12742,
+          productTypeName: 'Hammerhead II',
+          productQuantity: 100,
           runs: 100,
           startDate: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
           endDate: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
           status: 'active',
           facility: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
-          startDate: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+          facilityId: 60003760,
           installerId: 90000001,
-          status: 'active',
+          installerName: 'Sample Character Alpha',
           cost: 5000000,
-          productQuantity: 100,
           materialEfficiency: 10,
           timeEfficiency: 20,
           duration: 12 * 60 * 60,
-          productQuantity: 100,
-          priority: 'high'
-          timeEfficiency: 20,
+          materials: [],
+          priority: 'high',
+          activityId: 1
+        }
       ];
-          materials: [],;
+      source.mock = true;
       return {
-        }ata: mockJobs,
-        source,
-      source.mock = true;te().toISOString()
-      };
         data: mockJobs,
+        source,
+        timestamp: new Date().toISOString()
+      };
+    }
 
     return {
       data: [],
-    } source: { ...source, database: true },
-      timestamp: new Date().toISOString(),
-    return { 'System not configured and database unavailable'
-    };
       source: { ...source, database: true },
-
+      timestamp: new Date().toISOString(),
       error: 'System not configured and database unavailable'
-    const cacheKey = this.getCacheKey('planetary', options);
-  }e = { esi: false, database: false, cache: false, mock: false };
+    };
+  }
 
   async fetchPlanetaryColonies(options: FetchOptions): Promise<FetchResult<PlanetaryColony>> {
     const cacheKey = this.getCacheKey('planetary', options);
     const source: DataSource = { esi: false, database: false, cache: false, mock: false };
-        return {
+
     if (options.useCache !== false) {
       const cached = this.getFromCache<PlanetaryColony[]>(cacheKey);
+      if (cached) {
+        return {
+          data: cached,
+          source: { ...source, cache: true },
           timestamp: new Date().toISOString()
         };
-          data: cached,
+      }
     }
-          timestamp: new Date().toISOString()
+
     if (this.dbManager && this.setupStatus.hasEverBeenGreen) {
       try {
         console.log('🗄️ Fetching planetary colonies from database (Phase 2: database-first)...');
         const result = await this.dbManager.query('SELECT * FROM planetary_colonies WHERE corporation_id = ?', [options.corporationId]);
+        
+        if (result.success && result.data && result.data.length > 0) {
+          this.setCache(cacheKey, result.data as PlanetaryColony[]);
+          source.database = true;
+          return {
+            data: result.data as PlanetaryColony[],
+            source,
+            timestamp: new Date().toISOString()
+          };
+        }
+        
+        console.log('📭 No planetary colonies in database - empty result (data will be populated by sync process)');
+        return {
+          data: [],
+          source: { ...source, database: true },
+          timestamp: new Date().toISOString()
+        };
+      } catch (error) {
         console.error('❌ Database fetch failed:', error);
         return {
           data: [],
@@ -431,24 +457,24 @@ class IntegratedDataService {
           error: error instanceof Error ? error.message : 'Database error'
         };
       }
-          return {
+    }
 
     if (this.shouldUseMockData()) {
       console.log('📝 Using mock planetary colony data (system not yet configured)');
       const mockColonies: PlanetaryColony[] = [
-        }
+        {
           id: '1',
           planetId: 40161465,
           planetName: 'Auga VII',
-          data: [],
+          planetType: 'barren',
           ownerId: 90000001,
-          timestamp: new Date().toISOString()
-        };
-      } catch (error) {
+          ownerName: 'Sample Character Alpha',
+          upgradeLevel: 5,
+          numberOfPins: 15,
           lastUpdate: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
           expiryTime: new Date(Date.now() + 18 * 60 * 60 * 1000).toISOString(),
-          data: [],
-          source,
+          productionStatus: 'active',
+          extractorStatus: 'running'
         },
         {
           id: '2',
@@ -513,8 +539,8 @@ class IntegratedDataService {
         
         console.log('📭 No market prices in database - empty result (data will be populated by sync process)');
         return {
-          timestamp: new Date().toISOString()
-        };
+          data: [],
+          source: { ...source, database: true },
           timestamp: new Date().toISOString()
         };
       } catch (error) {
@@ -539,7 +565,7 @@ class IntegratedDataService {
           averagePrice: 5.50,
           volume: 1000000000,
           orderCount: 1500,
-      } catch (error) { Date().toISOString()
+          lastUpdated: new Date().toISOString()
         },
         {
           typeId: 35,
@@ -547,9 +573,10 @@ class IntegratedDataService {
           buyPrice: 4.95,
           sellPrice: 5.05,
           averagePrice: 5.00,
-      }
+          volume: 500000000,
+          orderCount: 1200,
           lastUpdated: new Date().toISOString()
-
+        }
       ];
       source.mock = true;
       return {
@@ -606,44 +633,58 @@ class IntegratedDataService {
         
         console.log('📭 No wallet transactions in database - empty result (data will be populated by sync process)');
         return {
-      try {
-        console.log('🗄️ Fetching wallet transactions from database (Phase 2: database-first)...');
-        const query = options.divisionId
-          ? 'SELECT * FROM wallet_transactions WHERE corporation_id = ? AND division_id = ? ORDER BY date DESC LIMIT 1000'
-          : 'SELECT * FROM wallet_transactions WHERE corporation_id = ? ORDER BY date DESC LIMIT 1000';
-        const params = options.divisionId 
-          ? [options.corporationId, options.divisionId]
-          : [options.corporationId];
-        
-        const result = await this.dbManager.query(query, params);
-        
-        if (result.success && result.data && result.data.length > 0) {
-          this.setCache(cacheKey, result.data as WalletTransaction[]);
-          source.database = true;
-          return {
-            data: result.data as WalletTransaction[],
-            source,
-            timestamp: new Date().toISOString()
-          };
-        }
-        
+          data: [],
+          source: { ...source, database: true },
+          timestamp: new Date().toISOString()
+        };
+      } catch (error) {
+        console.error('❌ Database fetch failed:', error);
+        return {
+          data: [],
+          source,
+          timestamp: new Date().toISOString(),
+          error: error instanceof Error ? error.message : 'Database error'
+        };
+      }
+    }
+
+    if (this.shouldUseMockData()) {
+      console.log('📝 Using mock wallet transaction data (system not yet configured)');
+      const mockTransactions: WalletTransaction[] = [
+        {
+          id: '1',
+          date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
           divisionId: 1,
           amount: 50000000,
           balance: 1000000000,
           description: 'Market sale',
           firstPartyId: options.corporationId,
-          secondPartyId: 90000003
-      } catch (error) {
-        console.error('❌ Database fetch failed:', error);
-        return {
-          data: [],
+          secondPartyId: 90000003,
+          firstPartyName: 'Sample Corporation',
+          secondPartyName: 'Buyer Character',
+          typeId: 638,
+          typeName: 'Raven',
+          quantity: 1,
+          location: 'Jita IV - Moon 4',
+          locationId: 60003760
+        },
+        {
+          id: '2',
+          date: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
           divisionId: 1,
           amount: -25000000,
           balance: 950000000,
           description: 'Market purchase',
           firstPartyId: options.corporationId,
-    }
-
+          secondPartyId: 90000004,
+          firstPartyName: 'Sample Corporation',
+          secondPartyName: 'Seller Character',
+          typeId: 34,
+          typeName: 'Tritanium',
+          quantity: 1000000,
+          location: 'Jita IV - Moon 4',
+          locationId: 60003760
+        }
       ];
       source.mock = true;
       return {
@@ -717,10 +758,10 @@ class IntegratedDataService {
           };
         }
         
-          balance: 1000000000
-        },
-        {
-          divisionId: 2,
+        console.log('📭 No wallet divisions in database - empty result (data will be populated by sync process)');
+        return {
+          data: [],
+          source: { ...source, database: true },
           timestamp: new Date().toISOString()
         };
       } catch (error) {
@@ -744,16 +785,16 @@ class IntegratedDataService {
         },
         {
           divisionId: 2,
-      keysToDelete.forEach(key => this.cache.delete(key));
-      console.log(`🗑️ Cleared cache for ${type} (${keysToDelete.length} entries)`);
+          divisionName: 'Operations',
+          balance: 500000000
         }
       ];
       source.mock = true;
       return {
         data: mockDivisions,
-}
-
-export const integratedDataService = new IntegratedDataService();
+        source,
+        timestamp: new Date().toISOString()
+      };
     }
 
     return {

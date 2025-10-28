@@ -127,14 +127,8 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
     }
   }, [user]);
 
-  // Manufacturing jobs come from unified data service
-  // Convert ManufacturingJob (from database/ESI) to ManufacturingTask (for UI display)
-  const manufacturingTasks = React.useMemo(() => {
-    return manufacturingJobs.map(job => convertJobToTask(job));
-  }, [manufacturingJobs]);
-
   // Convert ManufacturingJob to ManufacturingTask for UI display
-  const convertJobToTask = (job: ManufacturingJob): ManufacturingTask => {
+  const convertJobToTask = React.useCallback((job: ManufacturingJob): ManufacturingTask => {
     const installer = members.find(m => m.characterId === job.installerId);
     const installerName = installer?.characterName || installer?.name || job.installerName || `Character ${job.installerId}`;
     
@@ -171,7 +165,13 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
       runs: job.runs,
       taskType: getActivityType(job.activityId)
     };
-  };
+  }, [members, user]);
+
+  // Manufacturing jobs come from unified data service
+  // Convert ManufacturingJob (from database/ESI) to ManufacturingTask (for UI display)
+  const manufacturingTasks = React.useMemo(() => {
+    return manufacturingJobs.map(job => convertJobToTask(job));
+  }, [manufacturingJobs, convertJobToTask]);
 
   // Map ESI activity IDs to task types
   const getActivityType = (activityId?: number): 'manufacturing' | 'research' | 'invention' | 'copy' | 'reaction' => {
