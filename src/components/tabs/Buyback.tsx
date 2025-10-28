@@ -540,6 +540,10 @@ export function Buyback({ isMobileView }: BuybackProps) {
     const totalPayout = contracts
       .filter(c => c.status === 'completed')
       .reduce((sum, c) => sum + c.payoutValue, 0);
+    const openPayout = contracts
+      .filter(c => c.status !== 'completed')
+      .reduce((sum, c) => sum + c.payoutValue, 0);
+    const cumulativePayout = totalPayout + openPayout;
     
     const avgWaitingTime = calculateAverageTimeInStatus('waiting_on_pilot');
     const avgPaymentTime = calculateAverageTimeInStatus('awaiting_payment');
@@ -551,6 +555,8 @@ export function Buyback({ isMobileView }: BuybackProps) {
       awaitingPaymentContracts,
       completedContracts,
       totalPayout,
+      openPayout,
+      cumulativePayout,
       avgWaitingTime,
       avgPaymentTime
     };
@@ -643,7 +649,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-6">
             <div className="flex flex-col">
               <div className="flex items-center gap-2 mb-2">
                 <Clock size={20} className="text-blue-400" />
@@ -658,11 +664,9 @@ export function Buyback({ isMobileView }: BuybackProps) {
                 <p className="text-sm font-medium text-muted-foreground">Waiting on Pilot</p>
               </div>
               <p className="text-2xl font-bold">{stats.waitingContracts}</p>
-              {stats.waitingContracts > 0 && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Avg: {stats.avgWaitingTime}
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground mt-1">
+                Avg: {stats.avgWaitingTime}
+              </p>
             </div>
 
             <div className="flex flex-col">
@@ -671,11 +675,9 @@ export function Buyback({ isMobileView }: BuybackProps) {
                 <p className="text-sm font-medium text-muted-foreground">Awaiting Payment</p>
               </div>
               <p className="text-2xl font-bold">{stats.awaitingPaymentContracts}</p>
-              {stats.awaitingPaymentContracts > 0 && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Avg: {stats.avgPaymentTime}
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground mt-1">
+                Avg: {stats.avgPaymentTime}
+              </p>
             </div>
 
             <div className="flex flex-col">
@@ -696,10 +698,26 @@ export function Buyback({ isMobileView }: BuybackProps) {
 
             <div className="flex flex-col">
               <div className="flex items-center gap-2 mb-2">
-                <Coins size={20} className="text-accent" />
-                <p className="text-sm font-medium text-muted-foreground">Total Payout</p>
+                <Coins size={20} className="text-blue-400" />
+                <p className="text-sm font-medium text-muted-foreground">Open Payout</p>
               </div>
-              <p className="text-lg font-bold">{formatISK(stats.totalPayout)}</p>
+              <p className="text-lg font-bold text-blue-400">{formatISK(stats.openPayout)}</p>
+            </div>
+
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 mb-2">
+                <Coins size={20} className="text-green-500" />
+                <p className="text-sm font-medium text-muted-foreground">Completed Payout</p>
+              </div>
+              <p className="text-lg font-bold text-green-500">{formatISK(stats.totalPayout)}</p>
+            </div>
+
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendUp size={20} className="text-accent" />
+                <p className="text-sm font-medium text-muted-foreground">Cumulative Payout</p>
+              </div>
+              <p className="text-lg font-bold">{formatISK(stats.cumulativePayout)}</p>
             </div>
           </div>
         </CardContent>
@@ -742,7 +760,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
             </Card>
           )}
 
-          <div className="grid lg:grid-cols-3 gap-4">
+          <div className="grid lg:grid-cols-[1fr_1.6fr_2.4fr] gap-4">
             <Card>
               <CardHeader>
                 <CardTitle>Paste Items</CardTitle>
@@ -807,7 +825,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
 
             <Card className="border-accent/50">
               <CardHeader>
-                <CardTitle>Summary & Items</CardTitle>
+                <CardTitle>Summary</CardTitle>
                 <CardDescription>
                   {calculatedItems.length > 0 ? `${calculatedItems.length} items` : 'Ready to calculate'}
                 </CardDescription>
@@ -879,36 +897,6 @@ export function Buyback({ isMobileView }: BuybackProps) {
                     </div>
                   )}
                 </div>
-
-                {calculatedItems.length > 0 && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      <p className="text-xs font-semibold text-muted-foreground">Parsed Items</p>
-                      {calculatedItems.map((item, index) => (
-                        <div 
-                          key={index}
-                          className={`flex items-center justify-between text-xs p-2 rounded ${
-                            item.excluded ? 'bg-red-500/10' : item.isManualPrice ? 'bg-yellow-500/10' : 'bg-muted/30'
-                          }`}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{item.typeName}</div>
-                            <div className="text-muted-foreground">
-                              {item.quantity.toLocaleString()} × {formatISK(item.unitPrice)}
-                            </div>
-                          </div>
-                          <div className="text-right ml-2">
-                            <div className={`font-medium ${item.excluded ? 'text-red-500' : 'text-green-500'}`}>
-                              {formatISK(item.totalPayout)}
-                            </div>
-                            <div className="text-muted-foreground">{item.buybackPercentage}%</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
               </CardContent>
             </Card>
 
