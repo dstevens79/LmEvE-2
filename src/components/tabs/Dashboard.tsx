@@ -257,7 +257,11 @@ export function Dashboard({ onLoginClick, isMobileView }: DashboardProps) {
               <p className="text-sm text-muted-foreground">ISK Value</p>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-accent">{Math.round(stats.miningValueThisMonth / stats.miningOperationsThisMonth / 1e6)}M</div>
+              <div className="text-3xl font-bold text-accent">
+                {stats.miningOperationsThisMonth > 0 
+                  ? `${Math.round(stats.miningValueThisMonth / stats.miningOperationsThisMonth / 1e6)}M`
+                  : '0M'}
+              </div>
               <p className="text-sm text-muted-foreground">Avg per Operation</p>
             </div>
           </div>
