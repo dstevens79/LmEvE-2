@@ -223,73 +223,80 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Personal ESI Authentication */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <UserCheck size={20} />
-            Personal ESI Authentication
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Authenticate your character with EVE Online to access personal data and site features
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Current User Status */}
-          {user && user.authMethod === 'esi' && (
-            <div className="p-3 bg-accent/5 border border-accent/20 rounded-lg">
-              <div className="flex items-center gap-3">
-                {user.characterId && (
-                  <img 
-                    src={`https://images.evetech.net/characters/${user.characterId}/portrait?size=64`}
-                    alt={user.characterName || 'Character'}
-                    className="w-10 h-10 rounded-full border-2 border-accent/30"
-                  />
-                )}
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-medium">{user.characterName || 'Unknown Character'}</h4>
-                    <Badge variant="default" className="text-xs">
-                      <CheckCircle size={12} className="mr-1" />
-                      ESI Authenticated
-                    </Badge>
+    <div className="space-y-4">
+      {/* ESI Configuration Status */}
+      {!esiConfig?.clientId && (
+        <Alert>
+          <Warning size={16} />
+          <AlertDescription>
+            ESI authentication is not configured. Contact your system administrator to configure ESI Client ID and Secret in Settings → Database.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Side-by-Side Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Personal ESI Authentication */}
+        <Card className="flex flex-col">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <UserCheck size={18} />
+              Personal ESI
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Character-level authentication for personal data
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3 flex-1 flex flex-col">
+            {/* Current User Status */}
+            {user && user.authMethod === 'esi' && (
+              <div className="p-2 bg-accent/5 border border-accent/20 rounded">
+                <div className="flex items-center gap-2">
+                  {user.characterId && (
+                    <img 
+                      src={`https://images.evetech.net/characters/${user.characterId}/portrait?size=64`}
+                      alt={user.characterName || 'Character'}
+                      className="w-8 h-8 rounded-full border border-accent/30"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-medium text-sm truncate">{user.characterName || 'Unknown'}</h4>
+                      <Badge variant="default" className="text-xs h-5">
+                        <CheckCircle size={10} className="mr-1" />
+                        Active
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {user.corporationName || 'Unknown Corporation'}
+                    </p>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    {user.corporationName || 'Unknown Corporation'}
-                  </p>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Scope Selection */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium">ESI Access Scopes</h4>
-              <Badge variant="outline" className="text-xs">
-                All {PERSONAL_ESI_SCOPES.length} scopes required
-              </Badge>
-            </div>
+            {/* Scope Selection */}
+            <div className="space-y-2 flex-1">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Required Scopes</h4>
+                <Badge variant="outline" className="text-xs h-5">
+                  {PERSONAL_ESI_SCOPES.length} total
+                </Badge>
+              </div>
 
-            {/* All Scopes (Required) */}
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">
-                The following scopes are required for LMeve to function properly with personal data
-              </p>
               <div className="space-y-1">
                 {PERSONAL_ESI_SCOPES.map(scope => (
                   <div 
                     key={scope.scope} 
-                    className="flex items-center justify-between p-2 bg-muted/30 rounded border border-border/50"
+                    className="flex items-center justify-between p-1.5 bg-muted/30 rounded border border-border/50"
                   >
-                    <div className="flex items-center gap-2 flex-1">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
                       <Checkbox 
                         checked={true} 
                         disabled={true}
-                        className="opacity-50"
+                        className="opacity-50 h-3.5 w-3.5"
                       />
-                      <Label className="text-sm cursor-default">
+                      <Label className="text-xs cursor-default truncate">
                         {scope.label}
                       </Label>
                     </div>
@@ -298,282 +305,253 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
                 ))}
               </div>
             </div>
-          </div>
 
-          {/* Authentication Action */}
-          <div className="pt-2">
-            {user?.authMethod === 'esi' ? (
-              <Button
-                onClick={handlePersonalAuth}
-                disabled={!esiConfig?.clientId}
-                variant="outline"
-                className="w-full"
-              >
-                <Key size={16} className="mr-2" />
-                Update ESI Permissions
-              </Button>
-            ) : (
-              <Button
-                onClick={handlePersonalAuth}
-                disabled={!esiConfig?.clientId}
-                className="w-full bg-accent hover:bg-accent/90"
-              >
-                <Rocket size={16} className="mr-2" />
-                Authenticate with EVE Online
-              </Button>
-            )}
-            {!esiConfig?.clientId && (
-              <p className="text-xs text-muted-foreground text-center mt-2">
-                ESI not configured. Contact your administrator.
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Corporation ESI Management */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building size={20} />
-            Corporation ESI Management
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Corporation-level ESI authentication for Directors and CEOs
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Director/CEO Registration Section */}
-          {user && user.authMethod === 'esi' && ['director', 'ceo', 'super_admin', 'admin'].includes(user.role || '') && (
-            <div className="p-4 bg-accent/5 border border-accent/20 rounded-lg">
-              <div className="flex items-center gap-2 mb-3">
-                <Shield size={16} className="text-accent" />
-                <span className="text-sm font-medium">Corporation Registration Available</span>
-              </div>
-              <p className="text-xs text-muted-foreground mb-3">
-                As a {user.role?.replace('_', ' ').toUpperCase()}, you can register your corporation for LMeve data access
-              </p>
-              <Button
-                size="sm"
-                className="w-full"
-                onClick={async () => {
-                  try {
-                    const corpAuth = loginWithESI('corporation');
-                    window.location.href = corpAuth;
-                  } catch (error) {
-                    console.error('Failed to start corp ESI auth:', error);
-                    toast.error('Failed to start corporation authentication');
-                  }
-                }}
-                disabled={!esiConfig?.clientId}
-              >
-                <Key size={16} className="mr-2" />
-                Register Corporation ESI Access
-              </Button>
+            {/* Authentication Action */}
+            <div className="pt-2 mt-auto">
+              {user?.authMethod === 'esi' ? (
+                <Button
+                  onClick={handlePersonalAuth}
+                  disabled={!esiConfig?.clientId}
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                >
+                  <Key size={14} className="mr-2" />
+                  Update Permissions
+                </Button>
+              ) : (
+                <Button
+                  onClick={handlePersonalAuth}
+                  disabled={!esiConfig?.clientId}
+                  size="sm"
+                  className="w-full bg-accent hover:bg-accent/90"
+                >
+                  <Rocket size={14} className="mr-2" />
+                  Authenticate with EVE
+                </Button>
+              )}
             </div>
-          )}
+          </CardContent>
+        </Card>
 
-          {/* Corporation Scopes Display (Read-only for non-admins) */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium">Corporation ESI Scopes</h4>
+        {/* Corporation ESI Management */}
+        <Card className="flex flex-col">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Building size={18} />
+              Corporation ESI
               {!canEditCorpScopes && (
-                <Badge variant="outline" className="text-xs">
-                  <LockKey size={12} className="mr-1" />
+                <Badge variant="outline" className="text-xs ml-auto">
+                  <LockKey size={10} className="mr-1" />
                   Read Only
                 </Badge>
               )}
-            </div>
-
-            {/* Required Corporation Scopes */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Required Corporation Scopes
-              </p>
-              <div className="space-y-1">
-                {CORPORATION_ESI_SCOPES.filter(s => s.required).map(scope => (
-                  <div 
-                    key={scope.scope} 
-                    className={`flex items-center justify-between p-2 rounded border ${
-                      canEditCorpScopes 
-                        ? 'bg-muted/30 border-border/50' 
-                        : 'bg-muted/10 border-border/30 opacity-75'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 flex-1">
-                      <Checkbox 
-                        checked={true} 
-                        disabled={true}
-                        className="opacity-50"
-                      />
-                      <Label className="text-sm cursor-default">
-                        {scope.label}
-                      </Label>
-                    </div>
-                    <ScopeInfoButton scope={scope} />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Optional Corporation Scopes */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Optional Corporation Scopes
-              </p>
-              <div className="space-y-1">
-                {CORPORATION_ESI_SCOPES.filter(s => !s.required).map(scope => (
-                  <div 
-                    key={scope.scope} 
-                    className={`flex items-center justify-between p-2 rounded border ${
-                      canEditCorpScopes 
-                        ? 'hover:bg-muted/30 border-transparent hover:border-border/50 transition-colors' 
-                        : 'bg-muted/10 border-border/30 opacity-75'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 flex-1">
-                      <Checkbox 
-                        checked={true}
-                        disabled={!canEditCorpScopes}
-                        className={!canEditCorpScopes ? 'opacity-50' : ''}
-                      />
-                      <Label 
-                        className={`text-sm ${canEditCorpScopes ? 'cursor-pointer' : 'cursor-default'}`}
-                      >
-                        {scope.label}
-                      </Label>
-                    </div>
-                    <ScopeInfoButton scope={scope} />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {!canEditCorpScopes && (
-              <Alert>
-                <Info size={16} />
-                <AlertDescription className="text-xs">
-                  Only Directors, CEOs, and Administrators can modify corporation ESI scopes. 
-                  These scopes are managed at the corporation level.
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
-
-          {/* Registered Corporations */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between pt-4 border-t border-border">
-              <h4 className="font-medium">Registered Corporations</h4>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">
-                  {registeredCorps.filter(corp => corp.isActive).length} Active
-                </Badge>
-              </div>
-            </div>
-            
-            {registeredCorps.length > 0 ? (
-              <div className="space-y-3">
-                {registeredCorps.map((corp) => (
-                  <div key={corp.corporationId} className="p-4 border border-border rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        {corp.corporationId && (
-                          <img 
-                            src={`https://images.evetech.net/corporations/${corp.corporationId}/logo?size=64`}
-                            alt={corp.corporationName}
-                            className="w-10 h-10 rounded border border-accent/30"
-                          />
-                        )}
-                        <div>
-                          <h5 className="font-medium">{corp.corporationName}</h5>
-                          <p className="text-sm text-muted-foreground">
-                            Corp ID: {corp.corporationId} • Registered: {new Date(corp.registrationDate).toLocaleDateString()}
-                          </p>
-                        </div>
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Corporation-level authentication for Directors/CEOs
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3 flex-1 flex flex-col">
+            {/* Corporation Scopes Display */}
+            <div className="space-y-2 flex-1">
+              {/* Required Corporation Scopes */}
+              <div className="space-y-1.5">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Required Scopes
+                </h4>
+                <div className="space-y-1">
+                  {CORPORATION_ESI_SCOPES.filter(s => s.required).map(scope => (
+                    <div 
+                      key={scope.scope} 
+                      className={`flex items-center justify-between p-1.5 rounded border ${
+                        canEditCorpScopes 
+                          ? 'bg-muted/30 border-border/50' 
+                          : 'bg-muted/10 border-border/30 opacity-75'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <Checkbox 
+                          checked={true} 
+                          disabled={true}
+                          className="opacity-50 h-3.5 w-3.5"
+                        />
+                        <Label className="text-xs cursor-default truncate">
+                          {scope.label}
+                        </Label>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={corp.isActive ? "default" : "secondary"}>
-                          {corp.isActive ? "Active" : "Inactive"}
-                        </Badge>
-                        {canEditCorpScopes && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => updateCorporation(corp.corporationId, { isActive: !corp.isActive })}
-                            >
-                              {corp.isActive ? 'Disable' : 'Enable'}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => {
-                                if (confirm(`Are you sure you want to remove ${corp.corporationName}?`)) {
-                                  deleteCorporation(corp.corporationId);
-                                  toast.success('Corporation removed');
-                                }
-                              }}
-                            >
-                              <X size={14} />
-                            </Button>
-                          </>
-                        )}
-                      </div>
+                      <ScopeInfoButton scope={scope} />
                     </div>
-                    
-                    <div className="mt-3 p-3 bg-muted/30 rounded text-xs space-y-2">
-                      <div>
-                        <p className="font-medium mb-1">Registered Scopes ({corp.registeredScopes.length}):</p>
-                        <div className="flex flex-wrap gap-1">
-                          {corp.registeredScopes.slice(0, 3).map((scope, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs">
-                              {scope.split('.')[1]?.replace('read_', '').replace('_', ' ') || scope}
-                            </Badge>
-                          ))}
-                          {corp.registeredScopes.length > 3 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{corp.registeredScopes.length - 3} more
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border/50">
-                        <div>
-                          <p className="text-muted-foreground">Members: {corp.memberCount || 0}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">
-                            Last Update: {corp.lastTokenRefresh ? new Date(corp.lastTokenRefresh).toLocaleDateString() : 'Never'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-6 border border-dashed border-border rounded-lg text-center">
-                <Building size={32} className="mx-auto mb-3 text-muted-foreground" />
-                <h5 className="font-medium mb-2">No Corporations Registered</h5>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Corporation Directors and CEOs can register their corporations for LMeve data access
-                </p>
-                <div className="space-y-2 text-xs text-muted-foreground bg-muted/30 p-3 rounded">
-                  <p><strong>Personal Access:</strong> Authenticate to access your character data and personal features</p>
-                  <p><strong>Corporation Access:</strong> Directors/CEOs register corporations for full data sync and management</p>
+                  ))}
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* ESI Configuration Status */}
-          {!esiConfig?.clientId && (
-            <Alert>
-              <Warning size={16} />
-              <AlertDescription>
-                ESI authentication is not configured. Contact your system administrator to configure ESI Client ID and Secret in Settings → Database.
-              </AlertDescription>
-            </Alert>
+              {/* Optional Corporation Scopes */}
+              <div className="space-y-1.5">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Optional Scopes
+                </h4>
+                <div className="space-y-1 max-h-40 overflow-y-auto pr-1 scrollbar-thin">
+                  {CORPORATION_ESI_SCOPES.filter(s => !s.required).map(scope => (
+                    <div 
+                      key={scope.scope} 
+                      className={`flex items-center justify-between p-1.5 rounded border ${
+                        canEditCorpScopes 
+                          ? 'hover:bg-muted/30 border-transparent hover:border-border/50 transition-colors' 
+                          : 'bg-muted/10 border-border/30 opacity-75'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <Checkbox 
+                          checked={true}
+                          disabled={!canEditCorpScopes}
+                          className={`h-3.5 w-3.5 ${!canEditCorpScopes ? 'opacity-50' : ''}`}
+                        />
+                        <Label 
+                          className={`text-xs truncate ${canEditCorpScopes ? 'cursor-pointer' : 'cursor-default'}`}
+                        >
+                          {scope.label}
+                        </Label>
+                      </div>
+                      <ScopeInfoButton scope={scope} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Registration Action */}
+            <div className="pt-2 mt-auto">
+              {user && user.authMethod === 'esi' && ['director', 'ceo', 'super_admin', 'admin'].includes(user.role || '') ? (
+                <Button
+                  size="sm"
+                  className="w-full"
+                  onClick={async () => {
+                    try {
+                      const corpAuth = loginWithESI('corporation');
+                      window.location.href = corpAuth;
+                    } catch (error) {
+                      console.error('Failed to start corp ESI auth:', error);
+                      toast.error('Failed to start corporation authentication');
+                    }
+                  }}
+                  disabled={!esiConfig?.clientId}
+                >
+                  <Key size={14} className="mr-2" />
+                  Register Corporation ESI
+                </Button>
+              ) : (
+                <div className="p-2 bg-muted/30 rounded text-center">
+                  <p className="text-xs text-muted-foreground">
+                    Director/CEO role required
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Registered Corporations */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Registered Corporations</CardTitle>
+            <Badge variant="outline" className="text-xs">
+              {registeredCorps.filter(corp => corp.isActive).length} Active
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {registeredCorps.length > 0 ? (
+            <div className="space-y-2">
+              {registeredCorps.map((corp) => (
+                <div key={corp.corporationId} className="p-3 border border-border rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      {corp.corporationId && (
+                        <img 
+                          src={`https://images.evetech.net/corporations/${corp.corporationId}/logo?size=64`}
+                          alt={corp.corporationName}
+                          className="w-8 h-8 rounded border border-accent/30"
+                        />
+                      )}
+                      <div>
+                        <h5 className="font-medium text-sm">{corp.corporationName}</h5>
+                        <p className="text-xs text-muted-foreground">
+                          ID: {corp.corporationId} • Registered: {new Date(corp.registrationDate).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={corp.isActive ? "default" : "secondary"} className="text-xs h-5">
+                        {corp.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                      {canEditCorpScopes && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => updateCorporation(corp.corporationId, { isActive: !corp.isActive })}
+                          >
+                            {corp.isActive ? 'Disable' : 'Enable'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-7 w-7 p-0"
+                            onClick={() => {
+                              if (confirm(`Are you sure you want to remove ${corp.corporationName}?`)) {
+                                deleteCorporation(corp.corporationId);
+                                toast.success('Corporation removed');
+                              }
+                            }}
+                          >
+                            <X size={14} />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="mt-2 p-2 bg-muted/30 rounded text-xs space-y-1.5">
+                    <div>
+                      <p className="font-medium mb-1">Scopes ({corp.registeredScopes.length}):</p>
+                      <div className="flex flex-wrap gap-1">
+                        {corp.registeredScopes.slice(0, 4).map((scope, idx) => (
+                          <Badge key={idx} variant="outline" className="text-xs h-5">
+                            {scope.split('.')[1]?.replace('read_', '').replace('_', ' ') || scope}
+                          </Badge>
+                        ))}
+                        {corp.registeredScopes.length > 4 && (
+                          <Badge variant="outline" className="text-xs h-5">
+                            +{corp.registeredScopes.length - 4}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between pt-1.5 border-t border-border/50">
+                      <span className="text-muted-foreground">Members: {corp.memberCount || 0}</span>
+                      <span className="text-muted-foreground">
+                        Last Update: {corp.lastTokenRefresh ? new Date(corp.lastTokenRefresh).toLocaleDateString() : 'Never'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-6 border border-dashed border-border rounded-lg text-center">
+              <Building size={28} className="mx-auto mb-2 text-muted-foreground" />
+              <h5 className="font-medium text-sm mb-1">No Corporations Registered</h5>
+              <p className="text-xs text-muted-foreground mb-3">
+                Directors and CEOs can register corporations using the button above
+              </p>
+              <div className="space-y-1.5 text-xs text-muted-foreground bg-muted/30 p-2.5 rounded">
+                <p><strong>Personal ESI:</strong> Character data and personal features</p>
+                <p><strong>Corporation ESI:</strong> Full corporation data sync and management</p>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
