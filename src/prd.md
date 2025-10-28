@@ -33,6 +33,8 @@
 - **Corporation Projects**: Define project hangars for material deliveries, track requirements via ESI asset and container log endpoints, match deliveries to project needs, and monitor progress with real-time hangar scanning
 - **Market Analysis**: Track active corporation market orders (buy/sell) via ESI routes, monitor completed sales with profit tracking, analyze sales trends and top-performing items
 - **Corporate Wallet Management**: Monitor all corporation wallet divisions with ESI integration, track monthly profit/loss per division, view transaction history with live ESI data, analyze financial trends with visual graphs, show data source indicators
+- **Buyback System**: Comprehensive buyback calculator with item cost syncing from ESI, automatic price fetching from configured trade hubs (Jita, Amarr, Dodixie, etc.), support for custom manual pricing overrides, exclude from sync checkbox for each item, inline custom price editing, contract validation key generation, multi-stage contract tracking (New → Waiting on Pilot → Awaiting Payment → Completed), pilot assignment, and ISK payout calculations
+- **Item Cost Synchronization**: Real-time market price syncing from EVE ESI for buyback items, configurable pricing station selection, buy/sell order price selection, automatic caching with configurable TTL, batch sync capabilities, manual price override support, price source tracking (ESI/Database/Manual), last sync timestamp display
 - **Settings & Configuration**: Comprehensive settings panel for API key management, database configuration, sync preferences, and notification controls
 - **Dashboard Overview**: Quick stats and alerts for corporation health and activity with live EVE Online connection status and database connectivity indicators
 

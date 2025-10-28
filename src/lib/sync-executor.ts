@@ -20,7 +20,8 @@ export type SyncProcessType =
   | 'mining' 
   | 'killmails'
   | 'container_logs'
-  | 'contracts';
+  | 'contracts'
+  | 'item_costs';
 
 export interface SyncResult {
   success: boolean;
@@ -67,6 +68,8 @@ export class SyncExecutor {
           return await this.syncContainerLogs(context);
         case 'contracts':
           return await this.syncContracts(context);
+        case 'item_costs':
+          return await this.syncItemCosts(context);
         default:
           throw new Error(`Unknown sync process type: ${processType}`);
       }
@@ -454,6 +457,22 @@ export class SyncExecutor {
     return {
       success: true,
       itemsProcessed: contracts.length
+    };
+  }
+
+  private async syncItemCosts(context: SyncExecutionContext): Promise<SyncResult> {
+    const { processId } = context;
+    
+    await this.stateManager.updateSyncProgress(processId, 10, 'Item cost sync initiated from buyback admin...');
+    
+    console.log('ℹ️ Item cost sync is handled directly by the buyback component');
+    
+    await this.stateManager.updateSyncProgress(processId, 100, 'See buyback admin panel for price syncing');
+    await this.stateManager.completeSync(processId, 0);
+    
+    return {
+      success: true,
+      itemsProcessed: 0
     };
   }
 }
