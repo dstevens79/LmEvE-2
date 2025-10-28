@@ -3,7 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Factory, Users, Play, Clock, CheckCircle, Building } from '@phosphor-icons/react';
-import { ManufacturingTask, User } from '@/lib/types';
+import { ManufacturingTask, User, Member } from '@/lib/types';
+import { ItemInfoPopup } from '@/components/popups/ItemInfoPopup';
+import { PersonInfoPopup } from '@/components/popups/PersonInfoPopup';
 
 interface JobActivityViewProps {
   tasks: ManufacturingTask[];
@@ -15,6 +17,7 @@ interface JobActivityViewProps {
   getStatusBadge: (status: string) => React.ReactNode;
   getPayModifierDisplay: (modifier: string | null) => string | null;
   onStationClick?: (stationId: number) => void;
+  members?: Member[];
   isMobileView?: boolean;
 }
 
@@ -28,8 +31,11 @@ export function JobActivityView({
   getStatusBadge,
   getPayModifierDisplay,
   onStationClick,
+  members = [],
   isMobileView
 }: JobActivityViewProps) {
+  const [selectedItem, setSelectedItem] = React.useState<{ typeId: number; typeName: string } | null>(null);
+  const [selectedPerson, setSelectedPerson] = React.useState<Member | null>(null);
   
   const filteredTasks = filter === 'my-tasks' 
     ? tasks.filter(task => 
@@ -61,8 +67,47 @@ export function JobActivityView({
     return `${minutes}m`;
   };
 
+  const handlePersonClick = (task: ManufacturingTask) => {
+    const member = members.find(m => 
+      m.characterId.toString() === task.assignedTo || 
+      m.characterName === task.assignedToName ||
+      m.name === task.assignedToName
+    );
+    
+    if (member) {
+      setSelectedPerson(member);
+    } else {
+      const fakeMember: Member = {
+        id: parseInt(task.assignedTo || '0'),
+        characterId: parseInt(task.assignedTo || '0'),
+        characterName: task.assignedToName,
+        name: task.assignedToName,
+        corporationId: 0,
+        corporationName: 'Unknown',
+        roles: [],
+        titles: [],
+        isActive: true
+      };
+      setSelectedPerson(fakeMember);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {selectedItem && (
+        <ItemInfoPopup
+          itemTypeId={selectedItem.typeId}
+          itemName={selectedItem.typeName}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
+      
+      {selectedPerson && (
+        <PersonInfoPopup
+          person={selectedPerson}
+          onClose={() => setSelectedPerson(null)}
+        />
+      )}
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold">Manufacturing Job Activity</h3>
@@ -135,12 +180,16 @@ export function JobActivityView({
                 <img 
                   src={`https://images.evetech.net/characters/${task.assignedTo}/portrait?size=32`}
                   alt={task.assignedToName}
-                  className="w-6 h-6 rounded-full"
+                  className="w-6 h-6 rounded-full cursor-pointer hover:ring-2 hover:ring-accent transition-all"
+                  onClick={() => handlePersonClick(task)}
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTIiIGZpbGw9IiMzMzMiLz4KPHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAxMiAxMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSI2IiB5PSI2Ij4KPHBhdGggZD0iTTYgN0M1LjQgNyA1IDYuNiA1IDZDNSA1LjQgNS40IDUgNiA1QzYuNiA1IDcgNS40IDcgNkM3IDYuNiA2LjYgNyA2IDdaIiBmaWxsPSIjOTk5Ii8+CjxwYXRoIGQ9Ik02IDhDNC44IDggNCA3LjIgNCA2QzQgNC44IDQuOCA0IDYgNEM3LjIgNCA4IDQuOCA4IDZDOBC4IDcuMiA3LjIgOCA2IDhaIiBmaWxsPSIjOTk5Ii8+Cjwvc3ZnPgo8L3N2Zz4K';
                   }}
                 />
-                <span className="text-sm text-foreground truncate">
+                <span 
+                  className="text-sm text-foreground truncate cursor-pointer hover:text-accent transition-colors"
+                  onClick={() => handlePersonClick(task)}
+                >
                   {task.assignedToName}
                 </span>
               </div>
@@ -150,12 +199,16 @@ export function JobActivityView({
                 <img 
                   src={`https://images.evetech.net/types/${task.targetItem.typeId}/icon?size=32`}
                   alt={task.targetItem.typeName}
-                  className="w-6 h-6"
+                  className="w-6 h-6 cursor-pointer hover:ring-2 hover:ring-accent transition-all"
+                  onClick={() => setSelectedItem({ typeId: task.targetItem.typeId, typeName: task.targetItem.typeName })}
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSIjMzMzIi8+CjxwYXRoIGQ9Ik0xMiA2TDE4IDEyTDEyIDE4TDYgMTJMMTIgNloiIGZpbGw9IiM2NjYiLz4KPC9zdmc+';
                   }}
                 />
-                <span className="text-sm text-foreground truncate">
+                <span 
+                  className="text-sm text-foreground truncate cursor-pointer hover:text-accent transition-colors"
+                  onClick={() => setSelectedItem({ typeId: task.targetItem.typeId, typeName: task.targetItem.typeName })}
+                >
                   {task.targetItem.typeName}
                 </span>
               </div>

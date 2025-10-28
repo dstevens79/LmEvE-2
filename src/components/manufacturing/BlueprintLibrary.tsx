@@ -33,12 +33,14 @@ import {
 import { useBlueprints } from '@/hooks/useBlueprints';
 import { useAuth } from '@/lib/auth-provider';
 import { Blueprint } from '@/lib/types';
+import { BlueprintInfoPopup } from '@/components/popups/BlueprintInfoPopup';
 
 interface BlueprintLibraryProps {
   isMobileView?: boolean;
+  onAssignJob?: (blueprint: Blueprint) => void;
 }
 
-export function BlueprintLibrary({ isMobileView }: BlueprintLibraryProps) {
+export function BlueprintLibrary({ isMobileView, onAssignJob }: BlueprintLibraryProps) {
   const { user } = useAuth();
   const { blueprints, isLoading, error, refreshBlueprints, lastUpdate } = useBlueprints(
     user?.corporationId,
@@ -48,6 +50,7 @@ export function BlueprintLibrary({ isMobileView }: BlueprintLibraryProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'original' | 'copy'>('all');
+  const [selectedBlueprint, setSelectedBlueprint] = useState<Blueprint | null>(null);
   const [sortBy, setSortBy] = useState<'name' | 'me' | 'te' | 'runs'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
@@ -136,6 +139,14 @@ export function BlueprintLibrary({ isMobileView }: BlueprintLibraryProps) {
 
   return (
     <div className="space-y-4">
+      {selectedBlueprint && (
+        <BlueprintInfoPopup
+          blueprint={selectedBlueprint}
+          onClose={() => setSelectedBlueprint(null)}
+          onAssignJob={onAssignJob}
+        />
+      )}
+      
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -267,11 +278,15 @@ export function BlueprintLibrary({ isMobileView }: BlueprintLibraryProps) {
                 </TableHeader>
                 <TableBody>
                   {filteredAndSortedBlueprints.map((bp) => (
-                    <TableRow key={bp.id}>
+                    <TableRow 
+                      key={bp.id}
+                      className="cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => setSelectedBlueprint(bp)}
+                    >
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           {bp.isOriginal && <Star size={14} className="text-yellow-400" weight="fill" />}
-                          {bp.typeName}
+                          <span className="hover:text-accent transition-colors">{bp.typeName}</span>
                         </div>
                       </TableCell>
                       <TableCell>

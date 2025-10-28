@@ -486,6 +486,7 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
           getStatusBadge={getStatusBadge}
           getPayModifierDisplay={getPayModifierDisplay}
           onStationClick={handleStationClick}
+          members={members || []}
           isMobileView={isMobileView}
         />
       )}

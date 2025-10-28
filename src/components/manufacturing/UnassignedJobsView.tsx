@@ -2,9 +2,10 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Wrench, Users, Package, CheckCircle } from '@phosphor-icons/react';
+import { Wrench, Users, Package, CheckCircle, Globe } from '@phosphor-icons/react';
 import { ManufacturingTask, User, Member } from '@/lib/types';
 import { toast } from 'sonner';
+import { ItemInfoPopup } from '@/components/popups/ItemInfoPopup';
 
 interface UnassignedJobsViewProps {
   tasks: ManufacturingTask[];
@@ -25,6 +26,7 @@ export function UnassignedJobsView({
   getPayModifierDisplay,
   isMobileView
 }: UnassignedJobsViewProps) {
+  const [selectedItem, setSelectedItem] = React.useState<{ typeId: number; typeName: string } | null>(null);
   
   const handleClaimJob = (task: ManufacturingTask) => {
     if (!currentUser) {
@@ -52,6 +54,14 @@ export function UnassignedJobsView({
 
   return (
     <div className="space-y-6">
+      {selectedItem && (
+        <ItemInfoPopup
+          itemTypeId={selectedItem.typeId}
+          itemName={selectedItem.typeName}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
+      
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -87,13 +97,17 @@ export function UnassignedJobsView({
                       <img 
                         src={task.targetItem.typeId > 0 ? `https://images.evetech.net/types/${task.targetItem.typeId}/icon?size=64` : 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjMzMzIiByeD0iOCIvPgo8cGF0aCBkPSJNMzIgMTZMMTYgMjRMMzIgMzJMNDggMjRMMzIgMTZaIiBmaWxsPSIjNjY2Ii8+CjxwYXRoIGQ9Ik0zMiAzMkwxNiA0MEwzMiA0OEw0OCA0MEwzMiAzMloiIGZpbGw9IiM0NDQiLz4KPC9zdmc+'}
                         alt={task.targetItem.typeName}
-                        className="w-12 h-12 rounded"
+                        className="w-12 h-12 rounded cursor-pointer hover:ring-2 hover:ring-accent transition-all"
+                        onClick={() => setSelectedItem({ typeId: task.targetItem.typeId, typeName: task.targetItem.typeName })}
                         onError={(e) => {
                           (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjMzMzIiByeD0iOCIvPgo8cGF0aCBkPSJNMjQgMTJMMTIgMThMMjQgMjRMMzYgMThMMjQgMTJaIiBmaWxsPSIjNjY2Ii8+CjxwYXRoIGQ9Ik0yNCAyNEwxMiAzMEwyNCAzNkwzNiAzMEwyNCAyNFoiIGZpbGw9IiM0NDQiLz4KPC9zdmc+';
                         }}
                       />
                       <div>
-                        <h4 className="text-lg font-semibold text-foreground">
+                        <h4 
+                          className="text-lg font-semibold text-foreground cursor-pointer hover:text-accent transition-colors"
+                          onClick={() => setSelectedItem({ typeId: task.targetItem.typeId, typeName: task.targetItem.typeName })}
+                        >
                           {task.targetItem.typeName}
                         </h4>
                         <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
@@ -105,6 +119,12 @@ export function UnassignedJobsView({
                             <Wrench size={14} />
                             Est. {formatDuration(task.estimatedDuration)}
                           </span>
+                          {task.stationName && (
+                            <span className="flex items-center gap-1">
+                              <Globe size={14} />
+                              {task.stationName}
+                            </span>
+                          )}
                           <span>
                             Created: {new Date(task.createdDate).toLocaleDateString()}
                           </span>
