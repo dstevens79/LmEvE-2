@@ -282,12 +282,12 @@ export function SyncSetupPanel() {
         <div className="p-6 bg-gradient-to-br from-accent/5 to-accent/10 border border-accent/20 rounded-lg">
           <div className="flex items-start gap-4">
             <div className="p-3 bg-accent/20 rounded-lg">
-              <CloudArrowDown size={32} className="text-accent" />
+              <Clock size={32} className="text-accent" />
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold mb-2">Setup Data Synchronization</h3>
+              <h3 className="text-lg font-semibold mb-2">Setup Automated Sync Cron</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Configure automated data synchronization between EVE Online ESI and your local database.
+                Install cron jobs for automated data synchronization between EVE Online ESI and your database.
                 This enables real-time tracking of corporation assets, members, manufacturing, and more.
               </p>
               
@@ -338,7 +338,7 @@ export function SyncSetupPanel() {
                 <Alert className="mb-4">
                   <Warning size={16} />
                   <AlertDescription>
-                    Please complete all requirements before setting up sync. Ensure you have registered a corporation 
+                    Please complete all requirements before installing cron jobs. Ensure you have registered a corporation 
                     with director/CEO permissions via EVE SSO and configured database connection in Settings.
                   </AlertDescription>
                 </Alert>
@@ -352,12 +352,12 @@ export function SyncSetupPanel() {
                 {isInitializing ? (
                   <>
                     <ArrowClockwise size={16} className="mr-2 animate-spin" />
-                    Initializing...
+                    Installing Cron Jobs...
                   </>
                 ) : (
                   <>
-                    <CloudArrowDown size={16} className="mr-2" />
-                    Setup Data Sync
+                    <Clock size={16} className="mr-2" />
+                    Setup Cron
                   </>
                 )}
               </Button>
@@ -370,25 +370,19 @@ export function SyncSetupPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Scheduler Status and Controls */}
-      <div className="p-4 bg-accent/5 border border-accent/20 rounded-lg">
+      {/* Compact Status Overview */}
+      <div className="p-4 bg-card border border-border rounded-lg">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${isSchedulerRunning ? 'bg-green-500/20' : 'bg-muted'}`}>
-              <Activity size={24} className={isSchedulerRunning ? 'text-green-400' : 'text-muted-foreground'} />
-            </div>
-            <div>
-              <h3 className="font-semibold">Sync Scheduler</h3>
-              <p className="text-sm text-muted-foreground">
-                {isSchedulerRunning ? 'Running - monitoring scheduled processes' : 'Stopped - no automatic syncing'}
-              </p>
-            </div>
+            <h3 className="font-semibold text-base">Sync Status</h3>
+            {activeCorp && (
+              <Badge variant="secondary" className="text-xs">
+                {activeCorp.corporationName}
+              </Badge>
+            )}
           </div>
           
           <div className="flex items-center gap-2">
-            <Badge variant={isSchedulerRunning ? "default" : "secondary"} className="text-xs">
-              {isSchedulerRunning ? "Active" : "Inactive"}
-            </Badge>
             {isSchedulerRunning ? (
               <Button
                 onClick={handleStopScheduler}
@@ -397,7 +391,7 @@ export function SyncSetupPanel() {
                 className="border-red-500/50 text-red-400 hover:bg-red-500/10"
               >
                 <Stop size={16} className="mr-2" />
-                Stop Scheduler
+                Stop All
               </Button>
             ) : (
               <Button
@@ -407,41 +401,125 @@ export function SyncSetupPanel() {
                 className="border-green-500/50 text-green-400 hover:bg-green-500/10"
               >
                 <Play size={16} className="mr-2" />
-                Start Scheduler
+                Start All
               </Button>
             )}
           </div>
         </div>
         
-        {activeCorp && (
-          <div className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Corporation:</span>
-              <span className="font-medium">{activeCorp.corporationName}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Active Processes:</span>
-              <Badge variant="secondary">
-                {Array.from(processConfigs.values()).filter(c => c.enabled).length} / {processConfigs.size}
-              </Badge>
-            </div>
-          </div>
-        )}
+        {/* Compact Process List */}
+        <div className="space-y-2">
+          {SYNC_PROCESSES.map((process) => {
+            const processId = `corp_${activeCorp?.corporationId}_${process.id}`;
+            const config = processConfigs.get(processId);
+            const status = getSyncStatus(processId);
+            const running = isProcessRunning(processId);
+            const nextRun = scheduler?.getNextRunTime(processId);
+            const IconComponent = process.icon;
+            
+            const hasError = status.status === 'error';
+            const hasSuccess = status.status === 'success' && !running;
+
+            return (
+              <div key={process.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+                <div className="flex items-center gap-3 flex-1">
+                  {/* LED Status Indicator */}
+                  <div className="flex items-center gap-2">
+                    <div 
+                      className={`w-2 h-2 rounded-full ${
+                        !config?.enabled ? 'bg-gray-500' :
+                        running ? 'bg-blue-500 animate-pulse' :
+                        hasError ? 'bg-red-500' :
+                        hasSuccess ? 'bg-green-500' :
+                        'bg-yellow-500'
+                      }`}
+                      title={
+                        !config?.enabled ? 'Disabled' :
+                        running ? 'Running' :
+                        hasError ? 'Error' :
+                        hasSuccess ? 'Success' :
+                        'Idle'
+                      }
+                    />
+                    <IconComponent size={16} className={`${process.color} ${!config?.enabled ? 'opacity-50' : ''}`} />
+                  </div>
+                  
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{process.name}</span>
+                      {running && (
+                        <span className="text-xs text-muted-foreground">({status.progress}%)</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  {/* Time till next sync */}
+                  {config?.enabled && nextRun && !running && (
+                    <div className="flex items-center gap-1 min-w-[100px] justify-end">
+                      <Clock size={12} />
+                      <span>{formatDistanceToNow(nextRun, { addSuffix: true })}</span>
+                    </div>
+                  )}
+                  {!config?.enabled && (
+                    <span className="text-xs text-muted-foreground min-w-[100px] text-right">Disabled</span>
+                  )}
+                  {running && (
+                    <span className="text-xs text-accent min-w-[100px] text-right">Running now...</span>
+                  )}
+                  
+                  {/* Last run time */}
+                  {status.lastRunTime && (
+                    <div className="min-w-[120px] text-right">
+                      <span className="text-muted-foreground">Last: </span>
+                      <span>{formatDistanceToNow(status.lastRunTime, { addSuffix: true })}</span>
+                    </div>
+                  )}
+                  
+                  {/* Quick Actions */}
+                  <div className="flex items-center gap-1">
+                    <Button
+                      onClick={() => handleRunNow(processId, process.id)}
+                      disabled={running || !config?.enabled}
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      title="Run now"
+                    >
+                      <Play size={12} />
+                    </Button>
+                    <Switch
+                      checked={config?.enabled || false}
+                      onCheckedChange={() => handleToggleProcess(processId)}
+                      disabled={running}
+                      className="scale-75"
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Individual Process Cards */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h4 className="font-medium flex items-center gap-2">
-            <List size={18} />
-            Sync Processes
-          </h4>
-          <Badge variant="outline" className="text-xs">
-            {SYNC_PROCESSES.length} processes available
-          </Badge>
-        </div>
+      {/* Detailed Process Information (Expandable) */}
+      <details className="group">
+        <summary className="cursor-pointer list-none">
+          <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors">
+            <h4 className="font-medium flex items-center gap-2">
+              <List size={18} />
+              Process Details
+              <Badge variant="outline" className="text-xs ml-2">
+                {SYNC_PROCESSES.length} processes
+              </Badge>
+            </h4>
+            <span className="text-xs text-muted-foreground group-open:hidden">Click to expand</span>
+            <span className="text-xs text-muted-foreground hidden group-open:inline">Click to collapse</span>
+          </div>
+        </summary>
         
-        <div className="grid gap-4">
+        <div className="mt-4 space-y-3">
           {SYNC_PROCESSES.map((process) => {
             const processId = `corp_${activeCorp?.corporationId}_${process.id}`;
             const config = processConfigs.get(processId);
@@ -540,23 +618,13 @@ export function SyncSetupPanel() {
                       <Play size={14} className="mr-1" />
                       Run Now
                     </Button>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        checked={config?.enabled || false}
-                        onCheckedChange={() => handleToggleProcess(processId)}
-                        disabled={running}
-                      />
-                      <Label className="text-xs text-muted-foreground">
-                        {config?.enabled ? 'Enabled' : 'Disabled'}
-                      </Label>
-                    </div>
                   </div>
                 </div>
               </div>
             );
           })}
         </div>
-      </div>
+      </details>
     </div>
   );
 }
