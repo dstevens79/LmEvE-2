@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useLMeveData } from '@/lib/LMeveDataContext';
 import { useAuth } from '@/lib/auth-provider';
 import { useDatabase } from '@/lib/DatabaseContext';
+import { ConnectionStatus } from '@/components/DataSourceIndicator';
 import { 
   Users, 
   Package, 
@@ -146,7 +147,11 @@ export function Dashboard({ onLoginClick, isMobileView }: DashboardProps) {
           </p>
         </div>
         
-        <div className="flex items-center gap-3">          
+        <div className="flex items-center gap-3">
+          <ConnectionStatus 
+            esiConnected={systemStatus.eveOnline && !!user?.accessToken}
+            databaseConnected={systemStatus.database}
+          />
           <Button
             onClick={refreshDashboard}
             variant="outline"

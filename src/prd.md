@@ -1,13 +1,13 @@
 # LMeve - EVE Online Corporation Management Tool
 
 ## Core Purpose & Success
-- **Mission Statement**: A modern web-based corporation management tool for EVE Online that helps CEOs and directors manage member assets, manufacturing, mining operations, and corporation logistics efficiently.
-- **Success Indicators**: Reduced time spent on manual corporation management tasks, improved member engagement tracking, streamlined asset and production oversight.
-- **Experience Qualities**: Professional, efficient, comprehensive - feels like a serious business management tool for virtual corporations.
+- **Mission Statement**: A modern web-based corporation management tool for EVE Online that helps CEOs and directors manage member assets, manufacturing, mining operations, and corporation logistics efficiently with real-time ESI and database integration.
+- **Success Indicators**: Reduced time spent on manual corporation management tasks, improved member engagement tracking, streamlined asset and production oversight with live data from EVE Online and persistent database storage.
+- **Experience Qualities**: Professional, efficient, comprehensive - feels like a serious business management tool for virtual corporations with enterprise-grade data integration.
 
 ## Project Classification & Approach
-- **Complexity Level**: Complex Application (advanced functionality, multiple data views, corporation management features)
-- **Primary User Activity**: Managing - CEOs and directors actively managing corporation operations, tracking member activities, and making strategic decisions.
+- **Complexity Level**: Complex Application (advanced functionality, multiple data views, corporation management features with dual data source architecture)
+- **Primary User Activity**: Managing - CEOs and directors actively managing corporation operations, tracking member activities, and making strategic decisions using real-time and historical data.
 
 ## Thought Process for Feature Selection
 - **Core Problem Analysis**: EVE Online corporations need comprehensive tools to track member assets, manufacturing operations, mining activities, and overall corp logistics beyond what the game provides natively.
@@ -17,20 +17,24 @@
 
 ## Essential Features
 - **Tabbed Interface**: Core navigation between different management areas (Members, Assets, Manufacturing, Mining, Logistics, Market, Wallet, etc.)
-- **EVE Online API Integration**: Real-time data synchronization with EVE Online's ESI API for live corporation data
-- **Real-time Data Dashboard**: Live connection status, API health monitoring, and automatic data refresh capabilities
-- **Member Management**: Track corporation members, their assets, activities, and contributions
-- **Asset Tracking**: Split-view hangar browser with 7 corporation divisions listed on left side, detailed item contents on right side with category-based filtering (Materials, Blueprints, Ships, Ammo, Drones, Components), search functionality, and real-time statistics. Retrieves division names from ESI divisions endpoint when available, falls back to "Hangar 1-7" naming.
-- **Manufacturing Job Scheduling**: Real-time tracking of active manufacturing jobs with progress monitoring, pause/resume capabilities, and completion alerts
+- **Integrated Data Architecture**: Seamless integration between EVE Online ESI API and database with intelligent fallback - automatically fetches from ESI when available, falls back to database, with caching layer for performance
+- **Real-time ESI Integration**: Live connection to EVE Online's ESI API for real-time corporation data including members, assets, manufacturing jobs, wallet transactions, and market orders
+- **Database Connectivity**: Persistent data storage with MySQL/PostgreSQL support for historical data, analytics, and offline access
+- **Data Source Transparency**: Clear visual indicators showing whether data comes from ESI (live), database (historical), or cache (recent)
+- **Smart Data Refresh**: User-controlled data refresh with clear loading states and error handling
+- **Real-time Data Dashboard**: Live connection status, API health monitoring, and automatic data refresh capabilities with visual ESI/Database connectivity status
+- **Member Management**: Track corporation members fetched from ESI with character details, roles, and activity tracking
+- **Asset Tracking**: Split-view hangar browser with 7 corporation divisions listed on left side, detailed item contents on right side with category-based filtering (Materials, Blueprints, Ships, Ammo, Drones, Components), search functionality, and real-time statistics. Retrieves division names from ESI divisions endpoint when available, falls back to "Hangar 1-7" naming. Displays data source for each asset list.
+- **Manufacturing Job Scheduling**: Real-time tracking of active manufacturing jobs with progress monitoring, pause/resume capabilities, and completion alerts from ESI industry endpoints
 - **Blueprint Management**: Comprehensive blueprint library with research levels, material efficiency tracking, and production planning
 - **Production Planning**: Advanced planning tools for creating production schedules, cost analysis, and profit estimation
 - **Material Requirements Planning**: Automatic calculation of material needs for manufacturing jobs with availability tracking
 - **Mining Operations**: Monitor mining activities, ore processing, and resource allocation
 - **Corporation Projects**: Define project hangars for material deliveries, track requirements via ESI asset and container log endpoints, match deliveries to project needs, and monitor progress with real-time hangar scanning
 - **Market Analysis**: Track active corporation market orders (buy/sell) via ESI routes, monitor completed sales with profit tracking, analyze sales trends and top-performing items
-- **Corporate Wallet Management**: Monitor all corporation wallet divisions, track monthly profit/loss per division, view transaction history with ESI integration, analyze financial trends with visual graphs
-- **Settings & Configuration**: Comprehensive settings panel for API key management, sync preferences, and notification controls
-- **Dashboard Overview**: Quick stats and alerts for corporation health and activity with live EVE Online connection status
+- **Corporate Wallet Management**: Monitor all corporation wallet divisions with ESI integration, track monthly profit/loss per division, view transaction history with live ESI data, analyze financial trends with visual graphs, show data source indicators
+- **Settings & Configuration**: Comprehensive settings panel for API key management, database configuration, sync preferences, and notification controls
+- **Dashboard Overview**: Quick stats and alerts for corporation health and activity with live EVE Online connection status and database connectivity indicators
 
 ## Design Direction
 
@@ -101,15 +105,21 @@
 - **Error Handling**: Clear error messages and recovery options
 
 ## Implementation Considerations
-- **Scalability Needs**: Efficient data handling for large corporations, API rate limiting, and caching strategies
-- **EVE Online API Integration**: Proper authentication flow, error handling, and data synchronization patterns
-- **Real-time Data Management**: Automatic refresh intervals, connection status monitoring, and offline capability
-- **Testing Focus**: Data accuracy, table performance, tab navigation, API integration reliability
-- **Critical Questions**: API integration patterns, data refresh strategies, user session management, authentication security
+- **Scalability Needs**: Efficient data handling for large corporations, API rate limiting, caching strategies, and database connection pooling
+- **EVE Online ESI Integration**: Proper authentication flow, OAuth token management, error handling, retry logic with exponential backoff, and data synchronization patterns
+- **Database Integration**: Connection management, query optimization, data migration strategies, and fallback mechanisms when ESI is unavailable
+- **Dual Source Architecture**: Intelligent data source selection (ESI vs Database), cache invalidation strategies, and conflict resolution
+- **Real-time Data Management**: Automatic refresh intervals, connection status monitoring, offline capability with database fallback, and transparent data source indicators
+- **Data Source Transparency**: Visual badges showing ESI/Database/Cache sources, timestamp display for data freshness, and user-controlled refresh capabilities
+- **Testing Focus**: Data accuracy, table performance, tab navigation, API integration reliability, database connection resilience, and fallback behavior
+- **Critical Questions**: ESI rate limit handling, database schema design, data synchronization strategies, user session management, authentication security, and graceful degradation when services are unavailable
 
 ## Reflection
 - This approach focuses on data-driven corporation management while maintaining the professional, space-themed aesthetic that EVE Online players expect
-- The integration with EVE Online's ESI API provides real-time data that makes the tool truly valuable for active corporation management
+- The dual integration with EVE Online's ESI API and persistent database storage provides both real-time accuracy and historical analysis capabilities
+- Intelligent data source selection (ESI → Database → Cache) ensures users always have access to data while optimizing API usage and performance
+- Visual transparency about data sources (ESI/Database/Cache indicators) builds user trust and understanding of data freshness
 - The tabbed interface allows for comprehensive functionality without overwhelming users
 - Emphasis on clear data presentation and efficient workflows aligns with the serious nature of corporation management
-- Real-time API integration creates a bridge between in-game activities and strategic planning, making this a mission-critical tool for serious EVE corporations
+- Real-time ESI integration combined with database fallback creates a bridge between in-game activities and strategic planning, making this a mission-critical tool for serious EVE corporations
+- Smart caching and refresh strategies balance data freshness with API rate limits and performance considerations

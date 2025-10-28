@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LoginPrompt } from '@/components/LoginPrompt';
 import { useAuth } from '@/lib/auth-provider';
 import { TabComponentProps } from '@/lib/types';
+import { useIntegratedData } from '@/hooks/useIntegratedData';
+import { DataSourceIndicator } from '@/components/DataSourceIndicator';
 import { 
   TrendUp,
   TrendDown,
@@ -20,7 +22,8 @@ import {
   CurrencyDollar,
   CalendarBlank,
   Funnel,
-  ChartPie
+  ChartPie,
+  ArrowClockwise
 } from '@phosphor-icons/react';
 import { useKV } from '@github/spark/hooks';
 import { toast } from 'sonner';
@@ -70,12 +73,24 @@ const DIVISION_COLORS = [
 
 export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
   const { user } = useAuth();
-  const [walletDivisions] = useKV<WalletDivision[]>('wallet-divisions', []);
-  const [walletTransactions] = useKV<WalletTransaction[]>('wallet-transactions', []);
+  const { 
+    walletDivisions, 
+    walletTransactions, 
+    fetchWalletDivisions, 
+    fetchWalletTransactions 
+  } = useIntegratedData();
+  
   const [selectedDivision, setSelectedDivision] = useState<number>(0);
   const [selectedPeriod, setSelectedPeriod] = useState('12m');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeView, setActiveView] = useState<'balance' | 'profit' | 'transactions'>('balance');
+
+  useEffect(() => {
+    if (user) {
+      fetchWalletDivisions();
+      fetchWalletTransactions();
+    }
+  }, [user, fetchWalletDivisions, fetchWalletTransactions]);
 
   // Mock data for demonstration
   const mockDivisions: WalletDivision[] = [
@@ -168,8 +183,8 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
 
   const monthlyData = useMemo(() => generateMonthlyData(), []);
 
-  const divisions = (walletDivisions && walletDivisions.length > 0) ? walletDivisions : mockDivisions;
-  const transactions = (walletTransactions && walletTransactions.length > 0) ? walletTransactions : mockTransactions;
+  const divisions = (walletDivisions.data && walletDivisions.data.length > 0) ? walletDivisions.data : mockDivisions;
+  const transactions = (walletTransactions.data && walletTransactions.data.length > 0) ? walletTransactions.data : mockTransactions;
 
   // Calculate total balance
   const totalBalance = divisions.reduce((sum, div) => sum + div.balance, 0);
@@ -239,14 +254,38 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-          <WalletIcon size={32} />
-          Corporation Wallet
-        </h2>
-        <p className="text-muted-foreground">
-          Track corporate wallet divisions, transactions, and monthly profit/loss analysis
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <WalletIcon size={32} />
+            Corporation Wallet
+          </h2>
+          <p className="text-muted-foreground">
+            Track corporate wallet divisions, transactions, and monthly profit/loss analysis
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <DataSourceIndicator 
+            source={walletDivisions.source}
+            timestamp={walletDivisions.timestamp}
+            error={walletDivisions.error}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              fetchWalletDivisions({ useCache: false });
+              fetchWalletTransactions(undefined, { useCache: false });
+              toast.success('Refreshing wallet data...');
+            }}
+            disabled={walletDivisions.loading || walletTransactions.loading}
+          >
+            <ArrowClockwise 
+              size={16} 
+              className={walletDivisions.loading || walletTransactions.loading ? 'animate-spin' : ''}
+            />
+          </Button>
+        </div>
       </div>
 
       {/* Two-column layout */}
