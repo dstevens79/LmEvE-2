@@ -215,6 +215,23 @@ export class SyncStateManager {
     this.notifyListeners();
     this.saveState();
   }
+
+  async setNextRunTime(processId: string, timestamp: number) {
+    try {
+      await spark.kv.set(`sync-next-run-${processId}`, timestamp);
+    } catch (error) {
+      console.error('Failed to save next run time:', error);
+    }
+  }
+
+  async getNextRunTime(processId: string): Promise<number | undefined> {
+    try {
+      return await spark.kv.get<number>(`sync-next-run-${processId}`);
+    } catch (error) {
+      console.error('Failed to get next run time:', error);
+      return undefined;
+    }
+  }
 }
 
 export function useSyncState() {
@@ -237,6 +254,10 @@ export function useSyncState() {
     getHistory: (processId?: string) => 
       SyncStateManager.getInstance().getHistory(processId),
     clearHistory: (processId?: string) => 
-      SyncStateManager.getInstance().clearHistory(processId)
+      SyncStateManager.getInstance().clearHistory(processId),
+    setNextRunTime: (processId: string, timestamp: number) =>
+      SyncStateManager.getInstance().setNextRunTime(processId, timestamp),
+    getNextRunTime: (processId: string) =>
+      SyncStateManager.getInstance().getNextRunTime(processId)
   };
 }

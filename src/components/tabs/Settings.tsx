@@ -88,6 +88,7 @@ import {
   validateSettings
 } from '@/lib/persistenceService';
 import { UserManagement } from '@/components/UserManagement';
+import { SyncSetupPanel } from '@/components/settings/SyncSetupPanel';
 
 // Status Indicator Component
 const StatusIndicator: React.FC<{
@@ -4169,13 +4170,17 @@ echo "See README.md for detailed setup instructions"
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Clock size={20} />
-                Data Synchronization Processes
+                Data Synchronization System
               </CardTitle>
               <p className="text-muted-foreground">
-                LMeve data poller configuration based on individual sync processes with master orchestration
+                Configure and monitor automated EVE Online data synchronization
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Sync Setup Section */}
+              <SyncSetupPanel />
+              
+              <Separator className="my-6" />
               {/* Master Poller Status */}
               <div className="p-4 bg-accent/5 border border-accent/20 rounded-lg">
                 <div className="flex items-center justify-between mb-3">
