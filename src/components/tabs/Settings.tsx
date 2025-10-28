@@ -6688,7 +6688,11 @@ echo "See README.md for detailed setup instructions"
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <AdminLoginTest />
+              <div className="p-4 bg-muted/30 rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  Authentication debug features have been moved to the user management section.
+                </p>
+              </div>
             </CardContent>
           </Card>
           
@@ -6697,7 +6701,11 @@ echo "See README.md for detailed setup instructions"
               <CardTitle>Simple Auth Service Test</CardTitle>
             </CardHeader>
             <CardContent>
-              <SimpleLoginTest />
+              <div className="p-4 bg-muted/30 rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  Simple authentication testing features are available in the header login button.
+                </p>
+              </div>
             </CardContent>
           </Card>
           
