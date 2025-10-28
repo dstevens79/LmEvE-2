@@ -909,6 +909,115 @@ export const lmeveSchemas: DatabaseSchema[] = [
     engine: 'InnoDB',
     charset: 'utf8mb4',
     collation: 'utf8mb4_unicode_ci'
+  },
+
+  // Market orders - Corporation market orders tracking
+  {
+    tableName: 'market_orders',
+    columns: [
+      { name: 'id', type: 'BIGINT', nullable: false, primaryKey: true, autoIncrement: true },
+      { name: 'order_id', type: 'BIGINT', nullable: false, unique: true },
+      { name: 'corporation_id', type: 'BIGINT', nullable: false },
+      { name: 'type_id', type: 'INT', nullable: false },
+      { name: 'type_name', type: 'VARCHAR', size: 255, nullable: true },
+      { name: 'location_id', type: 'BIGINT', nullable: false },
+      { name: 'location_name', type: 'VARCHAR', size: 255, nullable: true },
+      { name: 'region_id', type: 'BIGINT', nullable: false },
+      { name: 'region_name', type: 'VARCHAR', size: 255, nullable: true },
+      { name: 'price', type: 'DECIMAL', size: 20, nullable: false },
+      { name: 'volume_total', type: 'BIGINT', nullable: false },
+      { name: 'volume_remain', type: 'BIGINT', nullable: false },
+      { name: 'min_volume', type: 'BIGINT', nullable: false, defaultValue: 1 },
+      { name: 'duration', type: 'INT', nullable: false },
+      { name: 'is_buy_order', type: 'BOOLEAN', nullable: false },
+      { name: 'issued', type: 'DATETIME', nullable: false },
+      { name: 'range', type: 'VARCHAR', size: 50, nullable: true },
+      { name: 'wallet_division', type: 'INT', nullable: false, defaultValue: 1 },
+      { name: 'escrow', type: 'DECIMAL', size: 20, nullable: true },
+      { name: 'state', type: 'ENUM', nullable: false, defaultValue: "'active'", comment: "Values: 'active', 'closed', 'expired', 'cancelled'" },
+      { name: 'last_update', type: 'DATETIME', nullable: false, defaultValue: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP' }
+    ],
+    indexes: [
+      { name: 'idx_order_id', columns: ['order_id'], type: 'UNIQUE' },
+      { name: 'idx_corporation_id', columns: ['corporation_id'], type: 'INDEX' },
+      { name: 'idx_type_id', columns: ['type_id'], type: 'INDEX' },
+      { name: 'idx_location_id', columns: ['location_id'], type: 'INDEX' },
+      { name: 'idx_region_id', columns: ['region_id'], type: 'INDEX' },
+      { name: 'idx_is_buy_order', columns: ['is_buy_order'], type: 'INDEX' },
+      { name: 'idx_state', columns: ['state'], type: 'INDEX' },
+      { name: 'idx_issued', columns: ['issued'], type: 'INDEX' }
+    ],
+    foreignKeys: [
+      { name: 'fk_market_orders_corporation', column: 'corporation_id', referencedTable: 'corporations', referencedColumn: 'corporation_id', onDelete: 'CASCADE' }
+    ],
+    engine: 'InnoDB',
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_unicode_ci'
+  },
+
+  // Mining ledger - Corporation mining activity tracking
+  {
+    tableName: 'mining_ledger',
+    columns: [
+      { name: 'id', type: 'BIGINT', nullable: false, primaryKey: true, autoIncrement: true },
+      { name: 'corporation_id', type: 'BIGINT', nullable: false },
+      { name: 'character_id', type: 'BIGINT', nullable: false },
+      { name: 'character_name', type: 'VARCHAR', size: 255, nullable: true },
+      { name: 'date', type: 'DATE', nullable: false },
+      { name: 'type_id', type: 'INT', nullable: false },
+      { name: 'type_name', type: 'VARCHAR', size: 255, nullable: true },
+      { name: 'quantity', type: 'BIGINT', nullable: false },
+      { name: 'system_id', type: 'BIGINT', nullable: false },
+      { name: 'system_name', type: 'VARCHAR', size: 255, nullable: true },
+      { name: 'last_update', type: 'DATETIME', nullable: false, defaultValue: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP' }
+    ],
+    indexes: [
+      { name: 'idx_corp_char_date_type', columns: ['corporation_id', 'character_id', 'date', 'type_id'], type: 'UNIQUE' },
+      { name: 'idx_corporation_id', columns: ['corporation_id'], type: 'INDEX' },
+      { name: 'idx_character_id', columns: ['character_id'], type: 'INDEX' },
+      { name: 'idx_date', columns: ['date'], type: 'INDEX' },
+      { name: 'idx_type_id', columns: ['type_id'], type: 'INDEX' },
+      { name: 'idx_system_id', columns: ['system_id'], type: 'INDEX' }
+    ],
+    foreignKeys: [
+      { name: 'fk_mining_ledger_corporation', column: 'corporation_id', referencedTable: 'corporations', referencedColumn: 'corporation_id', onDelete: 'CASCADE' }
+    ],
+    engine: 'InnoDB',
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_unicode_ci'
+  },
+
+  // Container logs - Asset container change tracking for PI/delivery tracking
+  {
+    tableName: 'container_logs',
+    columns: [
+      { name: 'id', type: 'BIGINT', nullable: false, primaryKey: true, autoIncrement: true },
+      { name: 'corporation_id', type: 'BIGINT', nullable: false },
+      { name: 'logged_at', type: 'DATETIME', nullable: false },
+      { name: 'location_id', type: 'BIGINT', nullable: false },
+      { name: 'location_flag', type: 'VARCHAR', size: 100, nullable: true },
+      { name: 'action', type: 'ENUM', nullable: false, comment: "Values: 'add', 'remove', 'move', 'assemble', 'repackage'" },
+      { name: 'character_id', type: 'BIGINT', nullable: true },
+      { name: 'character_name', type: 'VARCHAR', size: 255, nullable: true },
+      { name: 'type_id', type: 'INT', nullable: false },
+      { name: 'type_name', type: 'VARCHAR', size: 255, nullable: true },
+      { name: 'quantity', type: 'BIGINT', nullable: false },
+      { name: 'last_update', type: 'DATETIME', nullable: false, defaultValue: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP' }
+    ],
+    indexes: [
+      { name: 'idx_corporation_id', columns: ['corporation_id'], type: 'INDEX' },
+      { name: 'idx_logged_at', columns: ['logged_at'], type: 'INDEX' },
+      { name: 'idx_location_id', columns: ['location_id'], type: 'INDEX' },
+      { name: 'idx_character_id', columns: ['character_id'], type: 'INDEX' },
+      { name: 'idx_type_id', columns: ['type_id'], type: 'INDEX' },
+      { name: 'idx_action', columns: ['action'], type: 'INDEX' }
+    ],
+    foreignKeys: [
+      { name: 'fk_container_logs_corporation', column: 'corporation_id', referencedTable: 'corporations', referencedColumn: 'corporation_id', onDelete: 'CASCADE' }
+    ],
+    engine: 'InnoDB',
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_unicode_ci'
   }
 ];
 

@@ -28,33 +28,39 @@ Data sync should work as follows:
 
 This is a **multi-step implementation** that requires careful attention. Below are the steps needed to make data sync functional.
 
-### Phase 1: Database Schema & Storage Layer ✅ (Partially Complete)
-**Status**: Database schemas exist but storage functions need verification
+### Phase 1: Database Schema & Storage Layer ✅ (COMPLETE)
+**Status**: Database schemas verified and storage functions created
 
 - [x] Database schemas defined in `database-schemas.ts`
-- [ ] **Verify all ESI data tables exist and match ESI response structures**
-  - Members table (corporation_members)
-  - Assets table (corporation_assets)
-  - Industry jobs table (industry_jobs)
-  - Market orders table (market_orders)
-  - Wallet transactions table (wallet_transactions)
-  - Mining ledger table (mining_ledger)
-  - Killmails table (killmails)
-  - Container logs table (for PI/delivery tracking)
+- [x] **Verify all ESI data tables exist and match ESI response structures**
+  - [x] Members table (members)
+  - [x] Assets table (assets)
+  - [x] Industry jobs table (manufacturing_jobs)
+  - [x] Market orders table (market_orders) - ADDED
+  - [x] Wallet transactions table (wallet_transactions)
+  - [x] Mining ledger table (mining_ledger) - ADDED
+  - [x] Killmails table (killmails)
+  - [x] Container logs table (container_logs) - ADDED
 
-- [ ] **Create database service functions for ESI data storage**
-  - `storeMembers(corporationId, membersData)`
-  - `storeAssets(corporationId, assetsData)`
-  - `storeIndustryJobs(corporationId, jobsData)`
-  - `storeMarketOrders(corporationId, ordersData)`
-  - `storeWalletTransactions(corporationId, transactionsData)`
-  - `storeMiningLedger(corporationId, miningData)`
-  - `storeKillmails(corporationId, killmailsData)`
-  - `storeContainerLogs(corporationId, logsData)`
+- [x] **Create database service functions for ESI data storage**
+  - [x] `storeMembers(corporationId, membersData)` - Created in ESIDataStorageService class
+  - [x] `storeAssets(corporationId, assetsData)` - Created in ESIDataStorageService class
+  - [x] `storeIndustryJobs(corporationId, jobsData)` - Created in ESIDataStorageService class
+  - [x] `storeMarketOrders(corporationId, ordersData)` - Created in ESIDataStorageService class
+  - [x] `storeWalletTransactions(corporationId, division, transactionsData)` - Created in ESIDataStorageService class
+  - [x] `storeMiningLedger(corporationId, miningData)` - Created in ESIDataStorageService class
+  - [x] `storeContainerLogs(corporationId, logsData)` - Created in ESIDataStorageService class
 
-**Files to modify:**
-- `/src/lib/database.ts` - Add storage methods
-- `/src/lib/database-schemas.ts` - Verify schema completeness
+**Files modified:**
+- ✅ `/src/lib/database.ts` - Added ESIDataStorageService class with all storage methods
+- ✅ `/src/lib/database-schemas.ts` - Added missing tables: market_orders, mining_ledger, container_logs
+
+**Implementation Details:**
+- Created ESIDataStorageService class with 7 storage methods
+- Each method handles INSERT with ON DUPLICATE KEY UPDATE for efficient upserts
+- Proper SQL escaping implemented
+- Type-safe interfaces for all ESI data structures
+- Console logging for debugging and monitoring
 
 ---
 

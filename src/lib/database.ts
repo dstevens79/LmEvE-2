@@ -1458,3 +1458,503 @@ export const LMeveQueries = {
          JOIN systems s ON k.system_id = s.system_id 
          ORDER BY k.killmail_time DESC`
 };
+
+// ESI Data Storage Service - Phase 1 Implementation
+// These functions handle storing ESI-fetched data into the database
+
+export interface ESIMemberData {
+  character_id: number;
+  character_name?: string;
+  corporation_id: number;
+  corporation_name?: string;
+  alliance_id?: number;
+  alliance_name?: string;
+  roles?: string[];
+  titles?: string[];
+  last_login?: string;
+  location_id?: number;
+  location_name?: string;
+  ship_type_id?: number;
+  ship_type_name?: string;
+  logon_duration?: number;
+  start_date_time?: string;
+  logoff_date_time?: string;
+  is_online?: boolean;
+}
+
+export interface ESIAssetData {
+  item_id: number;
+  type_id: number;
+  type_name?: string;
+  category_id?: number;
+  category_name?: string;
+  group_id?: number;
+  group_name?: string;
+  quantity: number;
+  location_id: number;
+  location_name?: string;
+  location_type?: 'station' | 'structure' | 'ship' | 'container';
+  location_flag?: string;
+  owner_id: number;
+  owner_name?: string;
+  is_singleton?: boolean;
+  is_blueprint_copy?: boolean;
+  blueprint_runs?: number;
+  material_efficiency?: number;
+  time_efficiency?: number;
+}
+
+export interface ESIIndustryJobData {
+  job_id?: number;
+  installer_id: number;
+  installer_name?: string;
+  facility_id: number;
+  facility_name?: string;
+  station_id?: number;
+  blueprint_id: number;
+  blueprint_type_id?: number;
+  blueprint_type_name?: string;
+  output_location_id?: number;
+  runs: number;
+  cost?: number;
+  product_type_id: number;
+  product_type_name?: string;
+  product_quantity: number;
+  status?: string;
+  duration: number;
+  start_date: string;
+  end_date: string;
+  completed_date?: string;
+  activity_id?: number;
+  activity_name?: string;
+}
+
+export interface ESIMarketOrderData {
+  order_id: number;
+  type_id: number;
+  type_name?: string;
+  location_id: number;
+  location_name?: string;
+  region_id: number;
+  region_name?: string;
+  price: number;
+  volume_total: number;
+  volume_remain: number;
+  min_volume: number;
+  duration: number;
+  is_buy_order: boolean;
+  issued: string;
+  range?: string;
+}
+
+export interface ESIWalletTransactionData {
+  transaction_id: number;
+  client_id: number;
+  client_name?: string;
+  date: string;
+  is_buy: boolean;
+  is_personal: boolean;
+  journal_ref_id: number;
+  location_id: number;
+  location_name?: string;
+  quantity: number;
+  type_id: number;
+  type_name?: string;
+  unit_price: number;
+}
+
+export interface ESIMiningLedgerData {
+  character_id: number;
+  character_name?: string;
+  date: string;
+  type_id: number;
+  type_name?: string;
+  quantity: number;
+  system_id: number;
+  system_name?: string;
+}
+
+export interface ESIContainerLogData {
+  logged_at: string;
+  location_id: number;
+  location_flag?: string;
+  action?: string;
+  character_id?: number;
+  character_name?: string;
+  type_id: number;
+  type_name?: string;
+  quantity: number;
+}
+
+export class ESIDataStorageService {
+  constructor(private dbManager: DatabaseManager) {}
+
+  async storeMembers(corporationId: number, membersData: ESIMemberData[]): Promise<QueryResult> {
+    try {
+      console.log(`📥 Storing ${membersData.length} corporation members for corp ${corporationId}`);
+      
+      const values = membersData.map(member => {
+        const roles = member.roles ? JSON.stringify(member.roles) : null;
+        const titles = member.titles ? JSON.stringify(member.titles) : null;
+        
+        return `(
+          ${member.character_id},
+          ${member.character_name ? `'${this.escape(member.character_name)}'` : 'NULL'},
+          ${corporationId},
+          ${member.corporation_name ? `'${this.escape(member.corporation_name)}'` : 'NULL'},
+          ${member.alliance_id || 'NULL'},
+          ${member.alliance_name ? `'${this.escape(member.alliance_name)}'` : 'NULL'},
+          ${roles ? `'${this.escape(roles)}'` : 'NULL'},
+          ${titles ? `'${this.escape(titles)}'` : 'NULL'},
+          ${member.last_login ? `'${member.last_login}'` : 'NULL'},
+          ${member.location_id || 'NULL'},
+          ${member.location_name ? `'${this.escape(member.location_name)}'` : 'NULL'},
+          ${member.ship_type_id || 'NULL'},
+          ${member.ship_type_name ? `'${this.escape(member.ship_type_name)}'` : 'NULL'},
+          ${member.logon_duration || 'NULL'},
+          ${member.start_date_time ? `'${member.start_date_time}'` : 'NULL'},
+          ${member.logoff_date_time ? `'${member.logoff_date_time}'` : 'NULL'},
+          ${member.is_online ? 1 : 0},
+          CURRENT_TIMESTAMP
+        )`;
+      }).join(',\n');
+
+      const sql = `
+        INSERT INTO members (
+          character_id, character_name, corporation_id, corporation_name,
+          alliance_id, alliance_name, roles, titles, last_login,
+          location_id, location_name, ship_type_id, ship_type_name,
+          logon_duration, start_date_time, logoff_date_time, is_online, last_update
+        ) VALUES ${values}
+        ON DUPLICATE KEY UPDATE
+          character_name = VALUES(character_name),
+          corporation_name = VALUES(corporation_name),
+          alliance_id = VALUES(alliance_id),
+          alliance_name = VALUES(alliance_name),
+          roles = VALUES(roles),
+          titles = VALUES(titles),
+          last_login = VALUES(last_login),
+          location_id = VALUES(location_id),
+          location_name = VALUES(location_name),
+          ship_type_id = VALUES(ship_type_id),
+          ship_type_name = VALUES(ship_type_name),
+          logon_duration = VALUES(logon_duration),
+          start_date_time = VALUES(start_date_time),
+          logoff_date_time = VALUES(logoff_date_time),
+          is_online = VALUES(is_online),
+          last_update = CURRENT_TIMESTAMP
+      `;
+
+      const result = await this.dbManager.query(sql);
+      console.log(`✅ Stored ${membersData.length} members successfully`);
+      return result;
+    } catch (error) {
+      console.error('❌ Failed to store members:', error);
+      throw error;
+    }
+  }
+
+  async storeAssets(corporationId: number, assetsData: ESIAssetData[]): Promise<QueryResult> {
+    try {
+      console.log(`📥 Storing ${assetsData.length} assets for corp ${corporationId}`);
+      
+      const values = assetsData.map(asset => `(
+        ${asset.item_id},
+        ${asset.type_id},
+        ${asset.type_name ? `'${this.escape(asset.type_name)}'` : 'NULL'},
+        ${asset.category_id || 'NULL'},
+        ${asset.category_name ? `'${this.escape(asset.category_name)}'` : 'NULL'},
+        ${asset.group_id || 'NULL'},
+        ${asset.group_name ? `'${this.escape(asset.group_name)}'` : 'NULL'},
+        ${asset.quantity},
+        ${asset.location_id},
+        ${asset.location_name ? `'${this.escape(asset.location_name)}'` : 'NULL'},
+        '${asset.location_type || 'station'}',
+        ${asset.location_flag ? `'${this.escape(asset.location_flag)}'` : 'NULL'},
+        ${asset.owner_id},
+        ${asset.owner_name ? `'${this.escape(asset.owner_name)}'` : 'NULL'},
+        ${asset.is_singleton ? 1 : 0},
+        ${asset.is_blueprint_copy !== undefined ? (asset.is_blueprint_copy ? 1 : 0) : 'NULL'},
+        ${asset.blueprint_runs || 'NULL'},
+        ${asset.material_efficiency || 'NULL'},
+        ${asset.time_efficiency || 'NULL'},
+        CURRENT_TIMESTAMP
+      )`).join(',\n');
+
+      const sql = `
+        INSERT INTO assets (
+          item_id, type_id, type_name, category_id, category_name,
+          group_id, group_name, quantity, location_id, location_name,
+          location_type, location_flag, owner_id, owner_name, is_singleton,
+          is_blueprint_copy, blueprint_runs, material_efficiency, time_efficiency, last_update
+        ) VALUES ${values}
+        ON DUPLICATE KEY UPDATE
+          type_name = VALUES(type_name),
+          category_id = VALUES(category_id),
+          category_name = VALUES(category_name),
+          group_id = VALUES(group_id),
+          group_name = VALUES(group_name),
+          quantity = VALUES(quantity),
+          location_id = VALUES(location_id),
+          location_name = VALUES(location_name),
+          location_type = VALUES(location_type),
+          location_flag = VALUES(location_flag),
+          owner_name = VALUES(owner_name),
+          is_singleton = VALUES(is_singleton),
+          is_blueprint_copy = VALUES(is_blueprint_copy),
+          blueprint_runs = VALUES(blueprint_runs),
+          material_efficiency = VALUES(material_efficiency),
+          time_efficiency = VALUES(time_efficiency),
+          last_update = CURRENT_TIMESTAMP
+      `;
+
+      const result = await this.dbManager.query(sql);
+      console.log(`✅ Stored ${assetsData.length} assets successfully`);
+      return result;
+    } catch (error) {
+      console.error('❌ Failed to store assets:', error);
+      throw error;
+    }
+  }
+
+  async storeIndustryJobs(corporationId: number, jobsData: ESIIndustryJobData[]): Promise<QueryResult> {
+    try {
+      console.log(`📥 Storing ${jobsData.length} industry jobs for corp ${corporationId}`);
+      
+      const values = jobsData.map(job => `(
+        ${job.job_id || 'NULL'},
+        ${job.installer_id},
+        ${job.installer_name ? `'${this.escape(job.installer_name)}'` : 'NULL'},
+        ${job.facility_id},
+        ${job.facility_name ? `'${this.escape(job.facility_name)}'` : 'NULL'},
+        ${job.station_id || 'NULL'},
+        ${job.blueprint_id},
+        ${job.blueprint_type_id || 'NULL'},
+        ${job.blueprint_type_name ? `'${this.escape(job.blueprint_type_name)}'` : 'NULL'},
+        ${job.output_location_id || 'NULL'},
+        ${job.runs},
+        ${job.cost || 0},
+        ${job.product_type_id},
+        ${job.product_type_name ? `'${this.escape(job.product_type_name)}'` : 'NULL'},
+        ${job.product_quantity},
+        '${job.status || 'active'}',
+        ${job.duration},
+        '${job.start_date}',
+        '${job.end_date}',
+        ${job.completed_date ? `'${job.completed_date}'` : 'NULL'},
+        ${job.activity_id || 'NULL'},
+        ${job.activity_name ? `'${this.escape(job.activity_name)}'` : 'NULL'},
+        CURRENT_TIMESTAMP
+      )`).join(',\n');
+
+      const sql = `
+        INSERT INTO manufacturing_jobs (
+          job_id, installer_id, installer_name, facility_id, facility_name,
+          station_id, blueprint_id, blueprint_type_id, blueprint_type_name,
+          output_location_id, runs, cost, product_type_id, product_type_name,
+          product_quantity, status, duration, start_date, end_date,
+          completed_date, activity_id, activity_name, last_update
+        ) VALUES ${values}
+        ON DUPLICATE KEY UPDATE
+          installer_name = VALUES(installer_name),
+          facility_name = VALUES(facility_name),
+          station_id = VALUES(station_id),
+          blueprint_type_name = VALUES(blueprint_type_name),
+          output_location_id = VALUES(output_location_id),
+          runs = VALUES(runs),
+          cost = VALUES(cost),
+          product_type_name = VALUES(product_type_name),
+          product_quantity = VALUES(product_quantity),
+          status = VALUES(status),
+          duration = VALUES(duration),
+          end_date = VALUES(end_date),
+          completed_date = VALUES(completed_date),
+          activity_name = VALUES(activity_name),
+          last_update = CURRENT_TIMESTAMP
+      `;
+
+      const result = await this.dbManager.query(sql);
+      console.log(`✅ Stored ${jobsData.length} industry jobs successfully`);
+      return result;
+    } catch (error) {
+      console.error('❌ Failed to store industry jobs:', error);
+      throw error;
+    }
+  }
+
+  async storeMarketOrders(corporationId: number, ordersData: ESIMarketOrderData[]): Promise<QueryResult> {
+    try {
+      console.log(`📥 Storing ${ordersData.length} market orders for corp ${corporationId}`);
+      
+      // Note: This requires a market_orders table - adding to schema if needed
+      const values = ordersData.map(order => `(
+        ${order.order_id},
+        ${order.type_id},
+        ${order.type_name ? `'${this.escape(order.type_name)}'` : 'NULL'},
+        ${order.location_id},
+        ${order.location_name ? `'${this.escape(order.location_name)}'` : 'NULL'},
+        ${order.region_id},
+        ${order.region_name ? `'${this.escape(order.region_name)}'` : 'NULL'},
+        ${order.price},
+        ${order.volume_total},
+        ${order.volume_remain},
+        ${order.min_volume},
+        ${order.duration},
+        ${order.is_buy_order ? 1 : 0},
+        '${order.issued}',
+        ${order.range ? `'${this.escape(order.range)}'` : 'NULL'},
+        CURRENT_TIMESTAMP
+      )`).join(',\n');
+
+      const sql = `
+        INSERT INTO market_orders (
+          order_id, type_id, type_name, location_id, location_name,
+          region_id, region_name, price, volume_total, volume_remain,
+          min_volume, duration, is_buy_order, issued, range, last_update
+        ) VALUES ${values}
+        ON DUPLICATE KEY UPDATE
+          type_name = VALUES(type_name),
+          location_name = VALUES(location_name),
+          region_name = VALUES(region_name),
+          price = VALUES(price),
+          volume_remain = VALUES(volume_remain),
+          last_update = CURRENT_TIMESTAMP
+      `;
+
+      const result = await this.dbManager.query(sql);
+      console.log(`✅ Stored ${ordersData.length} market orders successfully`);
+      return result;
+    } catch (error) {
+      console.error('❌ Failed to store market orders:', error);
+      throw error;
+    }
+  }
+
+  async storeWalletTransactions(corporationId: number, division: number, transactionsData: ESIWalletTransactionData[]): Promise<QueryResult> {
+    try {
+      console.log(`📥 Storing ${transactionsData.length} wallet transactions for corp ${corporationId}, division ${division}`);
+      
+      const values = transactionsData.map(tx => `(
+        ${tx.transaction_id},
+        ${corporationId},
+        ${division},
+        ${tx.client_id},
+        ${tx.client_name ? `'${this.escape(tx.client_name)}'` : 'NULL'},
+        '${tx.date}',
+        ${tx.is_buy ? 1 : 0},
+        ${tx.is_personal ? 1 : 0},
+        ${tx.journal_ref_id},
+        ${tx.location_id},
+        ${tx.location_name ? `'${this.escape(tx.location_name)}'` : 'NULL'},
+        ${tx.quantity},
+        ${tx.type_id},
+        ${tx.type_name ? `'${this.escape(tx.type_name)}'` : 'NULL'},
+        ${tx.unit_price},
+        CURRENT_TIMESTAMP
+      )`).join(',\n');
+
+      const sql = `
+        INSERT INTO wallet_transactions (
+          transaction_id, corporation_id, division, client_id, client_name,
+          date, is_buy, is_personal, journal_ref_id, location_id,
+          location_name, quantity, type_id, type_name, unit_price, last_update
+        ) VALUES ${values}
+        ON DUPLICATE KEY UPDATE
+          client_name = VALUES(client_name),
+          location_name = VALUES(location_name),
+          type_name = VALUES(type_name),
+          last_update = CURRENT_TIMESTAMP
+      `;
+
+      const result = await this.dbManager.query(sql);
+      console.log(`✅ Stored ${transactionsData.length} wallet transactions successfully`);
+      return result;
+    } catch (error) {
+      console.error('❌ Failed to store wallet transactions:', error);
+      throw error;
+    }
+  }
+
+  async storeMiningLedger(corporationId: number, miningData: ESIMiningLedgerData[]): Promise<QueryResult> {
+    try {
+      console.log(`📥 Storing ${miningData.length} mining ledger entries for corp ${corporationId}`);
+      
+      const values = miningData.map(entry => `(
+        ${corporationId},
+        ${entry.character_id},
+        ${entry.character_name ? `'${this.escape(entry.character_name)}'` : 'NULL'},
+        '${entry.date}',
+        ${entry.type_id},
+        ${entry.type_name ? `'${this.escape(entry.type_name)}'` : 'NULL'},
+        ${entry.quantity},
+        ${entry.system_id},
+        ${entry.system_name ? `'${this.escape(entry.system_name)}'` : 'NULL'},
+        CURRENT_TIMESTAMP
+      )`).join(',\n');
+
+      const sql = `
+        INSERT INTO mining_ledger (
+          corporation_id, character_id, character_name, date, type_id,
+          type_name, quantity, system_id, system_name, last_update
+        ) VALUES ${values}
+        ON DUPLICATE KEY UPDATE
+          character_name = VALUES(character_name),
+          type_name = VALUES(type_name),
+          quantity = VALUES(quantity),
+          system_name = VALUES(system_name),
+          last_update = CURRENT_TIMESTAMP
+      `;
+
+      const result = await this.dbManager.query(sql);
+      console.log(`✅ Stored ${miningData.length} mining ledger entries successfully`);
+      return result;
+    } catch (error) {
+      console.error('❌ Failed to store mining ledger:', error);
+      throw error;
+    }
+  }
+
+  async storeContainerLogs(corporationId: number, logsData: ESIContainerLogData[]): Promise<QueryResult> {
+    try {
+      console.log(`📥 Storing ${logsData.length} container log entries for corp ${corporationId}`);
+      
+      const values = logsData.map(log => `(
+        ${corporationId},
+        '${log.logged_at}',
+        ${log.location_id},
+        ${log.location_flag ? `'${this.escape(log.location_flag)}'` : 'NULL'},
+        ${log.action ? `'${this.escape(log.action)}'` : 'NULL'},
+        ${log.character_id || 'NULL'},
+        ${log.character_name ? `'${this.escape(log.character_name)}'` : 'NULL'},
+        ${log.type_id},
+        ${log.type_name ? `'${this.escape(log.type_name)}'` : 'NULL'},
+        ${log.quantity},
+        CURRENT_TIMESTAMP
+      )`).join(',\n');
+
+      const sql = `
+        INSERT INTO container_logs (
+          corporation_id, logged_at, location_id, location_flag, action,
+          character_id, character_name, type_id, type_name, quantity, last_update
+        ) VALUES ${values}
+        ON DUPLICATE KEY UPDATE
+          action = VALUES(action),
+          character_name = VALUES(character_name),
+          type_name = VALUES(type_name),
+          quantity = VALUES(quantity),
+          last_update = CURRENT_TIMESTAMP
+      `;
+
+      const result = await this.dbManager.query(sql);
+      console.log(`✅ Stored ${logsData.length} container log entries successfully`);
+      return result;
+    } catch (error) {
+      console.error('❌ Failed to store container logs:', error);
+      throw error;
+    }
+  }
+
+  private escape(str: string): string {
+    return str.replace(/'/g, "''").replace(/\\/g, '\\\\');
+  }
+}
