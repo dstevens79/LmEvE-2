@@ -510,6 +510,27 @@ export function Buyback({ isMobileView }: BuybackProps) {
     }).format(value) + ' ISK';
   };
 
+  const calculateAverageTimeInStatus = (status: ContractStatus): string => {
+    const contractsInStatus = contracts.filter(c => c.status === status);
+    
+    if (contractsInStatus.length === 0) return '0m';
+    
+    const now = new Date().getTime();
+    const totalMs = contractsInStatus.reduce((sum, contract) => {
+      const statusTime = new Date(contract.statusChangedAt).getTime();
+      return sum + (now - statusTime);
+    }, 0);
+    
+    const avgMs = totalMs / contractsInStatus.length;
+    const minutes = Math.floor(avgMs / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}d ${hours % 24}h`;
+    if (hours > 0) return `${hours}h ${minutes % 60}m`;
+    return `${minutes}m`;
+  };
+
   const calculateStats = () => {
     const totalContracts = contracts.length;
     const newContracts = contracts.filter(c => c.status === 'new').length;
@@ -519,6 +540,9 @@ export function Buyback({ isMobileView }: BuybackProps) {
     const totalPayout = contracts
       .filter(c => c.status === 'completed')
       .reduce((sum, c) => sum + c.payoutValue, 0);
+    
+    const avgWaitingTime = calculateAverageTimeInStatus('waiting_on_pilot');
+    const avgPaymentTime = calculateAverageTimeInStatus('awaiting_payment');
 
     return {
       totalContracts,
@@ -526,7 +550,9 @@ export function Buyback({ isMobileView }: BuybackProps) {
       waitingContracts,
       awaitingPaymentContracts,
       completedContracts,
-      totalPayout
+      totalPayout,
+      avgWaitingTime,
+      avgPaymentTime
     };
   };
 
@@ -615,81 +641,69 @@ export function Buyback({ isMobileView }: BuybackProps) {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 mb-2">
+                <Clock size={20} className="text-blue-400" />
                 <p className="text-sm font-medium text-muted-foreground">New</p>
-                <p className="text-2xl font-bold">{stats.newContracts}</p>
               </div>
-              <Clock size={32} className="text-blue-400 opacity-50" />
+              <p className="text-2xl font-bold">{stats.newContracts}</p>
             </div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 mb-2">
+                <HourglassMedium size={20} className="text-yellow-400" />
                 <p className="text-sm font-medium text-muted-foreground">Waiting on Pilot</p>
-                <p className="text-2xl font-bold">{stats.waitingContracts}</p>
               </div>
-              <HourglassMedium size={32} className="text-yellow-400 opacity-50" />
+              <p className="text-2xl font-bold">{stats.waitingContracts}</p>
+              {stats.waitingContracts > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Avg: {stats.avgWaitingTime}
+                </p>
+              )}
             </div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 mb-2">
+                <Coins size={20} className="text-orange-400" />
                 <p className="text-sm font-medium text-muted-foreground">Awaiting Payment</p>
-                <p className="text-2xl font-bold">{stats.awaitingPaymentContracts}</p>
               </div>
-              <Coins size={32} className="text-orange-400 opacity-50" />
+              <p className="text-2xl font-bold">{stats.awaitingPaymentContracts}</p>
+              {stats.awaitingPaymentContracts > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Avg: {stats.avgPaymentTime}
+                </p>
+              )}
             </div>
-          </CardContent>
-        </Card>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Total Contracts</p>
-                <p className="text-2xl font-bold">{stats.totalContracts}</p>
-              </div>
-              <Receipt size={32} className="text-accent opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle size={20} className="text-green-500" />
                 <p className="text-sm font-medium text-muted-foreground">Completed</p>
-                <p className="text-2xl font-bold">{stats.completedContracts}</p>
               </div>
-              <CheckCircle size={32} className="text-green-500 opacity-50" />
+              <p className="text-2xl font-bold">{stats.completedContracts}</p>
             </div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Total Payout</p>
-                <p className="text-lg font-bold">{formatISK(stats.totalPayout)}</p>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 mb-2">
+                <Receipt size={20} className="text-accent" />
+                <p className="text-sm font-medium text-muted-foreground">Total Contracts</p>
               </div>
-              <Coins size={32} className="text-accent opacity-50" />
+              <p className="text-2xl font-bold">{stats.totalContracts}</p>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 mb-2">
+                <Coins size={20} className="text-accent" />
+                <p className="text-sm font-medium text-muted-foreground">Total Payout</p>
+              </div>
+              <p className="text-lg font-bold">{formatISK(stats.totalPayout)}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} max-w-2xl`}>
