@@ -1,0 +1,925 @@
+/**
+ * Unified Data Service - Phase 1 Implementation
+ * 
+ * This service provides a single, authoritative source for all application data.
+ * Data priority: Database → ESI API → Cache → Mock (only if never set up)
+ * 
+ * Mock data is ONLY used when:
+ * - Database has never been fully configured (no green status ever achieved)
+ * - Allows demo/testing without full setup
+ * 
+ * Once database is fully configured:
+ * - Mock data is permanently disabled
+ * - All data comes from database (populated by sync processes)
+ * - ESI used only for real-time fallback when needed
+ */
+
+import { DatabaseManager, LMeveQueries } from './database';
+import type {
+  Member,
+  Asset,
+  ManufacturingJob,
+  Blueprint,
+  MiningOperation,
+  Corporation,
+  DashboardStats,
+  MarketPrice,
+  KillmailSummary,
+  IncomeRecord,
+  WalletTransaction,
+  PlanetaryColony
+} from './types';
+
+/**
+ * Setup status tracking - determines if mock data should be used
+ */
+interface SetupStatus {
+  isFullyConfigured: boolean;
+  databaseConnected: boolean;
+  esiConfigured: boolean;
+  hasEverBeenGreen: boolean; // Once true, mock data is permanently disabled
+  timestamp: string;
+}
+
+/**
+ * Data source indicator
+ */
+export type DataSource = 'database' | 'esi' | 'cache' | 'mock';
+
+interface DataResult<T> {
+  data: T;
+  source: DataSource;
+  timestamp: string;
+  fromCache?: boolean;
+}
+
+/**
+ * Mock data generator - ESI-compliant sample data
+ * Only used when database has NEVER been fully configured
+ */
+class MockDataGenerator {
+  /**
+   * Generate mock members (2-3 sample users)
+   */
+  static generateMembers(): Member[] {
+    return [
+      {
+        id: 1,
+        name: 'Sample Character Alpha',
+        corporationId: 98000001,
+        characterId: 90000001,
+        joinDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+        lastLogin: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        title: 'CEO',
+        roles: ['Director', 'Station_Manager', 'Accountant'],
+        isActive: true,
+        securityStatus: 5.0,
+        location: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+        ship: 'Raven'
+      },
+      {
+        id: 2,
+        name: 'Sample Character Beta',
+        corporationId: 98000001,
+        characterId: 90000002,
+        joinDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+        lastLogin: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+        title: 'Director',
+        roles: ['Junior_Accountant', 'Hangar_Take_1'],
+        isActive: true,
+        securityStatus: 2.3,
+        location: 'Amarr VIII (Oris) - Emperor Family Academy',
+        ship: 'Hulk'
+      },
+      {
+        id: 3,
+        name: 'Sample Character Gamma',
+        corporationId: 98000001,
+        characterId: 90000003,
+        joinDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        lastLogin: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+        title: 'Member',
+        roles: ['Hangar_Take_2'],
+        isActive: true,
+        securityStatus: -0.8,
+        location: 'Dodixie IX - Moon 20 - Federation Navy Assembly Plant',
+        ship: 'Retriever'
+      }
+    ];
+  }
+
+  /**
+   * Generate mock assets (handful of items)
+   */
+  static generateAssets(): Asset[] {
+    return [
+      {
+        id: 1,
+        itemId: 587,
+        typeId: 587,
+        typeName: 'Rifter',
+        quantity: 5,
+        locationId: 60003760,
+        locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+        locationFlag: 'Hangar',
+        isSingleton: false,
+        value: 250000 * 5
+      },
+      {
+        id: 2,
+        itemId: 34,
+        typeId: 34,
+        typeName: 'Tritanium',
+        quantity: 1000000,
+        locationId: 60003760,
+        locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+        locationFlag: 'Hangar',
+        isSingleton: false,
+        value: 5.5 * 1000000
+      },
+      {
+        id: 3,
+        itemId: 638,
+        typeId: 638,
+        typeName: 'Raven',
+        quantity: 2,
+        locationId: 60003760,
+        locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+        locationFlag: 'Hangar',
+        isSingleton: false,
+        value: 120000000 * 2
+      },
+      {
+        id: 4,
+        itemId: 11399,
+        typeId: 11399,
+        typeName: 'Compressed Veldspar',
+        quantity: 50000,
+        locationId: 60003760,
+        locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+        locationFlag: 'Hangar',
+        isSingleton: false,
+        value: 120 * 50000
+      }
+    ];
+  }
+
+  /**
+   * Generate mock manufacturing jobs (2-3 jobs)
+   */
+  static generateManufacturingJobs(): ManufacturingJob[] {
+    return [
+      {
+        id: 1,
+        jobId: 500001,
+        activityId: 1,
+        blueprintId: 1001,
+        blueprintTypeId: 638,
+        productTypeId: 638,
+        productTypeName: 'Raven',
+        runs: 1,
+        startDate: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+        endDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        installerId: 90000001,
+        installerName: 'Sample Character Alpha',
+        facilityId: 60003760,
+        status: 'active',
+        cost: 15000000,
+        progress: 0.67
+      },
+      {
+        id: 2,
+        jobId: 500002,
+        activityId: 1,
+        blueprintId: 1002,
+        blueprintTypeId: 587,
+        productTypeId: 587,
+        productTypeName: 'Rifter',
+        runs: 10,
+        startDate: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+        endDate: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+        installerId: 90000002,
+        installerName: 'Sample Character Beta',
+        facilityId: 60003760,
+        status: 'active',
+        cost: 2500000,
+        progress: 0.85
+      },
+      {
+        id: 3,
+        jobId: 500003,
+        activityId: 1,
+        blueprintId: 1003,
+        blueprintTypeId: 11535,
+        productTypeId: 11535,
+        productTypeName: 'Compressed Scordite',
+        runs: 100,
+        startDate: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(),
+        endDate: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+        installerId: 90000003,
+        installerName: 'Sample Character Gamma',
+        facilityId: 60003760,
+        status: 'delivered',
+        cost: 500000,
+        progress: 1.0
+      }
+    ];
+  }
+
+  /**
+   * Generate mock wallet transactions (random recent activity)
+   */
+  static generateWalletTransactions(): WalletTransaction[] {
+    return [
+      {
+        id: 1,
+        transactionId: 7000001,
+        date: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+        typeId: 34,
+        typeName: 'Tritanium',
+        quantity: 500000,
+        unitPrice: 5.5,
+        amount: 2750000,
+        clientId: 90000001,
+        clientName: 'Sample Character Alpha',
+        locationId: 60003760,
+        isBuy: true,
+        isPersonal: false,
+        journalRefId: 8000001
+      },
+      {
+        id: 2,
+        transactionId: 7000002,
+        date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+        typeId: 638,
+        typeName: 'Raven',
+        quantity: 1,
+        unitPrice: 145000000,
+        amount: 145000000,
+        clientId: 91000001,
+        clientName: 'External Buyer',
+        locationId: 60003760,
+        isBuy: false,
+        isPersonal: false,
+        journalRefId: 8000002
+      },
+      {
+        id: 3,
+        transactionId: 7000003,
+        date: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+        typeId: 587,
+        typeName: 'Rifter',
+        quantity: 5,
+        unitPrice: 275000,
+        amount: 1375000,
+        clientId: 91000002,
+        clientName: 'Market Trader',
+        locationId: 60003760,
+        isBuy: false,
+        isPersonal: false,
+        journalRefId: 8000003
+      }
+    ];
+  }
+
+  /**
+   * Generate mock planetary colonies (2-3 planets)
+   */
+  static generatePlanetaryColonies(): PlanetaryColony[] {
+    return [
+      {
+        id: 1,
+        planetId: 40009077,
+        planetName: 'Tanoo II',
+        planetType: 'temperate',
+        ownerId: 90000001,
+        ownerName: 'Sample Character Alpha',
+        lastUpdate: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+        upgradeLevel: 5,
+        numberOfPins: 12,
+        expiryTime: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+      },
+      {
+        id: 2,
+        planetId: 40009078,
+        planetName: 'Tanoo III',
+        planetType: 'barren',
+        ownerId: 90000002,
+        ownerName: 'Sample Character Beta',
+        lastUpdate: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+        upgradeLevel: 4,
+        numberOfPins: 10,
+        expiryTime: new Date(Date.now() + 36 * 60 * 60 * 1000).toISOString()
+      }
+    ];
+  }
+
+  /**
+   * Generate mock market prices (handful of common items)
+   */
+  static generateMarketPrices(): MarketPrice[] {
+    return [
+      {
+        typeId: 34,
+        typeName: 'Tritanium',
+        buyPrice: 5.45,
+        sellPrice: 5.52,
+        avgPrice: 5.48,
+        volume: 15000000000,
+        timestamp: new Date().toISOString()
+      },
+      {
+        typeId: 587,
+        typeName: 'Rifter',
+        buyPrice: 248000,
+        sellPrice: 275000,
+        avgPrice: 261000,
+        volume: 12500,
+        timestamp: new Date().toISOString()
+      },
+      {
+        typeId: 638,
+        typeName: 'Raven',
+        buyPrice: 138000000,
+        sellPrice: 145000000,
+        avgPrice: 141500000,
+        volume: 850,
+        timestamp: new Date().toISOString()
+      }
+    ];
+  }
+
+  /**
+   * Generate mock dashboard stats
+   */
+  static generateDashboardStats(): DashboardStats {
+    return {
+      totalMembers: 3,
+      activeMembers: 3,
+      totalAssets: 4,
+      totalAssetValue: 247750000,
+      activeJobs: 2,
+      completedJobs: 1,
+      totalIncome: 146375000,
+      totalExpenses: 18000000,
+      netProfit: 128375000,
+      activePlanets: 2,
+      marketOrders: 0,
+      recentKills: 0,
+      timestamp: new Date().toISOString()
+    };
+  }
+}
+
+/**
+ * Unified Data Service - Single source of truth
+ */
+export class UnifiedDataService {
+  private dbManager: DatabaseManager | null = null;
+  private setupStatus: SetupStatus;
+  private cache: Map<string, { data: any; timestamp: number; ttl: number }> = new Map();
+  
+  // Default cache TTL in milliseconds
+  private readonly DEFAULT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  constructor(dbManager?: DatabaseManager) {
+    this.dbManager = dbManager || null;
+    
+    // Initialize setup status from storage
+    this.setupStatus = this.loadSetupStatus();
+  }
+
+  /**
+   * Load setup status from persistent storage
+   */
+  private loadSetupStatus(): SetupStatus {
+    try {
+      const stored = localStorage.getItem('lmeve-setup-status');
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (error) {
+      console.error('Failed to load setup status:', error);
+    }
+
+    return {
+      isFullyConfigured: false,
+      databaseConnected: false,
+      esiConfigured: false,
+      hasEverBeenGreen: false,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Save setup status to persistent storage
+   */
+  private saveSetupStatus(): void {
+    try {
+      localStorage.setItem('lmeve-setup-status', JSON.stringify(this.setupStatus));
+    } catch (error) {
+      console.error('Failed to save setup status:', error);
+    }
+  }
+
+  /**
+   * Update setup status - permanently disables mock data once fully configured
+   */
+  updateSetupStatus(status: Partial<SetupStatus>): void {
+    const wasGreen = this.setupStatus.isFullyConfigured;
+    
+    this.setupStatus = {
+      ...this.setupStatus,
+      ...status,
+      timestamp: new Date().toISOString()
+    };
+
+    // Once fully configured, permanently mark as "ever been green"
+    if (this.setupStatus.isFullyConfigured && !this.setupStatus.hasEverBeenGreen) {
+      this.setupStatus.hasEverBeenGreen = true;
+      console.log('🎉 LMeve fully configured! Mock data permanently disabled.');
+      
+      // Clear all mock data from cache
+      this.clearAllMockData();
+    }
+
+    this.saveSetupStatus();
+  }
+
+  /**
+   * Check if we should use mock data
+   */
+  private shouldUseMockData(): boolean {
+    // Mock data ONLY if never been fully configured
+    return !this.setupStatus.hasEverBeenGreen;
+  }
+
+  /**
+   * Clear all mock data from cache and memory
+   */
+  private clearAllMockData(): void {
+    console.log('🧹 Clearing all mock data...');
+    this.cache.clear();
+    console.log('✅ Mock data cleared');
+  }
+
+  /**
+   * Set database manager
+   */
+  setDatabaseManager(dbManager: DatabaseManager): void {
+    this.dbManager = dbManager;
+  }
+
+  /**
+   * Get from cache or execute function
+   */
+  private async getCached<T>(
+    key: string,
+    fetchFn: () => Promise<T>,
+    ttl: number = this.DEFAULT_CACHE_TTL
+  ): Promise<{ data: T; fromCache: boolean }> {
+    const cached = this.cache.get(key);
+    const now = Date.now();
+
+    if (cached && now - cached.timestamp < cached.ttl) {
+      return { data: cached.data as T, fromCache: true };
+    }
+
+    const data = await fetchFn();
+    this.cache.set(key, { data, timestamp: now, ttl });
+    return { data, fromCache: false };
+  }
+
+  /**
+   * Get members - Database → Mock (if never configured)
+   */
+  async getMembers(corporationId?: number): Promise<DataResult<Member[]>> {
+    const startTime = Date.now();
+    
+    try {
+      // Try database first if available
+      if (this.dbManager && this.setupStatus.databaseConnected) {
+        const result = await this.dbManager.query<Member>(
+          LMeveQueries.getCharacters(corporationId)
+        );
+
+        if (result.success && result.data && result.data.length > 0) {
+          console.log(`✅ Members from database: ${result.data.length} members`);
+          return {
+            data: result.data,
+            source: 'database',
+            timestamp: new Date().toISOString()
+          };
+        }
+      }
+
+      // Use mock data ONLY if never been configured
+      if (this.shouldUseMockData()) {
+        console.log('📝 Using mock member data (database not yet configured)');
+        return {
+          data: MockDataGenerator.generateMembers(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      // Database configured but empty - return empty array
+      console.log('📭 No members in database');
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Failed to get members:', error);
+      
+      // Only fall back to mock if never configured
+      if (this.shouldUseMockData()) {
+        return {
+          data: MockDataGenerator.generateMembers(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get assets - Database → Mock (if never configured)
+   */
+  async getAssets(corporationId?: number): Promise<DataResult<Asset[]>> {
+    try {
+      // Try database first
+      if (this.dbManager && this.setupStatus.databaseConnected) {
+        const result = await this.dbManager.query<Asset>(
+          LMeveQueries.getAssets(corporationId)
+        );
+
+        if (result.success && result.data && result.data.length > 0) {
+          console.log(`✅ Assets from database: ${result.data.length} assets`);
+          return {
+            data: result.data,
+            source: 'database',
+            timestamp: new Date().toISOString()
+          };
+        }
+      }
+
+      // Use mock data ONLY if never configured
+      if (this.shouldUseMockData()) {
+        console.log('📝 Using mock asset data (database not yet configured)');
+        return {
+          data: MockDataGenerator.generateAssets(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Failed to get assets:', error);
+      
+      if (this.shouldUseMockData()) {
+        return {
+          data: MockDataGenerator.generateAssets(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get manufacturing jobs - Database → Mock (if never configured)
+   */
+  async getManufacturingJobs(corporationId?: number): Promise<DataResult<ManufacturingJob[]>> {
+    try {
+      if (this.dbManager && this.setupStatus.databaseConnected) {
+        const result = await this.dbManager.query<ManufacturingJob>(
+          LMeveQueries.getIndustryJobs(corporationId)
+        );
+
+        if (result.success && result.data && result.data.length > 0) {
+          console.log(`✅ Manufacturing jobs from database: ${result.data.length} jobs`);
+          return {
+            data: result.data,
+            source: 'database',
+            timestamp: new Date().toISOString()
+          };
+        }
+      }
+
+      if (this.shouldUseMockData()) {
+        console.log('📝 Using mock manufacturing data (database not yet configured)');
+        return {
+          data: MockDataGenerator.generateManufacturingJobs(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Failed to get manufacturing jobs:', error);
+      
+      if (this.shouldUseMockData()) {
+        return {
+          data: MockDataGenerator.generateManufacturingJobs(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get wallet transactions - Database → Mock (if never configured)
+   */
+  async getWalletTransactions(corporationId?: number): Promise<DataResult<WalletTransaction[]>> {
+    try {
+      if (this.dbManager && this.setupStatus.databaseConnected) {
+        const result = await this.dbManager.query<WalletTransaction>(
+          LMeveQueries.getWalletTransactions(corporationId)
+        );
+
+        if (result.success && result.data && result.data.length > 0) {
+          console.log(`✅ Wallet transactions from database: ${result.data.length} transactions`);
+          return {
+            data: result.data,
+            source: 'database',
+            timestamp: new Date().toISOString()
+          };
+        }
+      }
+
+      if (this.shouldUseMockData()) {
+        console.log('📝 Using mock wallet data (database not yet configured)');
+        return {
+          data: MockDataGenerator.generateWalletTransactions(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Failed to get wallet transactions:', error);
+      
+      if (this.shouldUseMockData()) {
+        return {
+          data: MockDataGenerator.generateWalletTransactions(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get planetary colonies - Database → Mock (if never configured)
+   */
+  async getPlanetaryColonies(corporationId?: number): Promise<DataResult<PlanetaryColony[]>> {
+    try {
+      if (this.dbManager && this.setupStatus.databaseConnected) {
+        const result = await this.dbManager.query<PlanetaryColony>(
+          `SELECT * FROM planetary_colonies WHERE corporation_id = ${corporationId || 0}`
+        );
+
+        if (result.success && result.data && result.data.length > 0) {
+          console.log(`✅ Planetary colonies from database: ${result.data.length} colonies`);
+          return {
+            data: result.data,
+            source: 'database',
+            timestamp: new Date().toISOString()
+          };
+        }
+      }
+
+      if (this.shouldUseMockData()) {
+        console.log('📝 Using mock planetary data (database not yet configured)');
+        return {
+          data: MockDataGenerator.generatePlanetaryColonies(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Failed to get planetary colonies:', error);
+      
+      if (this.shouldUseMockData()) {
+        return {
+          data: MockDataGenerator.generatePlanetaryColonies(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get market prices - Database → Mock (if never configured)
+   */
+  async getMarketPrices(): Promise<DataResult<MarketPrice[]>> {
+    try {
+      if (this.dbManager && this.setupStatus.databaseConnected) {
+        const result = await this.dbManager.query<MarketPrice>(
+          'SELECT * FROM market_prices ORDER BY timestamp DESC LIMIT 100'
+        );
+
+        if (result.success && result.data && result.data.length > 0) {
+          console.log(`✅ Market prices from database: ${result.data.length} prices`);
+          return {
+            data: result.data,
+            source: 'database',
+            timestamp: new Date().toISOString()
+          };
+        }
+      }
+
+      if (this.shouldUseMockData()) {
+        console.log('📝 Using mock market data (database not yet configured)');
+        return {
+          data: MockDataGenerator.generateMarketPrices(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Failed to get market prices:', error);
+      
+      if (this.shouldUseMockData()) {
+        return {
+          data: MockDataGenerator.generateMarketPrices(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      return {
+        data: [],
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Get dashboard stats - Computed from database or mock
+   */
+  async getDashboardStats(corporationId?: number): Promise<DataResult<DashboardStats>> {
+    try {
+      // If database is configured, compute from real data
+      if (this.dbManager && this.setupStatus.databaseConnected && !this.shouldUseMockData()) {
+        const [members, assets, jobs, wallet] = await Promise.all([
+          this.getMembers(corporationId),
+          this.getAssets(corporationId),
+          this.getManufacturingJobs(corporationId),
+          this.getWalletTransactions(corporationId)
+        ]);
+
+        const stats: DashboardStats = {
+          totalMembers: members.data.length,
+          activeMembers: members.data.filter(m => m.isActive).length,
+          totalAssets: assets.data.length,
+          totalAssetValue: assets.data.reduce((sum, a) => sum + (a.value || 0), 0),
+          activeJobs: jobs.data.filter(j => j.status === 'active').length,
+          completedJobs: jobs.data.filter(j => j.status === 'delivered').length,
+          totalIncome: wallet.data.filter(t => !t.isBuy).reduce((sum, t) => sum + t.amount, 0),
+          totalExpenses: wallet.data.filter(t => t.isBuy).reduce((sum, t) => sum + t.amount, 0),
+          netProfit: 0,
+          activePlanets: 0,
+          marketOrders: 0,
+          recentKills: 0,
+          timestamp: new Date().toISOString()
+        };
+
+        stats.netProfit = stats.totalIncome - stats.totalExpenses;
+
+        return {
+          data: stats,
+          source: 'database',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      // Use mock stats if never configured
+      if (this.shouldUseMockData()) {
+        console.log('📝 Using mock dashboard stats (database not yet configured)');
+        return {
+          data: MockDataGenerator.generateDashboardStats(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      // Empty stats
+      return {
+        data: {
+          totalMembers: 0,
+          activeMembers: 0,
+          totalAssets: 0,
+          totalAssetValue: 0,
+          activeJobs: 0,
+          completedJobs: 0,
+          totalIncome: 0,
+          totalExpenses: 0,
+          netProfit: 0,
+          activePlanets: 0,
+          marketOrders: 0,
+          recentKills: 0,
+          timestamp: new Date().toISOString()
+        },
+        source: 'database',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Failed to get dashboard stats:', error);
+      
+      if (this.shouldUseMockData()) {
+        return {
+          data: MockDataGenerator.generateDashboardStats(),
+          source: 'mock',
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Get current setup status
+   */
+  getSetupStatus(): SetupStatus {
+    return { ...this.setupStatus };
+  }
+
+  /**
+   * Reset setup status (for testing only - should not be used in production)
+   */
+  resetSetupStatus(): void {
+    console.warn('⚠️ Resetting setup status - this should only be used for testing!');
+    this.setupStatus = {
+      isFullyConfigured: false,
+      databaseConnected: false,
+      esiConfigured: false,
+      hasEverBeenGreen: false,
+      timestamp: new Date().toISOString()
+    };
+    this.saveSetupStatus();
+  }
+}

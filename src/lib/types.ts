@@ -611,23 +611,94 @@ export interface KillmailSummary {
   zkbUrl?: string;
 }
 
+// Wallet transaction types
+export interface WalletTransaction {
+  id: number;
+  transactionId: number;
+  date: string;
+  typeId: number;
+  typeName: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+  clientId: number;
+  clientName: string;
+  locationId: number;
+  locationName?: string;
+  isBuy: boolean;
+  isPersonal: boolean;
+  journalRefId: number;
+  divisionId?: number;
+}
+
+// Planetary interaction types
+export interface PlanetaryColony {
+  id: number;
+  planetId: number;
+  planetName: string;
+  planetType: string;
+  ownerId: number;
+  ownerName: string;
+  lastUpdate: string;
+  upgradeLevel: number;
+  numberOfPins: number;
+  expiryTime: string;
+  pins?: PlanetaryPin[];
+}
+
+export interface PlanetaryPin {
+  pinId: number;
+  typeId: number;
+  typeName: string;
+  latitude: number;
+  longitude: number;
+  installTime?: string;
+  expiryTime?: string;
+  lastCycleStart?: string;
+  schematicId?: number;
+  schematicName?: string;
+  extractorDetails?: {
+    cycleTime: number;
+    headRadius: number;
+    heads: Array<{
+      headId: number;
+      latitude: number;
+      longitude: number;
+    }>;
+    productTypeId: number;
+    qtyPerCycle: number;
+  };
+  contents?: Array<{
+    typeId: number;
+    amount: number;
+  }>;
+}
+
 // Dashboard analytics types
 export interface DashboardStats {
   totalMembers: number;
   activeMembers: number;
   onlineMembers?: number;
   totalAssets: number;
-  totalAssetsValue: number;
+  totalAssetValue?: number;
+  totalAssetsValue?: number; // Alternative field name
   activeJobs: number;
-  completedJobsThisMonth: number;
+  completedJobs?: number;
+  completedJobsThisMonth?: number;
   pendingJobsCount?: number;
-  miningOperationsThisMonth: number;
-  miningValueThisMonth: number;
-  corpWalletBalance: number;
+  miningOperationsThisMonth?: number;
+  miningValueThisMonth?: number;
+  corpWalletBalance?: number;
   monthlyProfit?: number;
   weeklyProfit?: number;
+  totalIncome?: number;
+  totalExpenses?: number;
+  netProfit?: number;
+  activePlanets?: number;
   marketOrders?: number;
-  recentActivity: ActivityLog[];
+  recentKills?: number;
+  recentActivity?: ActivityLog[];
+  timestamp: string;
   alerts?: Array<{
     id: string;
     type: 'warning' | 'error' | 'info';

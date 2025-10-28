@@ -1,8 +1,9 @@
 // Enhanced data service that integrates authentication, ESI API, and database
+// Phase 1: Unified Data Service Implementation
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './auth-provider';
 import { DatabaseManager } from './database';
-import { LMeveDataService } from './dataService';
+import { UnifiedDataService } from './unified-data-service';
 import { eveApi } from './eveApi';
 import { useKV } from '@github/spark/hooks';
 import type { 
@@ -15,7 +16,9 @@ import type {
   MiningOperation,
   KillmailSummary,
   IncomeRecord,
-  IncomeAnalytics
+  IncomeAnalytics,
+  WalletTransaction,
+  PlanetaryColony
 } from './types';
 
 interface DataSyncStatus {
@@ -28,8 +31,21 @@ interface DataSyncStatus {
 
 interface LMeveDataContextType {
   // Services
-  dataService: LMeveDataService | null;
+  unifiedService: UnifiedDataService | null;
   dbManager: DatabaseManager | null;
+  
+  // Setup status
+  setupStatus: {
+    isFullyConfigured: boolean;
+    databaseConnected: boolean;
+    esiConfigured: boolean;
+    hasEverBeenGreen: boolean;
+  };
+  updateSetupStatus: (status: Partial<{
+    isFullyConfigured: boolean;
+    databaseConnected: boolean;
+    esiConfigured: boolean;
+  }>) => void;
   
   // Data sync
   syncStatus: DataSyncStatus;
@@ -39,17 +55,31 @@ interface LMeveDataContextType {
   members: Member[];
   assets: Asset[];
   manufacturingJobs: ManufacturingJob[];
+  walletTransactions: WalletTransaction[];
+  planetaryColonies: PlanetaryColony[];
   miningOperations: MiningOperation[];
   marketPrices: MarketPrice[];
   killmails: KillmailSummary[];
   incomeRecords: IncomeRecord[];
   dashboardStats: DashboardStats | null;
   
+  // Data source tracking
+  dataSource: {
+    members: string;
+    assets: string;
+    manufacturing: string;
+    wallet: string;
+    planetary: string;
+    market: string;
+  };
+  
   // Data loading states
   loading: {
     members: boolean;
     assets: boolean;
     manufacturing: boolean;
+    wallet: boolean;
+    planetary: boolean;
     mining: boolean;
     market: boolean;
     killmails: boolean;
@@ -60,6 +90,8 @@ interface LMeveDataContextType {
   refreshMembers: () => Promise<void>;
   refreshAssets: () => Promise<void>;
   refreshManufacturing: () => Promise<void>;
+  refreshWallet: () => Promise<void>;
+  refreshPlanetary: () => Promise<void>;
   refreshMining: () => Promise<void>;
   refreshMarket: () => Promise<void>;
   refreshKillmails: () => Promise<void>;
@@ -70,12 +102,20 @@ interface LMeveDataContextType {
 const LMeveDataContext = createContext<LMeveDataContextType | null>(null);
 
 export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated, isTokenExpired } = useAuth();
-  const [dbSettings] = useKV('corp-settings', null);
+  const { user, isAuthenticated, isTokenExpired, esiConfig } = useAuth();
+  const [dbSettings] = useKV('database-settings', null);
   
   // Services
   const [dbManager, setDbManager] = useState<DatabaseManager | null>(null);
-  const [dataService, setDataService] = useState<LMeveDataService | null>(null);
+  const [unifiedService, setUnifiedService] = useState<UnifiedDataService | null>(null);
+  
+  // Setup status from unified service
+  const [setupStatus, setSetupStatus] = useState({
+    isFullyConfigured: false,
+    databaseConnected: false,
+    esiConfigured: false,
+    hasEverBeenGreen: false
+  });
   
   // Sync status
   const [syncStatus, setSyncStatus] = useState<DataSyncStatus>({
@@ -88,258 +128,211 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [manufacturingJobs, setManufacturingJobs] = useState<ManufacturingJob[]>([]);
+  const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>([]);
+  const [planetaryColonies, setPlanetaryColonies] = useState<PlanetaryColony[]>([]);
   const [miningOperations, setMiningOperations] = useState<MiningOperation[]>([]);
   const [marketPrices, setMarketPrices] = useState<MarketPrice[]>([]);
   const [killmails, setKillmails] = useState<KillmailSummary[]>([]);
   const [incomeRecords, setIncomeRecords] = useState<IncomeRecord[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   
+  // Data source tracking
+  const [dataSource, setDataSource] = useState({
+    members: 'none',
+    assets: 'none',
+    manufacturing: 'none',
+    wallet: 'none',
+    planetary: 'none',
+    market: 'none'
+  });
+  
   // Loading states
   const [loading, setLoading] = useState({
     members: false,
     assets: false,
     manufacturing: false,
+    wallet: false,
+    planetary: false,
     mining: false,
     market: false,
     killmails: false,
     income: false
   });
 
-  // Initialize database manager when settings change
+  // Initialize unified service and database manager
   useEffect(() => {
-    if (dbSettings?.database && isAuthenticated) {
-      const manager = new DatabaseManager(dbSettings.database);
+    console.log('🔧 Initializing unified data service...');
+    
+    // Create or update database manager
+    let manager: DatabaseManager | null = null;
+    if (dbSettings?.host) {
+      manager = new DatabaseManager(dbSettings);
       setDbManager(manager);
-      setDataService(new LMeveDataService(manager));
+      console.log('✅ Database manager initialized');
     } else {
       setDbManager(null);
-      setDataService(null);
+      console.log('⚠️ No database settings found');
     }
-  }, [dbSettings?.database, isAuthenticated]);
+    
+    // Create unified service (always available, manages mock data internally)
+    const service = new UnifiedDataService(manager || undefined);
+    setUnifiedService(service);
+    
+    // Load and update setup status
+    const status = service.getSetupStatus();
+    setSetupStatus(status);
+    console.log('📊 Setup status:', status);
+    
+  }, [dbSettings]);
 
-  // Enhanced data fetching with ESI integration
-  const fetchMembersWithESI = async (): Promise<Member[]> => {
-    if (!user || !dataService) return [];
+  // Monitor database connection and ESI config changes
+  useEffect(() => {
+    if (!unifiedService) return;
+    
+    const isDatabaseConnected = !!dbManager && !!dbSettings?.host;
+    const isESIConfigured = !!esiConfig?.clientId;
+    
+    // Check if all LEDs are green
+    const isFullyConfigured = isDatabaseConnected && isESIConfigured;
+    
+    console.log('🔍 Configuration check:', {
+      isDatabaseConnected,
+      isESIConfigured,
+      isFullyConfigured
+    });
+    
+    // Update unified service status
+    unifiedService.updateSetupStatus({
+      databaseConnected: isDatabaseConnected,
+      esiConfigured: isESIConfigured,
+      isFullyConfigured
+    });
+    
+    // Sync local state
+    setSetupStatus(unifiedService.getSetupStatus());
+    
+  }, [dbManager, dbSettings, esiConfig, unifiedService]);
 
-    try {
-      // First try to get from database
-      let members = await dataService.getMembers(user.corporationId);
-      
-      // If we have valid ESI token, fetch real member data
-      if (user.accessToken && !isTokenExpired()) {
-        try {
-          const memberIds = await eveApi.getCorporationMembers(user.corporationId, user.accessToken);
-          
-          const memberDetails = await eveApi.getNames(memberIds);
-          
-          const enhancedMembers: Member[] = memberDetails.map(detail => ({
-            id: detail.id.toString(),
-            characterId: detail.id,
-            characterName: detail.name,
-            corporationId: user.corporationId,
-            corporationName: user.corporationName || 'Unknown',
-            role: 'member',
-            joinDate: new Date().toISOString(),
-            lastLogin: new Date().toISOString(),
-            status: 'active' as const,
-            location: 'Unknown',
-            shipType: 'Unknown',
-            skillPoints: 0,
-            roles: []
-          }));
-          
-          return enhancedMembers;
-        } catch (esiError) {
-          console.warn('ESI member data fetch failed, using database data:', esiError);
-        }
-      }
-      
-      return members;
-    } catch (error) {
-      console.error('Failed to fetch members:', error);
-      return [];
-    }
+  // Function to manually update setup status (for Settings panel)
+  const updateSetupStatus = (status: Partial<{
+    isFullyConfigured: boolean;
+    databaseConnected: boolean;
+    esiConfigured: boolean;
+  }>) => {
+    if (!unifiedService) return;
+    
+    unifiedService.updateSetupStatus(status);
+    setSetupStatus(unifiedService.getSetupStatus());
   };
 
-  const fetchAssetsWithESI = async (): Promise<Asset[]> => {
-    if (!user || !dataService) return [];
-
-    try {
-      // First try to get from database
-      let assets = await dataService.getAssets(user.corporationId);
-      
-      // If we have valid ESI token, fetch real asset data
-      if (user.accessToken && !isTokenExpired()) {
-        try {
-          const esiAssets = await eveApi.getCorporationAssets(user.corporationId, user.accessToken);
-          
-          const uniqueTypeIds = [...new Set(esiAssets.map(a => a.type_id))];
-          const typeNames = await eveApi.getNames(uniqueTypeIds);
-          const typeNameMap = new Map(typeNames.map(t => [t.id, t.name]));
-          
-          const uniqueLocationIds = [...new Set(esiAssets.map(a => a.location_id))];
-          const locationNames = await Promise.all(
-            uniqueLocationIds.map(async (locId) => {
-              const name = await eveApi.getLocationName(locId, user.accessToken);
-              return { id: locId, name };
-            })
-          );
-          const locationNameMap = new Map(locationNames.map(l => [l.id, l.name]));
-          
-          const parseHangarFlag = (flag: string): string => {
-            const hangarMatch = flag.match(/CorpSAG(\d)/);
-            if (hangarMatch) return `Hangar ${hangarMatch[1]}`;
-            if (flag === 'Hangar') return 'Personal Hangar';
-            return flag;
-          };
-          
-          const enhancedAssets: Asset[] = esiAssets.map((esiAsset) => ({
-            id: `esi_${esiAsset.item_id}`,
-            typeId: esiAsset.type_id,
-            typeName: typeNameMap.get(esiAsset.type_id) || `Type ${esiAsset.type_id}`,
-            quantity: esiAsset.quantity,
-            location: locationNameMap.get(esiAsset.location_id) || `Location ${esiAsset.location_id}`,
-            locationId: esiAsset.location_id,
-            hangar: parseHangarFlag(esiAsset.location_flag),
-            owner: user.characterName,
-            ownerId: user.characterId,
-            category: 'unknown',
-            estimatedValue: 0,
-            lastUpdate: new Date().toISOString()
-          }));
-          
-          return enhancedAssets;
-        } catch (esiError) {
-          console.warn('ESI asset data fetch failed, using database data:', esiError);
-        }
-      }
-      
-      return assets;
-    } catch (error) {
-      console.error('Failed to fetch assets:', error);
-      return [];
-    }
-  };
-
-  const fetchManufacturingWithESI = async (): Promise<ManufacturingJob[]> => {
-    if (!user || !dataService) return [];
-
-    try {
-      // First try to get from database
-      let jobs = await dataService.getManufacturingJobs();
-      
-      // If we have valid ESI token, fetch real industry jobs
-      if (user.accessToken && !isTokenExpired()) {
-        try {
-          const esiJobs = await eveApi.getCorporationIndustryJobs(user.corporationId, user.accessToken);
-          
-          const uniqueTypeIds = [
-            ...new Set([
-              ...esiJobs.map(j => j.blueprint_type_id),
-              ...esiJobs.filter(j => j.product_type_id).map(j => j.product_type_id!)
-            ])
-          ];
-          const typeNames = await eveApi.getNames(uniqueTypeIds);
-          const typeNameMap = new Map(typeNames.map(t => [t.id, t.name]));
-          
-          const uniqueInstallerIds = [...new Set(esiJobs.map(j => j.installer_id))];
-          const installerNames = await eveApi.getNames(uniqueInstallerIds);
-          const installerNameMap = new Map(installerNames.map(i => [i.id, i.name]));
-          
-          const uniqueStationIds = [...new Set(esiJobs.map(j => j.station_id))];
-          const stationNames = await Promise.all(
-            uniqueStationIds.map(async (stationId) => {
-              const name = await eveApi.getLocationName(stationId, user.accessToken);
-              return { id: stationId, name };
-            })
-          );
-          const stationNameMap = new Map(stationNames.map(s => [s.id, s.name]));
-          
-          const enhancedJobs: ManufacturingJob[] = esiJobs.map((esiJob) => ({
-            id: `esi_${esiJob.job_id}`,
-            blueprintId: esiJob.blueprint_type_id,
-            blueprintName: typeNameMap.get(esiJob.blueprint_type_id) || `Blueprint ${esiJob.blueprint_type_id}`,
-            productTypeId: esiJob.product_type_id || 0,
-            productTypeName: esiJob.product_type_id ? (typeNameMap.get(esiJob.product_type_id) || 'Unknown') : 'Unknown',
-            runs: esiJob.runs,
-            startDate: esiJob.start_date,
-            endDate: esiJob.end_date,
-            status: esiJob.status,
-            facility: stationNameMap.get(esiJob.station_id) || `Station ${esiJob.station_id}`,
-            facilityId: esiJob.station_id,
-            installerId: esiJob.installer_id,
-            installerName: installerNameMap.get(esiJob.installer_id) || 'Unknown',
-            cost: esiJob.cost || 0,
-            productQuantity: esiJob.runs,
-            materialEfficiency: 0,
-            timeEfficiency: 0,
-            duration: esiJob.duration,
-            materials: [],
-            priority: 'normal' as const
-          }));
-          
-          return enhancedJobs;
-        } catch (esiError) {
-          console.warn('ESI industry job data fetch failed, using database data:', esiError);
-        }
-      }
-      
-      return jobs;
-    } catch (error) {
-      console.error('Failed to fetch manufacturing jobs:', error);
-      return [];
-    }
-  };
-
+  // Refresh functions using unified data service
   const refreshMembers = async () => {
+    if (!unifiedService) return;
+    
     setLoading(prev => ({ ...prev, members: true }));
     try {
-      const data = await fetchMembersWithESI();
-      setMembers(data);
+      const result = await unifiedService.getMembers(user?.corporationId);
+      setMembers(result.data);
+      setDataSource(prev => ({ ...prev, members: result.source }));
+      console.log(`📊 Members loaded from ${result.source}: ${result.data.length} members`);
+    } catch (error) {
+      console.error('Failed to refresh members:', error);
+      setMembers([]);
     } finally {
       setLoading(prev => ({ ...prev, members: false }));
     }
   };
 
   const refreshAssets = async () => {
+    if (!unifiedService) return;
+    
     setLoading(prev => ({ ...prev, assets: true }));
     try {
-      const data = await fetchAssetsWithESI();
-      setAssets(data);
+      const result = await unifiedService.getAssets(user?.corporationId);
+      setAssets(result.data);
+      setDataSource(prev => ({ ...prev, assets: result.source }));
+      console.log(`📊 Assets loaded from ${result.source}: ${result.data.length} assets`);
+    } catch (error) {
+      console.error('Failed to refresh assets:', error);
+      setAssets([]);
     } finally {
       setLoading(prev => ({ ...prev, assets: false }));
     }
   };
 
   const refreshManufacturing = async () => {
+    if (!unifiedService) return;
+    
     setLoading(prev => ({ ...prev, manufacturing: true }));
     try {
-      const data = await fetchManufacturingWithESI();
-      setManufacturingJobs(data);
+      const result = await unifiedService.getManufacturingJobs(user?.corporationId);
+      setManufacturingJobs(result.data);
+      setDataSource(prev => ({ ...prev, manufacturing: result.source }));
+      console.log(`📊 Manufacturing jobs loaded from ${result.source}: ${result.data.length} jobs`);
+    } catch (error) {
+      console.error('Failed to refresh manufacturing:', error);
+      setManufacturingJobs([]);
     } finally {
       setLoading(prev => ({ ...prev, manufacturing: false }));
+    }
+  };
+
+  const refreshWallet = async () => {
+    if (!unifiedService) return;
+    
+    setLoading(prev => ({ ...prev, wallet: true }));
+    try {
+      const result = await unifiedService.getWalletTransactions(user?.corporationId);
+      setWalletTransactions(result.data);
+      setDataSource(prev => ({ ...prev, wallet: result.source }));
+      console.log(`📊 Wallet transactions loaded from ${result.source}: ${result.data.length} transactions`);
+    } catch (error) {
+      console.error('Failed to refresh wallet:', error);
+      setWalletTransactions([]);
+    } finally {
+      setLoading(prev => ({ ...prev, wallet: false }));
+    }
+  };
+
+  const refreshPlanetary = async () => {
+    if (!unifiedService) return;
+    
+    setLoading(prev => ({ ...prev, planetary: true }));
+    try {
+      const result = await unifiedService.getPlanetaryColonies(user?.corporationId);
+      setPlanetaryColonies(result.data);
+      setDataSource(prev => ({ ...prev, planetary: result.source }));
+      console.log(`📊 Planetary colonies loaded from ${result.source}: ${result.data.length} colonies`);
+    } catch (error) {
+      console.error('Failed to refresh planetary:', error);
+      setPlanetaryColonies([]);
+    } finally {
+      setLoading(prev => ({ ...prev, planetary: false }));
     }
   };
 
   const refreshMining = async () => {
     setLoading(prev => ({ ...prev, mining: true }));
     try {
-      if (dataService) {
-        const data = await dataService.getMiningOperations();
-        setMiningOperations(data);
-      }
+      // Mining data not yet in unified service - placeholder
+      setMiningOperations([]);
     } finally {
       setLoading(prev => ({ ...prev, mining: false }));
     }
   };
 
   const refreshMarket = async () => {
+    if (!unifiedService) return;
+    
     setLoading(prev => ({ ...prev, market: true }));
     try {
-      if (dataService) {
-        const data = await dataService.getMarketPrices();
-        setMarketPrices(data);
-      }
+      const result = await unifiedService.getMarketPrices();
+      setMarketPrices(result.data);
+      setDataSource(prev => ({ ...prev, market: result.source }));
+      console.log(`📊 Market prices loaded from ${result.source}: ${result.data.length} prices`);
+    } catch (error) {
+      console.error('Failed to refresh market:', error);
+      setMarketPrices([]);
     } finally {
       setLoading(prev => ({ ...prev, market: false }));
     }
@@ -348,10 +341,8 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
   const refreshKillmails = async () => {
     setLoading(prev => ({ ...prev, killmails: true }));
     try {
-      if (dataService) {
-        const data = await dataService.getKillmails(user?.corporationId);
-        setKillmails(data);
-      }
+      // Killmails not yet in unified service - placeholder
+      setKillmails([]);
     } finally {
       setLoading(prev => ({ ...prev, killmails: false }));
     }
@@ -360,29 +351,29 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
   const refreshIncome = async () => {
     setLoading(prev => ({ ...prev, income: true }));
     try {
-      if (dataService) {
-        const data = await dataService.getIncomeRecords();
-        setIncomeRecords(data);
-      }
+      // Income not yet in unified service - placeholder
+      setIncomeRecords([]);
     } finally {
       setLoading(prev => ({ ...prev, income: false }));
     }
   };
 
   const refreshDashboard = async () => {
+    if (!unifiedService) return;
+    
     try {
-      if (dataService) {
-        const stats = await dataService.getDashboardStats();
-        setDashboardStats(stats);
-      }
+      const result = await unifiedService.getDashboardStats(user?.corporationId);
+      setDashboardStats(result.data);
+      console.log(`📊 Dashboard stats loaded from ${result.source}`);
     } catch (error) {
-      console.error('Failed to refresh dashboard stats:', error);
+      console.error('Failed to refresh dashboard:', error);
+      setDashboardStats(null);
     }
   };
 
   // Comprehensive data sync function
   const syncData = async () => {
-    if (syncStatus.isRunning || !dataService || !user) return;
+    if (syncStatus.isRunning || !unifiedService) return;
 
     setSyncStatus({
       isRunning: true,
@@ -395,6 +386,8 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
         { name: 'Syncing corporation members...', action: refreshMembers },
         { name: 'Updating asset locations...', action: refreshAssets },
         { name: 'Fetching industry jobs...', action: refreshManufacturing },
+        { name: 'Loading wallet transactions...', action: refreshWallet },
+        { name: 'Checking planetary colonies...', action: refreshPlanetary },
         { name: 'Collecting mining data...', action: refreshMining },
         { name: 'Updating market prices...', action: refreshMarket },
         { name: 'Processing killmails...', action: refreshKillmails },
@@ -413,7 +406,7 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
         await stage.action();
         
         // Small delay to show progress
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
 
       setSyncStatus({
@@ -431,7 +424,7 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
           progress: 0,
           lastSync: new Date().toISOString()
         });
-      }, 3000);
+      }, 2000);
 
     } catch (error) {
       setSyncStatus({
@@ -443,31 +436,45 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Initial data load when authenticated
+  // Initial data load when service is ready
   useEffect(() => {
-    if (isAuthenticated && dataService) {
-      // Load initial data without full sync
+    if (unifiedService) {
+      console.log('🚀 Unified service ready - loading initial data');
       refreshDashboard();
+      
+      // Load data for authenticated users
+      if (isAuthenticated) {
+        refreshMembers();
+        refreshAssets();
+        refreshManufacturing();
+      }
     }
-  }, [isAuthenticated, dataService]);
+  }, [unifiedService, isAuthenticated]);
 
   const contextValue: LMeveDataContextType = {
-    dataService,
+    unifiedService,
     dbManager,
+    setupStatus,
+    updateSetupStatus,
     syncStatus,
     syncData,
     members,
     assets,
     manufacturingJobs,
+    walletTransactions,
+    planetaryColonies,
     miningOperations,
     marketPrices,
     killmails,
     incomeRecords,
     dashboardStats,
+    dataSource,
     loading,
     refreshMembers,
     refreshAssets,
     refreshManufacturing,
+    refreshWallet,
+    refreshPlanetary,
     refreshMining,
     refreshMarket,
     refreshKillmails,
