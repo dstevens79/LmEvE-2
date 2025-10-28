@@ -94,7 +94,7 @@ const HANGAR_NAMES: Record<number, string> = {
   7: 'Hangar 7'
 };
 
-const categorizeItem = (typeName: string): string => {
+function categorizeItem(typeName: string): string {
   const name = typeName.toLowerCase();
   
   if (name.includes('tritanium') || name.includes('pyerite') || name.includes('mexallon') || 
@@ -117,7 +117,20 @@ const categorizeItem = (typeName: string): string => {
   if (name.includes('component') || name.includes('parts')) return 'Component';
   
   return 'Other';
-};
+}
+
+function getActivityType(activityId: number): 'manufacturing' | 'mining' | 'research' | 'invention' | 'reactions' {
+  switch (activityId) {
+    case 1: return 'manufacturing';
+    case 3: return 'research';
+    case 4: return 'research';
+    case 5: return 'research';
+    case 8: return 'invention';
+    case 9: return 'reactions';
+    case 11: return 'reactions';
+    default: return 'manufacturing';
+  }
+}
 
 export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   const { user } = useAuth();
