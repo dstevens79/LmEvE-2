@@ -63,6 +63,7 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
   const [selectedDivision, setSelectedDivision] = useState<number>(0);
   const [selectedPeriod, setSelectedPeriod] = useState('12m');
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeView, setActiveView] = useState<'divisions' | 'chart' | 'transactions'>('divisions');
 
   // Mock data for demonstration
   const mockDivisions: WalletDivision[] = [
@@ -236,314 +237,353 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
         </p>
       </div>
 
-      {/* Total Balance Card */}
-      <Card className="bg-gradient-to-br from-accent/10 to-accent/5 border-accent/30">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bank size={20} />
-            Total Corporation Balance
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-4xl font-bold text-accent">{formatISK(totalBalance)}</div>
-          <p className="text-sm text-muted-foreground mt-2">
-            Across {divisions.length} wallet divisions
-          </p>
-        </CardContent>
-      </Card>
+      {/* Two-column layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Column - Filters and Controls */}
+        <div className="space-y-4">
+          {/* Total Balance Card */}
+          <Card className="bg-gradient-to-br from-accent/10 to-accent/5 border-accent/30">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Bank size={18} />
+                Total Balance
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-accent">{formatISK(totalBalance)}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {divisions.length} divisions
+              </p>
+            </CardContent>
+          </Card>
 
-      {/* Period Selection */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Funnel size={20} />
-            Filters & Period
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-sm font-medium">Analysis Period</label>
-              <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="3m">Last 3 Months</SelectItem>
-                  <SelectItem value="6m">Last 6 Months</SelectItem>
-                  <SelectItem value="12m">Last 12 Months</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <label className="text-sm font-medium">Division Filter</label>
-              <Select value={selectedDivision.toString()} onValueChange={(v) => setSelectedDivision(parseInt(v))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">All Divisions</SelectItem>
-                  {divisions.map((div) => (
-                    <SelectItem key={div.divisionId} value={div.divisionId.toString()}>
-                      {div.divisionName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Filters & Period Card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Funnel size={18} />
+                Filters & Period
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Period</label>
+                <div className="flex gap-2 mt-1">
+                  <Button
+                    size="sm"
+                    variant={selectedPeriod === '3m' ? 'default' : 'outline'}
+                    onClick={() => setSelectedPeriod('3m')}
+                    className="flex-1 h-8 text-xs"
+                  >
+                    3M
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={selectedPeriod === '6m' ? 'default' : 'outline'}
+                    onClick={() => setSelectedPeriod('6m')}
+                    className="flex-1 h-8 text-xs"
+                  >
+                    6M
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={selectedPeriod === '12m' ? 'default' : 'outline'}
+                    onClick={() => setSelectedPeriod('12m')}
+                    className="flex-1 h-8 text-xs"
+                  >
+                    12M
+                  </Button>
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Division</label>
+                <Select value={selectedDivision.toString()} onValueChange={(v) => setSelectedDivision(parseInt(v))}>
+                  <SelectTrigger className="h-8 text-xs mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">All Divisions</SelectItem>
+                    {divisions.map((div) => (
+                      <SelectItem key={div.divisionId} value={div.divisionId.toString()}>
+                        {div.divisionName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div>
-              <label className="text-sm font-medium">Search Transactions</label>
-              <Input
-                placeholder="Search description, party..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Search</label>
+                <Input
+                  placeholder="Search transactions..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="h-8 text-xs mt-1"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Stats Grid - Compact */}
+          <div className="grid grid-cols-2 gap-3">
+            <Card>
+              <CardHeader className="pb-2 pt-3">
+                <CardTitle className="text-xs font-medium flex items-center gap-1">
+                  <ArrowUp className="h-3 w-3 text-green-400" />
+                  Income
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-3">
+                <div className="text-lg font-bold text-green-400">{formatISK(periodStats.totalIncome)}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2 pt-3">
+                <CardTitle className="text-xs font-medium flex items-center gap-1">
+                  <ArrowDown className="h-3 w-3 text-red-400" />
+                  Expenses
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-3">
+                <div className="text-lg font-bold text-red-400">{formatISK(periodStats.totalExpenses)}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2 pt-3">
+                <CardTitle className="text-xs font-medium flex items-center gap-1">
+                  <TrendUp className="h-3 w-3 text-accent" />
+                  Profit
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-3">
+                <div className="text-lg font-bold text-accent">{formatISK(periodStats.totalProfit)}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2 pt-3">
+                <CardTitle className="text-xs font-medium flex items-center gap-1">
+                  <ChartLine className="h-3 w-3 text-muted-foreground" />
+                  Growth
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-3">
+                <div className={`text-lg font-bold ${periodStats.growth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {periodStats.growth >= 0 ? '+' : ''}{periodStats.growth.toFixed(1)}%
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Period Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Income</CardTitle>
-            <ArrowUp className="h-4 w-4 text-green-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-400">{formatISK(periodStats.totalIncome)}</div>
-            <p className="text-xs text-muted-foreground">
-              {selectedPeriod === '12m' ? 'Last 12 months' : selectedPeriod === '6m' ? 'Last 6 months' : 'Last 3 months'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
-            <ArrowDown className="h-4 w-4 text-red-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-400">{formatISK(periodStats.totalExpenses)}</div>
-            <p className="text-xs text-muted-foreground">
-              {selectedPeriod === '12m' ? 'Last 12 months' : selectedPeriod === '6m' ? 'Last 6 months' : 'Last 3 months'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
-            <TrendUp className="h-4 w-4 text-accent" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-accent">{formatISK(periodStats.totalProfit)}</div>
-            <p className="text-xs text-muted-foreground">
-              Avg: {formatISK(periodStats.avgMonthlyProfit)}/month
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Growth Rate</CardTitle>
-            <ChartLine className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${periodStats.growth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {periodStats.growth >= 0 ? '+' : ''}{periodStats.growth.toFixed(1)}%
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Period-over-period
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Tabs defaultValue="divisions" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="divisions">Wallet Divisions</TabsTrigger>
-          <TabsTrigger value="chart">Profit/Loss Chart</TabsTrigger>
-          <TabsTrigger value="transactions">Recent Transactions</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="divisions" className="space-y-4">
+          {/* View Type Toggle */}
           <Card>
-            <CardHeader>
-              <CardTitle>Division Balances</CardTitle>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Display</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {divisions.map((division) => {
-                  const percentage = (division.balance / totalBalance) * 100;
-                  return (
-                    <div key={division.divisionId} className="p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-accent/20 text-accent font-bold">
-                            {division.divisionId}
-                          </div>
-                          <div>
-                            <h4 className="font-medium">{division.divisionName}</h4>
-                            <p className="text-sm text-muted-foreground">{percentage.toFixed(1)}% of total</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xl font-bold">{formatISK(division.balance)}</p>
-                        </div>
-                      </div>
-                      <div className="w-full bg-muted rounded-full h-2 mt-2">
-                        <div 
-                          className="bg-accent h-2 rounded-full transition-all" 
-                          style={{ width: `${Math.min(percentage, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="chart" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Monthly Profit/Loss Analysis</CardTitle>
-                <Badge variant="secondary">{selectedPeriod === '12m' ? '12 Months' : selectedPeriod === '6m' ? '6 Months' : '3 Months'}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {monthlyData.slice(-(selectedPeriod === '12m' ? 12 : selectedPeriod === '6m' ? 6 : 3)).map((month, idx) => (
-                  <div key={idx} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <CalendarBlank size={16} className="text-muted-foreground" />
-                        <span className="font-medium">{month.month}</span>
-                      </div>
-                      <div className="flex items-center gap-6">
-                        <div className="text-right">
-                          <p className="text-sm text-muted-foreground">Income</p>
-                          <p className="font-medium text-green-400">{formatISK(month.totalIncome)}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-muted-foreground">Expenses</p>
-                          <p className="font-medium text-red-400">{formatISK(month.totalExpenses)}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-muted-foreground">Profit</p>
-                          <p className={`font-bold ${month.totalProfit >= 0 ? 'text-accent' : 'text-red-400'}`}>
-                            {formatISK(month.totalProfit)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-1 h-8">
-                      <div 
-                        className="bg-green-500/30 rounded flex items-center justify-center text-xs font-medium"
-                        style={{ width: `${(month.totalIncome / (month.totalIncome + month.totalExpenses)) * 100}%` }}
-                      >
-                        {month.totalIncome > 1e9 && formatISK(month.totalIncome)}
-                      </div>
-                      <div 
-                        className="bg-red-500/30 rounded flex items-center justify-center text-xs font-medium"
-                        style={{ width: `${(month.totalExpenses / (month.totalIncome + month.totalExpenses)) * 100}%` }}
-                      >
-                        {month.totalExpenses > 1e9 && formatISK(month.totalExpenses)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Division breakdown */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Division Performance Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {divisions.map((division) => {
-                  const divisionMonthlyProfit = monthlyData
-                    .slice(-(selectedPeriod === '12m' ? 12 : selectedPeriod === '6m' ? 6 : 3))
-                    .reduce((sum, m) => sum + (m.divisions[division.divisionId]?.profit || 0), 0);
-                  
-                  return (
-                    <div key={division.divisionId} className="p-3 border rounded">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">{division.divisionName}</span>
-                        <span className={`font-bold ${divisionMonthlyProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {formatISK(divisionMonthlyProfit)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="transactions" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Recent Transactions</CardTitle>
-                <Button variant="outline" size="sm">
-                  <Download size={16} className="mr-2" />
-                  Export
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  size="sm"
+                  variant={activeView === 'divisions' ? 'default' : 'outline'}
+                  onClick={() => setActiveView('divisions')}
+                  className="h-8 text-xs"
+                >
+                  Divisions
+                </Button>
+                <Button
+                  size="sm"
+                  variant={activeView === 'chart' ? 'default' : 'outline'}
+                  onClick={() => setActiveView('chart')}
+                  className="h-8 text-xs"
+                >
+                  Chart
+                </Button>
+                <Button
+                  size="sm"
+                  variant={activeView === 'transactions' ? 'default' : 'outline'}
+                  onClick={() => setActiveView('transactions')}
+                  className="h-8 text-xs"
+                >
+                  Transactions
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border">
-                <table className="w-full data-table">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left p-3">Date</th>
-                      <th className="text-left p-3">Division</th>
-                      <th className="text-left p-3">Description</th>
-                      <th className="text-left p-3">Party</th>
-                      <th className="text-right p-3">Amount</th>
-                      <th className="text-right p-3">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredTransactions.map((transaction) => {
-                      const division = divisions.find(d => d.divisionId === transaction.divisionId);
-                      return (
-                        <tr key={transaction.id} className="hover:bg-muted/50">
-                          <td className="p-3 text-sm">{formatDate(transaction.date)}</td>
-                          <td className="p-3">
-                            <Badge variant="secondary">{division?.divisionName || `Division ${transaction.divisionId}`}</Badge>
-                          </td>
-                          <td className="p-3 text-sm">{transaction.description}</td>
-                          <td className="p-3 text-sm text-muted-foreground">{transaction.secondPartyName || 'N/A'}</td>
-                          <td className={`p-3 text-right font-mono font-medium ${transaction.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {transaction.amount >= 0 ? '+' : ''}{formatISK(transaction.amount)}
-                          </td>
-                          <td className="p-3 text-right font-mono">{formatISK(transaction.balance)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {filteredTransactions.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  No transactions found matching your filters
-                </div>
-              )}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+        </div>
+
+        {/* Right Column - Charts and Data Display */}
+        <div className="space-y-4">
+          {activeView === 'divisions' && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Division Balances</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {divisions.map((division) => {
+                    const percentage = (division.balance / totalBalance) * 100;
+                    return (
+                      <div key={division.divisionId} className="p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-center w-7 h-7 rounded-full bg-accent/20 text-accent font-bold text-xs">
+                              {division.divisionId}
+                            </div>
+                            <div>
+                              <h4 className="font-medium text-sm">{division.divisionName}</h4>
+                              <p className="text-xs text-muted-foreground">{percentage.toFixed(1)}%</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-base font-bold">{formatISK(division.balance)}</p>
+                          </div>
+                        </div>
+                        <div className="w-full bg-muted rounded-full h-1.5 mt-2">
+                          <div 
+                            className="bg-accent h-1.5 rounded-full transition-all" 
+                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {activeView === 'chart' && (
+            <>
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base">Monthly P/L Analysis</CardTitle>
+                    <Badge variant="secondary" className="text-xs">
+                      {selectedPeriod === '12m' ? '12M' : selectedPeriod === '6m' ? '6M' : '3M'}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {monthlyData.slice(-(selectedPeriod === '12m' ? 12 : selectedPeriod === '6m' ? 6 : 3)).map((month, idx) => (
+                      <div key={idx} className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CalendarBlank size={14} className="text-muted-foreground" />
+                            <span className="font-medium text-sm">{month.month}</span>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <div className="text-right">
+                              <p className="text-xs text-green-400">{formatISK(month.totalIncome)}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-red-400">{formatISK(month.totalExpenses)}</p>
+                            </div>
+                            <div className="text-right min-w-[80px]">
+                              <p className={`font-bold text-xs ${month.totalProfit >= 0 ? 'text-accent' : 'text-red-400'}`}>
+                                {formatISK(month.totalProfit)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-0.5 h-6">
+                          <div 
+                            className="bg-green-500/30 rounded flex items-center justify-center text-xs font-medium"
+                            style={{ width: `${(month.totalIncome / (month.totalIncome + month.totalExpenses)) * 100}%` }}
+                          />
+                          <div 
+                            className="bg-red-500/30 rounded flex items-center justify-center text-xs font-medium"
+                            style={{ width: `${(month.totalExpenses / (month.totalIncome + month.totalExpenses)) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Division Performance</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {divisions.map((division) => {
+                      const divisionMonthlyProfit = monthlyData
+                        .slice(-(selectedPeriod === '12m' ? 12 : selectedPeriod === '6m' ? 6 : 3))
+                        .reduce((sum, m) => sum + (m.divisions[division.divisionId]?.profit || 0), 0);
+                      
+                      return (
+                        <div key={division.divisionId} className="p-2 border rounded">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-sm">{division.divisionName}</span>
+                            <span className={`font-bold text-sm ${divisionMonthlyProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {formatISK(divisionMonthlyProfit)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {activeView === 'transactions' && (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Recent Transactions</CardTitle>
+                  <Button variant="outline" size="sm" className="h-7 text-xs">
+                    <Download size={14} className="mr-1" />
+                    Export
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border">
+                  <table className="w-full data-table text-xs">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left p-2">Date</th>
+                        <th className="text-left p-2">Division</th>
+                        <th className="text-left p-2">Description</th>
+                        <th className="text-right p-2">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredTransactions.map((transaction) => {
+                        const division = divisions.find(d => d.divisionId === transaction.divisionId);
+                        return (
+                          <tr key={transaction.id} className="hover:bg-muted/50">
+                            <td className="p-2 text-xs">{formatDate(transaction.date)}</td>
+                            <td className="p-2">
+                              <Badge variant="secondary" className="text-xs h-5">{division?.divisionName || `Div ${transaction.divisionId}`}</Badge>
+                            </td>
+                            <td className="p-2 text-xs">{transaction.description}</td>
+                            <td className={`p-2 text-right font-mono font-medium ${transaction.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {transaction.amount >= 0 ? '+' : ''}{formatISK(transaction.amount)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {filteredTransactions.length === 0 && (
+                  <div className="text-center py-6 text-muted-foreground text-sm">
+                    No transactions found
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
