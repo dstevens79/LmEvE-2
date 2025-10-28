@@ -218,26 +218,37 @@ This is a **multi-step implementation** that requires careful attention. Below a
 
 ---
 
-### Phase 6: Data Retrieval Layer 🟡 (Partially Complete)
-**Status**: Mock data exists, need real database queries
+### Phase 6: Data Retrieval Layer ✅ (COMPLETE)
+**Status**: Real database queries implemented with freshness tracking
 
-- [ ] **Replace mock data with database queries**
-  - Dashboard: Read from database instead of hardcoded data
-  - Members: Query corporation_members table
-  - Assets: Query corporation_assets table  
-  - Manufacturing: Query industry_jobs table
-  - Market: Query market_orders table
-  - Wallet: Query wallet_transactions table
-  - All tabs should read cached data from database
+- [x] **Replace mock data with database queries**
+  - [x] Dashboard: Read from database instead of hardcoded data
+  - [x] Members: Query corporation_members table
+  - [x] Assets: Query corporation_assets table  
+  - [x] Manufacturing: Query industry_jobs table
+  - [x] Market: Query market_orders table
+  - [x] Wallet: Query wallet_transactions table
+  - [x] All tabs should read cached data from database
 
-- [ ] **Implement data freshness indicators**
-  - Show "last updated" time on each tab
-  - Warn if data is stale (hasn't synced recently)
-  - Provide manual refresh option
+- [x] **Implement data freshness indicators**
+  - [x] Show "last updated" time on each tab
+  - [x] Warn if data is stale (hasn't synced recently)
+  - [x] Provide manual refresh option
 
-**Files to modify:**
-- `/src/lib/dataService.ts` - Replace mock data with real queries
-- All tab components - Add data freshness indicators
+**Files created:**
+- ✅ `/src/lib/data-retrieval-service.ts` - Complete data retrieval service with freshness tracking
+- ✅ `/src/lib/data-retrieval-hooks.ts` - React hooks for all data types (useMembers, useAssets, etc.)
+- ✅ `/src/components/DataFreshnessIndicator.tsx` - Reusable freshness indicator components
+
+**Implementation Details:**
+- **DataRetrievalService**: Queries all ESI data tables with proper SQL
+- **Freshness Tracking**: Calculates data age and staleness for each data type
+- **Configurable Staleness**: Different cutoff times per data type (members: 120min, assets: 60min, etc.)
+- **React Hooks**: Easy-to-use hooks for all data types with automatic loading states
+- **UI Components**: DataFreshnessIndicator and DataFreshnessAlert for visual feedback
+- **Auto-refresh**: Data freshness updates every 60 seconds
+- **Error Handling**: Graceful fallback to empty data on errors
+- **Type Safety**: Full TypeScript support with proper interfaces
 
 ---
 
