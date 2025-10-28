@@ -554,6 +554,38 @@ export function Buyback({ isMobileView }: BuybackProps) {
         </TabsList>
 
         <TabsContent value="calculator" className="mt-6 space-y-4">
+          {buybackPilotName && (
+            <Card className="border-accent/50 bg-accent/5">
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0">
+                    <img 
+                      src={`https://images.evetech.net/characters/1/portrait?size=128`}
+                      alt="Buyback Pilot"
+                      className="w-16 h-16 rounded border-2 border-accent/50"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjMzMzIi8+CjxjaXJjbGUgY3g9IjMyIiBjeT0iMjQiIHI9IjgiIGZpbGw9IiM5OTkiLz4KPHBhdGggZD0iTTQ4IDU2QzQ4IDQ3LjE2MzQgNDEuNzMyMSA0MCAzNCA0MEgzMEMyMi4yNjc5IDQwIDE2IDQ3LjE2MzQgMTYgNTZINDhaIiBmaWxsPSIjOTk5Ii8+Cjwvc3ZnPg==';
+                      }}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge className="bg-accent text-accent-foreground">Contract Recipient</Badge>
+                    </div>
+                    <p className="text-lg font-bold mb-1">{buybackPilotName}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Send your in-game item exchange contract to this character. 
+                      Make sure to include the validation key in the contract description after you accept the buyback.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Your pilot: <span className="font-semibold text-foreground">{user?.characterName || 'Unknown'}</span>
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="grid lg:grid-cols-[1fr,400px] gap-4">
             <Card>
               <CardHeader>
@@ -682,101 +714,82 @@ export function Buyback({ isMobileView }: BuybackProps) {
               </CardContent>
             </Card>
 
-            {calculatedItems.length > 0 && (
-              <Card className="border-accent/50 lg:sticky lg:top-4 h-fit">
-                <CardHeader>
-                  <CardTitle>Summary</CardTitle>
-                  <CardDescription>
-                    {calculatedItems.length} items total
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Items</p>
-                      <p className="text-2xl font-bold">{calculatedItems.length}</p>
+            <Card className="border-accent/50 lg:sticky lg:top-4 h-fit">
+              <CardHeader>
+                <CardTitle>Summary</CardTitle>
+                <CardDescription>
+                  {calculatedItems.length > 0 ? `${calculatedItems.length} items calculated` : 'Ready to calculate'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Items</p>
+                    <p className="text-2xl font-bold">{calculatedItems.length || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total Value</p>
+                    <p className="text-lg font-bold">{formatISK(calculationSummary.totalValue)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Your Payout</p>
+                    <p className="text-lg font-bold text-green-500">{formatISK(calculationSummary.totalPayout)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Effective Rate</p>
+                    <p className="text-lg font-bold">
+                      {calculationSummary.totalValue > 0 
+                        ? ((calculationSummary.totalPayout / calculationSummary.totalValue) * 100).toFixed(1)
+                        : 0}%
+                    </p>
+                  </div>
+                </div>
+
+                {calculatedItems.length > 0 && (calculationSummary.excludedCount > 0 || calculationSummary.manualCount > 0) && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      {calculationSummary.excludedCount > 0 && (
+                        <Badge variant="destructive" className="bg-red-500/20 text-red-500 border-red-500/30 w-full justify-center">
+                          {calculationSummary.excludedCount} excluded items
+                        </Badge>
+                      )}
+                      {calculationSummary.manualCount > 0 && (
+                        <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30 w-full justify-center">
+                          {calculationSummary.manualCount} manual rates
+                        </Badge>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total Value</p>
-                      <p className="text-lg font-bold">{formatISK(calculationSummary.totalValue)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Your Payout</p>
-                      <p className="text-lg font-bold text-green-500">{formatISK(calculationSummary.totalPayout)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Effective Rate</p>
-                      <p className="text-lg font-bold">
-                        {calculationSummary.totalValue > 0 
-                          ? ((calculationSummary.totalPayout / calculationSummary.totalValue) * 100).toFixed(1)
-                          : 0}%
+                  </>
+                )}
+
+                <Separator />
+
+                <div className="space-y-3">
+                  {calculatedItems.length > 0 ? (
+                    <>
+                      <p className="text-xs text-muted-foreground text-center">
+                        Click Accept to generate contract validation key
+                      </p>
+                      <Button
+                        onClick={handleAcceptContract}
+                        size="lg"
+                        className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
+                      >
+                        <CheckCircle size={20} className="mr-2" />
+                        Accept & Generate Contract
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="text-center py-4">
+                      <p className="text-sm text-muted-foreground">
+                        Paste items to see your buyback calculation
                       </p>
                     </div>
-                  </div>
-
-                  {(calculationSummary.excludedCount > 0 || calculationSummary.manualCount > 0) && (
-                    <>
-                      <Separator />
-                      <div className="space-y-2">
-                        {calculationSummary.excludedCount > 0 && (
-                          <Badge variant="destructive" className="bg-red-500/20 text-red-500 border-red-500/30 w-full justify-center">
-                            {calculationSummary.excludedCount} excluded items
-                          </Badge>
-                        )}
-                        {calculationSummary.manualCount > 0 && (
-                          <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30 w-full justify-center">
-                            {calculationSummary.manualCount} manual rates
-                          </Badge>
-                        )}
-                      </div>
-                    </>
                   )}
-
-                  <Separator />
-
-                  {buybackPilotName && (
-                    <>
-                      <div className="bg-muted/50 border border-border rounded-lg p-3">
-                        <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0">
-                            <img 
-                              src={`https://images.evetech.net/characters/1/portrait?size=64`}
-                              alt="Buyback Pilot"
-                              className="w-12 h-12 rounded border border-accent/30"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjMzMzIi8+CjxjaXJjbGUgY3g9IjMyIiBjeT0iMjQiIHI9IjgiIGZpbGw9IiM5OTkiLz4KPHBhdGggZD0iTTQ4IDU2QzQ4IDQ3LjE2MzQgNDEuNzMyMSA0MCAzNCA0MEgzMEMyMi4yNjc5IDQwIDE2IDQ3LjE2MzQgMTYgNTZINDhaIiBmaWxsPSIjOTk5Ii8+Cjwvc3ZnPg==';
-                              }}
-                            />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs text-muted-foreground mb-1">Send in-game contract to:</p>
-                            <p className="font-semibold text-sm truncate">{buybackPilotName}</p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Include validation key in contract description
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      <Separator />
-                    </>
-                  )}
-
-                  <div className="space-y-3">
-                    <p className="text-xs text-muted-foreground text-center">
-                      Click Accept to generate contract validation key
-                    </p>
-                    <Button
-                      onClick={handleAcceptContract}
-                      size="lg"
-                      className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
-                    >
-                      <CheckCircle size={20} className="mr-2" />
-                      Accept & Generate Contract
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
