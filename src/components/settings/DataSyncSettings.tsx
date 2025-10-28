@@ -92,7 +92,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       description: 'Sync corporation member list and roles',
       icon: Users,
       enabled: syncSettings.corporationMembers?.enabled ?? true,
-      interval: syncSettings.corporationMembers?.interval ?? 60,
+      interval: syncSettings.corporationMembers?.interval ?? 1440,
       lastSync: null,
       status: 'idle',
       currentVersion: 'v1',
@@ -105,7 +105,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       description: 'Sync corporation assets and locations',
       icon: Package,
       enabled: syncSettings.corporationAssets?.enabled ?? true,
-      interval: syncSettings.corporationAssets?.interval ?? 30,
+      interval: syncSettings.corporationAssets?.interval ?? 1440,
       lastSync: null,
       status: 'idle',
       currentVersion: 'v1',
@@ -118,7 +118,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       description: 'Sync active and completed industry jobs',
       icon: Factory,
       enabled: syncSettings.industryJobs?.enabled ?? true,
-      interval: syncSettings.industryJobs?.interval ?? 15,
+      interval: syncSettings.industryJobs?.interval ?? 1440,
       lastSync: null,
       status: 'idle',
       currentVersion: 'v1',
@@ -131,7 +131,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       description: 'Sync corporation mining operations',
       icon: HardHat,
       enabled: syncSettings.miningLedger?.enabled ?? false,
-      interval: syncSettings.miningLedger?.interval ?? 120,
+      interval: syncSettings.miningLedger?.interval ?? 1440,
       lastSync: null,
       status: 'idle',
       currentVersion: 'v1',
@@ -144,7 +144,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       description: 'Sync corporation market orders',
       icon: TrendUp,
       enabled: syncSettings.marketOrders?.enabled ?? false,
-      interval: syncSettings.marketOrders?.interval ?? 30,
+      interval: syncSettings.marketOrders?.interval ?? 1440,
       lastSync: null,
       status: 'idle',
       currentVersion: 'v1',
@@ -157,7 +157,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       description: 'Sync corporation killmails and losses',
       icon: Crosshair,
       enabled: syncSettings.killmails?.enabled ?? false,
-      interval: syncSettings.killmails?.interval ?? 60,
+      interval: syncSettings.killmails?.interval ?? 1440,
       lastSync: null,
       status: 'idle',
       currentVersion: 'v1',
@@ -170,7 +170,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       description: 'Sync corporation wallet transactions',
       icon: CurrencyDollar,
       enabled: syncSettings.corporationWallets?.enabled ?? true,
-      interval: syncSettings.corporationWallets?.interval ?? 30,
+      interval: syncSettings.corporationWallets?.interval ?? 1440,
       lastSync: null,
       status: 'idle',
       currentVersion: 'v1',
@@ -183,7 +183,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       description: 'Sync corporation structures and services',
       icon: Building,
       enabled: syncSettings.structures?.enabled ?? false,
-      interval: syncSettings.structures?.interval ?? 240,
+      interval: syncSettings.structures?.interval ?? 1440,
       lastSync: null,
       status: 'idle',
       currentVersion: 'v1',
@@ -192,11 +192,11 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
     },
     {
       id: 'corporation_contracts',
-      name: 'Corp Contracts',
+      name: 'Corporation Contracts',
       description: 'Sync corporation contracts and contract items',
       icon: FileText,
       enabled: syncSettings.corporationContracts?.enabled ?? true,
-      interval: syncSettings.corporationContracts?.interval ?? 30,
+      interval: syncSettings.corporationContracts?.interval ?? 1440,
       lastSync: null,
       status: 'idle',
       currentVersion: 'v1',
@@ -205,11 +205,11 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
     },
     {
       id: 'item_pricing',
-      name: 'Item Pricing',
+      name: 'Market Item Costs',
       description: 'Sync market prices for items from configured station',
       icon: Receipt,
       enabled: syncSettings.itemPricing?.enabled ?? true,
-      interval: syncSettings.itemPricing?.interval ?? 60,
+      interval: syncSettings.itemPricing?.interval ?? 1440,
       lastSync: null,
       status: 'idle',
       currentVersion: 'v1',
@@ -222,7 +222,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       description: 'Sync planetary colonies and extraction data',
       icon: Planet,
       enabled: syncSettings.planetaryInteraction?.enabled ?? false,
-      interval: syncSettings.planetaryInteraction?.interval ?? 120,
+      interval: syncSettings.planetaryInteraction?.interval ?? 1440,
       lastSync: null,
       status: 'idle',
       currentVersion: 'v1',
@@ -235,7 +235,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       description: 'Sync personal data for pilots with ESI access',
       icon: User,
       enabled: syncSettings.personalESI?.enabled ?? false,
-      interval: syncSettings.personalESI?.interval ?? 30,
+      interval: syncSettings.personalESI?.interval ?? 1440,
       lastSync: null,
       status: 'idle',
       currentVersion: 'v1',
@@ -505,7 +505,8 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
             <Info className="h-4 w-4" />
             <AlertDescription>
               Configure automatic data synchronization from EVE Online ESI. Each process can be 
-              individually configured with different polling intervals based on your needs.
+              individually configured with different polling intervals. All sync processes have a 
+              minimum interval of 1 day (1440 minutes) to respect ESI rate limits and avoid excessive API calls.
             </AlertDescription>
           </Alert>
 
@@ -707,7 +708,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                         )}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                        <span>Every {process.interval}m</span>
+                        <span>Every {process.interval >= 1440 ? `${(process.interval / 1440).toFixed(1)} day${process.interval > 1440 ? 's' : ''}` : `${process.interval}m`}</span>
                         {process.lastSync && (
                           <>
                             <span>•</span>
@@ -781,20 +782,27 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
 
                   <div className="space-y-2">
                     <Label htmlFor={`${process.id}-interval`} className="text-xs text-muted-foreground">
-                      Interval (minutes)
+                      Interval (minutes, min: 1 day)
                     </Label>
                     <Input
                       id={`${process.id}-interval`}
                       type="number"
-                      min="1"
-                      max="1440"
+                      min="1440"
+                      max="10080"
                       value={process.interval}
-                      onChange={(e) => updateProcessConfig(process.id, { 
-                        interval: parseInt(e.target.value) || 15 
-                      })}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value) || 1440;
+                        const clampedValue = Math.max(1440, Math.min(10080, value));
+                        updateProcessConfig(process.id, { 
+                          interval: clampedValue
+                        });
+                      }}
                       disabled={!process.enabled}
                       className="h-8"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Minimum: 1 day (1440 min) • Maximum: 7 days (10080 min)
+                    </p>
                   </div>
 
                   {process.status === 'error' && syncState.getSyncStatus(process.id).errorMessage && (
