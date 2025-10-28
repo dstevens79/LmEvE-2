@@ -413,8 +413,8 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
             <>
               {/* Stats Bar - Moved Above Filters */}
               <Card>
-                <CardContent className="py-0.5">
-                  <div className={`grid ${isMobileView ? 'grid-cols-2' : 'grid-cols-4'} gap-3`}>
+                <CardContent className="p-0 px-2 py-0.5">
+                  <div className={`grid ${isMobileView ? 'grid-cols-2' : 'grid-cols-4'} gap-2`}>
                     <div className="text-center">
                       <div className="text-lg font-bold text-foreground">
                         {formatNumber(stats.count)}
@@ -447,21 +447,21 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
 
               {/* Filter Bar - Search Inline with Buttons */}
               <Card>
-                <CardContent className="py-0.5">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                <CardContent className="p-0 px-2 py-0.5">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1.5">
                     {/* Search Input - Left Side */}
                     <div className="relative w-full sm:w-64">
-                      <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <MagnifyingGlass size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         placeholder="Search items..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9 h-8"
+                        className="pl-7 h-6 text-xs"
                       />
                     </div>
                     
                     {/* Filter Buttons - Right Side */}
-                    <div className="flex flex-wrap items-center gap-2 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5 flex-1">
                       {filterOptions.map((filter) => {
                         const isActive = activeFilters.includes(filter.id);
                         const Icon = 
@@ -478,9 +478,9 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                             variant={isActive ? 'default' : 'outline'}
                             size="sm"
                             onClick={() => toggleFilter(filter.id)}
-                            className={`h-8 ${isActive ? 'bg-accent text-accent-foreground' : ''}`}
+                            className={`h-6 text-xs px-2 ${isActive ? 'bg-accent text-accent-foreground' : ''}`}
                           >
-                            <Icon size={14} className="mr-1.5" />
+                            <Icon size={12} className="mr-1" />
                             {filter.label}
                           </Button>
                         );
@@ -491,9 +491,9 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                           variant="ghost"
                           size="sm"
                           onClick={clearAllFilters}
-                          className="h-8 text-xs ml-auto"
+                          className="h-6 text-xs px-2 ml-auto"
                         >
-                          <X size={14} className="mr-1" />
+                          <X size={12} className="mr-1" />
                           Clear All
                         </Button>
                       )}
