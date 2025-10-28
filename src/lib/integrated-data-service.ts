@@ -758,10 +758,10 @@ class IntegratedDataService {
           };
         }
         
-        console.log('📭 No wallet divisions in database - empty result (data will be populated by sync process)');
-        return {
-          data: [],
-          source: { ...source, database: true },
+          balance: 1000000000
+        },
+        {
+          divisionId: 2,
           timestamp: new Date().toISOString()
         };
       } catch (error) {
@@ -785,16 +785,16 @@ class IntegratedDataService {
         },
         {
           divisionId: 2,
-          divisionName: 'Operations',
-          balance: 500000000
+      keysToDelete.forEach(key => this.cache.delete(key));
+      console.log(`🗑️ Cleared cache for ${type} (${keysToDelete.length} entries)`);
         }
       ];
       source.mock = true;
       return {
         data: mockDivisions,
-        source,
-        timestamp: new Date().toISOString()
-      };
+}
+
+export const integratedDataService = new IntegratedDataService();
     }
 
     return {
