@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
 import { 
   Table,
   TableBody,
@@ -35,7 +36,10 @@ import {
   FunnelSimple,
   Gear,
   WarningCircle,
-  Database
+  Database,
+  Copy,
+  X,
+  FileText
 } from '@phosphor-icons/react';
 import { useKV } from '@github/spark/hooks';
 import { toast } from 'sonner';
@@ -58,13 +62,12 @@ interface BuybackProgram {
 
 interface BuybackContract {
   id: string;
-  programId: string;
-  characterId: number;
+  validationKey: string;
   characterName: string;
-  items: BuybackContractItem[];
+  items: BuybackCalculatedItem[];
   totalValue: number;
   payoutValue: number;
-  status: 'pending' | 'accepted' | 'rejected' | 'completed';
+  status: 'open' | 'completed';
   createdAt: string;
   completedAt?: string;
 }
@@ -75,6 +78,19 @@ interface BuybackContractItem {
   quantity: number;
   jitaBuyPrice: number;
   totalValue: number;
+}
+
+interface BuybackCalculatedItem {
+  typeId: number;
+  typeName: string;
+  quantity: number;
+  unitPrice: number;
+  totalItemValue: number;
+  buybackPercentage: number;
+  payoutPerItem: number;
+  totalPayout: number;
+  excluded: boolean;
+  isManualPrice: boolean;
 }
 
 interface BuybackItemConfig {
@@ -99,52 +115,14 @@ interface BuybackProps {
 
 export function Buyback({ isMobileView }: BuybackProps) {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useKV<string>('buyback-tab', 'programs');
-  const [programs, setPrograms] = useKV<BuybackProgram[]>('buyback-programs', [
-    {
-      id: '1',
-      name: 'Ore Buyback',
-      description: 'Buy ore and compressed ore at 90% Jita buy',
-      percentage: 90,
-      enabled: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      categories: ['Ore', 'Compressed Ore'],
-      excludedItems: [],
-      minValue: 0,
-      maxValue: 0,
-      location: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant'
-    },
-    {
-      id: '2',
-      name: 'Salvage Buyback',
-      description: 'Buy all salvage materials at 85% Jita buy',
-      percentage: 85,
-      enabled: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      categories: ['Salvaged Materials'],
-      excludedItems: [],
-      minValue: 1000000,
-      maxValue: 0,
-      location: 'Any Corporation Hangar'
-    }
-  ]);
+  const [activeTab, setActiveTab] = useKV<string>('buyback-tab', 'calculator');
   const [contracts, setContracts] = useKV<BuybackContract[]>('buyback-contracts', []);
-  const [showAddProgram, setShowAddProgram] = useState(false);
-  const [editingProgram, setEditingProgram] = useState<BuybackProgram | null>(null);
-  const [newProgram, setNewProgram] = useState<Partial<BuybackProgram>>({
-    name: '',
-    description: '',
-    percentage: 90,
-    enabled: true,
-    categories: [],
-    excludedItems: [],
-    minValue: 0,
-    maxValue: 0,
-    location: ''
-  });
-
+  
+  const [pasteText, setPasteText] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [calculatedItems, setCalculatedItems] = useState<BuybackCalculatedItem[]>([]);
+  const [pilotName, setPilotName] = useState('');
+  
   const [priceConfig, setPriceConfig] = useKV<BuybackPriceConfig>('buyback-price-config', {
     comparisonStation: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
     pricingType: 'buy',
@@ -229,58 +207,142 @@ export function Buyback({ isMobileView }: BuybackProps) {
 
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
 
-  const handleAddProgram = () => {
-    if (!newProgram.name || !newProgram.description || !newProgram.percentage) {
-      toast.error('Please fill in all required fields');
+  const parseEVEText = (text: string): BuybackCalculatedItem[] => {
+    const lines = text.split('\n').filter(line => line.trim());
+    const items: BuybackCalculatedItem[] = [];
+    
+    for (const line of lines) {
+      const quantityMatch = line.match(/^(.+?)\s+(\d[\d\s,]*)/);
+      if (quantityMatch) {
+        const itemName = quantityMatch[1].trim();
+        const quantityStr = quantityMatch[2].replace(/[\s,]/g, '');
+        const quantity = parseInt(quantityStr);
+        
+        if (itemName && !isNaN(quantity) && quantity > 0) {
+          const matchedItem = mockEVEItems.find(
+            item => item.typeName.toLowerCase() === itemName.toLowerCase()
+          );
+          
+          if (matchedItem) {
+            const config = getItemConfig(matchedItem.typeId);
+            const mockPrice = Math.random() * 10000 + 100;
+            const percentage = getEffectivePercentage(config);
+            const totalItemValue = mockPrice * quantity;
+            const payoutPerItem = config.excluded ? 0 : (mockPrice * percentage / 100);
+            const totalPayout = payoutPerItem * quantity;
+            
+            items.push({
+              typeId: matchedItem.typeId,
+              typeName: matchedItem.typeName,
+              quantity,
+              unitPrice: mockPrice,
+              totalItemValue,
+              buybackPercentage: config.excluded ? 0 : percentage,
+              payoutPerItem,
+              totalPayout,
+              excluded: config.excluded,
+              isManualPrice: config.useManualPrice && config.manualPercentage !== undefined
+            });
+          }
+        }
+      }
+    }
+    
+    return items;
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const text = e.dataTransfer.getData('text');
+    if (text) {
+      setPasteText(text);
+      const parsed = parseEVEText(text);
+      setCalculatedItems(parsed);
+      if (parsed.length > 0) {
+        toast.success(`Parsed ${parsed.length} items`);
+      } else {
+        toast.error('No valid items found in text');
+      }
+    }
+  };
+
+  const handlePaste = () => {
+    const parsed = parseEVEText(pasteText);
+    setCalculatedItems(parsed);
+    if (parsed.length > 0) {
+      toast.success(`Parsed ${parsed.length} items`);
+    } else {
+      toast.error('No valid items found in text');
+    }
+  };
+
+  const handleClearCalculation = () => {
+    setPasteText('');
+    setCalculatedItems([]);
+    setPilotName('');
+    toast.success('Calculator cleared');
+  };
+
+  const generateValidationKey = (): string => {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return `BB-${timestamp}-${random}`;
+  };
+
+  const handleAcceptContract = () => {
+    if (calculatedItems.length === 0) {
+      toast.error('No items to create contract');
       return;
     }
 
-    const program: BuybackProgram = {
+    if (!pilotName.trim()) {
+      toast.error('Please enter pilot name');
+      return;
+    }
+
+    const validationKey = generateValidationKey();
+    const totalValue = calculatedItems.reduce((sum, item) => sum + item.totalItemValue, 0);
+    const payoutValue = calculatedItems.reduce((sum, item) => sum + item.totalPayout, 0);
+
+    const contract: BuybackContract = {
       id: Date.now().toString(),
-      name: newProgram.name,
-      description: newProgram.description,
-      percentage: newProgram.percentage,
-      enabled: newProgram.enabled ?? true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      categories: newProgram.categories || [],
-      excludedItems: newProgram.excludedItems || [],
-      minValue: newProgram.minValue || 0,
-      maxValue: newProgram.maxValue || 0,
-      location: newProgram.location || ''
+      validationKey,
+      characterName: pilotName.trim(),
+      items: calculatedItems,
+      totalValue,
+      payoutValue,
+      status: 'open',
+      createdAt: new Date().toISOString()
     };
 
-    setPrograms(current => [...current, program]);
-    setNewProgram({
-      name: '',
-      description: '',
-      percentage: 90,
-      enabled: true,
-      categories: [],
-      excludedItems: [],
-      minValue: 0,
-      maxValue: 0,
-      location: ''
-    });
-    setShowAddProgram(false);
-    toast.success('Buyback program created successfully');
+    setContracts(current => [contract, ...current]);
+    
+    navigator.clipboard.writeText(validationKey);
+    toast.success('Contract created! Validation key copied to clipboard');
+    
+    setPasteText('');
+    setCalculatedItems([]);
+    setPilotName('');
+    
+    setActiveTab('contracts');
   };
 
-  const handleUpdateProgram = (programId: string, updates: Partial<BuybackProgram>) => {
-    setPrograms(current => 
-      current.map(p => 
-        p.id === programId 
-          ? { ...p, ...updates, updatedAt: new Date().toISOString() }
-          : p
+  const handleCompleteContract = (contractId: string) => {
+    setContracts(current =>
+      current.map(c =>
+        c.id === contractId
+          ? { ...c, status: 'completed', completedAt: new Date().toISOString() }
+          : c
       )
     );
-    toast.success('Program updated successfully');
+    toast.success('Contract marked as completed');
   };
 
-  const handleDeleteProgram = (programId: string) => {
-    if (confirm('Are you sure you want to delete this buyback program?')) {
-      setPrograms(current => current.filter(p => p.id !== programId));
-      toast.success('Program deleted successfully');
+  const handleDeleteContract = (contractId: string) => {
+    if (confirm('Are you sure you want to delete this contract?')) {
+      setContracts(current => current.filter(c => c.id !== contractId));
+      toast.success('Contract deleted');
     }
   };
 
@@ -396,7 +458,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
 
   const calculateStats = () => {
     const totalContracts = contracts.length;
-    const pendingContracts = contracts.filter(c => c.status === 'pending').length;
+    const openContracts = contracts.filter(c => c.status === 'open').length;
     const completedContracts = contracts.filter(c => c.status === 'completed').length;
     const totalPayout = contracts
       .filter(c => c.status === 'completed')
@@ -404,13 +466,29 @@ export function Buyback({ isMobileView }: BuybackProps) {
 
     return {
       totalContracts,
-      pendingContracts,
+      openContracts,
       completedContracts,
       totalPayout
     };
   };
 
   const stats = calculateStats();
+
+  const openContracts = contracts.filter(c => c.status === 'open');
+  const completedContracts = contracts.filter(c => c.status === 'completed');
+  
+  const calculationSummary = useMemo(() => {
+    if (calculatedItems.length === 0) {
+      return { totalValue: 0, totalPayout: 0, excludedCount: 0, manualCount: 0 };
+    }
+    
+    return {
+      totalValue: calculatedItems.reduce((sum, item) => sum + item.totalItemValue, 0),
+      totalPayout: calculatedItems.reduce((sum, item) => sum + item.totalPayout, 0),
+      excludedCount: calculatedItems.filter(item => item.excluded).length,
+      manualCount: calculatedItems.filter(item => item.isManualPrice).length
+    };
+  }, [calculatedItems]);
 
   const isAdmin = user && (
     user.role === 'super_admin' || 
@@ -423,10 +501,10 @@ export function Buyback({ isMobileView }: BuybackProps) {
       <div>
         <h2 className="text-2xl font-bold flex items-center gap-2">
           <Receipt size={24} />
-          Buyback Programs
+          Buyback Calculator
         </h2>
         <p className="text-muted-foreground">
-          Manage corporation buyback programs and contracts
+          Calculate buyback values and manage contracts
         </p>
       </div>
 
@@ -435,10 +513,10 @@ export function Buyback({ isMobileView }: BuybackProps) {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Active Programs</p>
-                <p className="text-2xl font-bold">{programs.filter(p => p.enabled).length}</p>
+                <p className="text-sm font-medium text-muted-foreground">Total Contracts</p>
+                <p className="text-2xl font-bold">{stats.totalContracts}</p>
               </div>
-              <Package size={32} className="text-accent opacity-50" />
+              <Receipt size={32} className="text-accent opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -447,10 +525,10 @@ export function Buyback({ isMobileView }: BuybackProps) {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Pending Contracts</p>
-                <p className="text-2xl font-bold">{stats.pendingContracts}</p>
+                <p className="text-sm font-medium text-muted-foreground">Open Contracts</p>
+                <p className="text-2xl font-bold">{stats.openContracts}</p>
               </div>
-              <Receipt size={32} className="text-orange-500 opacity-50" />
+              <Package size={32} className="text-orange-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -481,295 +559,374 @@ export function Buyback({ isMobileView }: BuybackProps) {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-4' : 'grid-cols-3'} max-w-2xl`}>
-          <TabsTrigger value="programs">Programs</TabsTrigger>
-          <TabsTrigger value="contracts">Contracts</TabsTrigger>
+        <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} max-w-2xl`}>
           <TabsTrigger value="calculator">Calculator</TabsTrigger>
+          <TabsTrigger value="contracts">Contracts</TabsTrigger>
           {isAdmin && <TabsTrigger value="admin">Admin</TabsTrigger>}
         </TabsList>
 
-        <TabsContent value="programs" className="mt-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Buyback Programs</h3>
-            <Button
-              onClick={() => setShowAddProgram(true)}
-              className="bg-accent hover:bg-accent/90 text-accent-foreground"
-            >
-              <Plus size={16} className="mr-2" />
-              New Program
-            </Button>
-          </div>
+        <TabsContent value="calculator" className="mt-6 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Paste Items from EVE Online</CardTitle>
+              <CardDescription>Drag and drop or paste copied item list from EVE Online</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="pilotName">Pilot Name</Label>
+                <Input
+                  id="pilotName"
+                  value={pilotName}
+                  onChange={(e) => setPilotName(e.target.value)}
+                  placeholder="Enter pilot name for contract"
+                  disabled={calculatedItems.length > 0}
+                />
+              </div>
 
-          {showAddProgram && (
-            <Card className="border-accent/50">
-              <CardHeader>
-                <CardTitle>Create New Buyback Program</CardTitle>
-                <CardDescription>Set up a new buyback program for your corporation</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="programName">Program Name</Label>
-                    <Input
-                      id="programName"
-                      value={newProgram.name}
-                      onChange={(e) => setNewProgram({ ...newProgram, name: e.target.value })}
-                      placeholder="e.g., Ore Buyback"
-                    />
+              <div
+                onDrop={handleDrop}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                className={`
+                  border-2 border-dashed rounded-lg p-6 transition-colors
+                  ${isDragging ? 'border-accent bg-accent/10' : 'border-border'}
+                  ${calculatedItems.length > 0 ? 'opacity-50' : ''}
+                `}
+              >
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center">
+                    <FileText size={48} className="text-muted-foreground opacity-50" />
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="percentage">Percentage of Jita Buy</Label>
-                    <Input
-                      id="percentage"
-                      type="number"
-                      min="1"
-                      max="100"
-                      value={newProgram.percentage}
-                      onChange={(e) => setNewProgram({ ...newProgram, percentage: parseInt(e.target.value) || 90 })}
-                    />
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Drag and drop text here or paste below
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Copy items from EVE inventory (Ctrl+C in game) and paste here
+                    </p>
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Input
-                    id="description"
-                    value={newProgram.description}
-                    onChange={(e) => setNewProgram({ ...newProgram, description: e.target.value })}
-                    placeholder="Brief description of what this program buys"
+                  
+                  <textarea
+                    value={pasteText}
+                    onChange={(e) => setPasteText(e.target.value)}
+                    placeholder="Tritanium  50000&#10;Pyerite  25000&#10;Mexallon  10000"
+                    disabled={calculatedItems.length > 0}
+                    className="w-full h-32 px-3 py-2 text-sm rounded-md border border-input bg-input/50 resize-none focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                   />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="minValue">Minimum Value (ISK)</Label>
-                    <Input
-                      id="minValue"
-                      type="number"
-                      min="0"
-                      value={newProgram.minValue}
-                      onChange={(e) => setNewProgram({ ...newProgram, minValue: parseInt(e.target.value) || 0 })}
-                      placeholder="0 for no minimum"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="location">Location (Optional)</Label>
-                    <Input
-                      id="location"
-                      value={newProgram.location}
-                      onChange={(e) => setNewProgram({ ...newProgram, location: e.target.value })}
-                      placeholder="e.g., Jita IV - Moon 4"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-4 border-t border-border">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      checked={newProgram.enabled ?? true}
-                      onCheckedChange={(checked) => setNewProgram({ ...newProgram, enabled: checked })}
-                    />
-                    <Label>Enable program immediately</Label>
-                  </div>
 
                   <div className="flex gap-2">
                     <Button
-                      variant="outline"
-                      onClick={() => {
-                        setShowAddProgram(false);
-                        setNewProgram({
-                          name: '',
-                          description: '',
-                          percentage: 90,
-                          enabled: true,
-                          categories: [],
-                          excludedItems: [],
-                          minValue: 0,
-                          maxValue: 0,
-                          location: ''
-                        });
-                      }}
+                      onClick={handlePaste}
+                      disabled={!pasteText.trim() || calculatedItems.length > 0}
+                      className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
                     >
-                      Cancel
+                      <TrendUp size={16} className="mr-2" />
+                      Calculate Buyback
                     </Button>
-                    <Button
-                      onClick={handleAddProgram}
-                      className="bg-accent hover:bg-accent/90 text-accent-foreground"
-                    >
-                      <CheckCircle size={16} className="mr-2" />
-                      Create Program
-                    </Button>
+                    {calculatedItems.length > 0 && (
+                      <Button
+                        onClick={handleClearCalculation}
+                        variant="outline"
+                      >
+                        <X size={16} className="mr-2" />
+                        Clear
+                      </Button>
+                    )}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="grid grid-cols-1 gap-4">
-            {programs.map((program) => (
-              <Card key={program.id} className={program.enabled ? '' : 'opacity-60'}>
-                <CardContent className="pt-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h4 className="text-lg font-semibold">{program.name}</h4>
-                        <Badge variant={program.enabled ? 'default' : 'secondary'} className={program.enabled ? 'bg-green-500' : ''}>
-                          {program.enabled ? 'Active' : 'Disabled'}
-                        </Badge>
-                        <Badge variant="outline" className="font-mono">
-                          {program.percentage}% Jita Buy
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-3">{program.description}</p>
-                      
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        {program.location && (
-                          <div>
-                            <span className="text-muted-foreground">Location:</span>
-                            <p className="font-medium">{program.location}</p>
-                          </div>
-                        )}
-                        {program.minValue > 0 && (
-                          <div>
-                            <span className="text-muted-foreground">Min Value:</span>
-                            <p className="font-medium">{formatISK(program.minValue)}</p>
-                          </div>
-                        )}
-                        <div>
-                          <span className="text-muted-foreground">Created:</span>
-                          <p className="font-medium">{new Date(program.createdAt).toLocaleDateString()}</p>
-                        </div>
-                      </div>
+          {calculatedItems.length > 0 && (
+            <>
+              <Card className="border-accent/50">
+                <CardHeader>
+                  <CardTitle>Buyback Summary</CardTitle>
+                  <CardDescription>
+                    {calculatedItems.length} items • Total value: {formatISK(calculationSummary.totalValue)}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Items</p>
+                      <p className="text-2xl font-bold">{calculatedItems.length}</p>
                     </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Value</p>
+                      <p className="text-lg font-bold">{formatISK(calculationSummary.totalValue)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Your Payout</p>
+                      <p className="text-lg font-bold text-green-500">{formatISK(calculationSummary.totalPayout)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Effective Rate</p>
+                      <p className="text-lg font-bold">
+                        {calculationSummary.totalValue > 0 
+                          ? ((calculationSummary.totalPayout / calculationSummary.totalValue) * 100).toFixed(1)
+                          : 0}%
+                      </p>
+                    </div>
+                  </div>
 
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleUpdateProgram(program.id, { enabled: !program.enabled })}
-                      >
-                        {program.enabled ? 'Disable' : 'Enable'}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setEditingProgram(program)}
-                      >
-                        <Pencil size={16} />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteProgram(program.id)}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash size={16} />
-                      </Button>
+                  {(calculationSummary.excludedCount > 0 || calculationSummary.manualCount > 0) && (
+                    <div className="flex gap-2 text-sm">
+                      {calculationSummary.excludedCount > 0 && (
+                        <Badge variant="destructive" className="bg-red-500/20 text-red-500 border-red-500/30">
+                          {calculationSummary.excludedCount} excluded items
+                        </Badge>
+                      )}
+                      {calculationSummary.manualCount > 0 && (
+                        <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">
+                          {calculationSummary.manualCount} manual rates
+                        </Badge>
+                      )}
                     </div>
+                  )}
+
+                  <Separator />
+
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Item</TableHead>
+                          <TableHead className="text-right">Quantity</TableHead>
+                          <TableHead className="text-right">Unit Price</TableHead>
+                          <TableHead className="text-right">Total Value</TableHead>
+                          <TableHead className="text-right">Rate</TableHead>
+                          <TableHead className="text-right">Payout</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {calculatedItems.map((item, index) => (
+                          <TableRow 
+                            key={index}
+                            className={item.excluded ? 'bg-red-500/10' : item.isManualPrice ? 'bg-yellow-500/10' : ''}
+                          >
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{item.typeName}</span>
+                                {item.excluded && (
+                                  <Badge variant="destructive" className="text-xs bg-red-500/20 text-red-500 border-red-500/30">
+                                    Not Accepted
+                                  </Badge>
+                                )}
+                                {item.isManualPrice && !item.excluded && (
+                                  <Badge variant="secondary" className="text-xs bg-yellow-500/20 text-yellow-500 border-yellow-500/30">
+                                    Manual Rate
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {item.quantity.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm">
+                              {formatISK(item.unitPrice)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {formatISK(item.totalItemValue)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className={`font-medium ${item.excluded ? 'text-red-500' : item.isManualPrice ? 'text-yellow-500' : ''}`}>
+                                {item.buybackPercentage}%
+                                {item.isManualPrice && !item.excluded && (
+                                  <span className="text-xs ml-1">({formatISK(item.payoutPerItem)}/unit)</span>
+                                )}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              <span className={item.excluded ? 'text-red-500' : 'text-green-500'}>
+                                {formatISK(item.totalPayout)}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-border">
+                    <div className="text-sm text-muted-foreground">
+                      Click Accept to generate contract validation key
+                    </div>
+                    <Button
+                      onClick={handleAcceptContract}
+                      size="lg"
+                      disabled={!pilotName.trim()}
+                      className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                    >
+                      <CheckCircle size={20} className="mr-2" />
+                      Accept & Generate Contract
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
-            ))}
-
-            {programs.length === 0 && (
-              <Card>
-                <CardContent className="pt-6 text-center py-12">
-                  <Receipt size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
-                  <p className="text-muted-foreground mb-4">No buyback programs configured</p>
-                  <Button
-                    onClick={() => setShowAddProgram(true)}
-                    className="bg-accent hover:bg-accent/90 text-accent-foreground"
-                  >
-                    <Plus size={16} className="mr-2" />
-                    Create First Program
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+            </>
+          )}
         </TabsContent>
 
-        <TabsContent value="contracts" className="mt-6">
+        <TabsContent value="contracts" className="mt-6 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Buyback Contracts</CardTitle>
-              <CardDescription>View and manage member buyback contracts</CardDescription>
+              <CardTitle>Open Contracts</CardTitle>
+              <CardDescription>Contracts awaiting completion</CardDescription>
             </CardHeader>
             <CardContent>
-              {contracts.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Contract ID</TableHead>
-                      <TableHead>Character</TableHead>
-                      <TableHead>Program</TableHead>
-                      <TableHead>Items</TableHead>
-                      <TableHead>Total Value</TableHead>
-                      <TableHead>Payout</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {contracts.map((contract) => (
-                      <TableRow key={contract.id}>
-                        <TableCell className="font-mono">#{contract.id.slice(0, 8)}</TableCell>
-                        <TableCell>{contract.characterName}</TableCell>
-                        <TableCell>
-                          {programs.find(p => p.id === contract.programId)?.name || 'Unknown'}
-                        </TableCell>
-                        <TableCell>{contract.items.length} items</TableCell>
-                        <TableCell className="font-mono">{formatISK(contract.totalValue)}</TableCell>
-                        <TableCell className="font-mono text-green-500">{formatISK(contract.payoutValue)}</TableCell>
-                        <TableCell>
-                          <Badge variant={
-                            contract.status === 'completed' ? 'default' :
-                            contract.status === 'pending' ? 'secondary' :
-                            'destructive'
-                          }>
-                            {contract.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{new Date(contract.createdAt).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          <Button variant="outline" size="sm">
-                            <Eye size={16} />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              {openContracts.length > 0 ? (
+                <div className="space-y-4">
+                  {openContracts.map((contract) => (
+                    <Card key={contract.id} className="border-accent/30">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h4 className="text-lg font-semibold">{contract.characterName}</h4>
+                              <Badge className="bg-orange-500/20 text-orange-500 border-orange-500/30">
+                                Open
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              <div>
+                                <span className="text-muted-foreground">Validation Key:</span>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <code className="font-mono text-xs bg-muted px-2 py-1 rounded">
+                                    {contract.validationKey}
+                                  </code>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(contract.validationKey);
+                                      toast.success('Validation key copied');
+                                    }}
+                                  >
+                                    <Copy size={14} />
+                                  </Button>
+                                </div>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Items:</span>
+                                <p className="font-medium">{contract.items.length}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Total Value:</span>
+                                <p className="font-medium">{formatISK(contract.totalValue)}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Payout:</span>
+                                <p className="font-medium text-green-500">{formatISK(contract.payoutValue)}</p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleCompleteContract(contract.id)}
+                              className="text-green-500 border-green-500/50 hover:bg-green-500/10"
+                            >
+                              <CheckCircle size={16} className="mr-2" />
+                              Complete
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteContract(contract.id)}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash size={16} />
+                            </Button>
+                          </div>
+                        </div>
+                        
+                        <p className="text-xs text-muted-foreground">
+                          Created: {new Date(contract.createdAt).toLocaleString()}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               ) : (
                 <div className="text-center py-12">
-                  <Receipt size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
-                  <p className="text-muted-foreground">No buyback contracts yet</p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Contracts will appear here when members submit buyback requests
-                  </p>
+                  <Package size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
+                  <p className="text-muted-foreground">No open contracts</p>
                 </div>
               )}
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="calculator" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>Buyback Calculator</CardTitle>
-              <CardDescription>Calculate buyback values for items based on active programs</CardDescription>
+              <CardTitle>Completed Contracts</CardTitle>
+              <CardDescription>Contract history</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-12">
-                <TrendUp size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
-                <p className="text-muted-foreground mb-4">Buyback calculator coming soon</p>
-                <p className="text-sm text-muted-foreground">
-                  This tool will allow you to calculate buyback values for items based on current Jita prices
-                </p>
-              </div>
+              {completedContracts.length > 0 ? (
+                <div className="space-y-4">
+                  {completedContracts.map((contract) => (
+                    <Card key={contract.id} className="border-green-500/30 bg-green-500/5">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h4 className="text-lg font-semibold">{contract.characterName}</h4>
+                              <Badge className="bg-green-500/20 text-green-500 border-green-500/30">
+                                Completed
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              <div>
+                                <span className="text-muted-foreground">Validation Key:</span>
+                                <p className="font-mono text-xs mt-1">{contract.validationKey}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Items:</span>
+                                <p className="font-medium">{contract.items.length}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Total Value:</span>
+                                <p className="font-medium">{formatISK(contract.totalValue)}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Payout:</span>
+                                <p className="font-medium text-green-500">{formatISK(contract.payoutValue)}</p>
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteContract(contract.id)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash size={16} />
+                          </Button>
+                        </div>
+                        
+                        <div className="flex gap-4 text-xs text-muted-foreground">
+                          <span>Created: {new Date(contract.createdAt).toLocaleString()}</span>
+                          {contract.completedAt && (
+                            <span>Completed: {new Date(contract.completedAt).toLocaleString()}</span>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <CheckCircle size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
+                  <p className="text-muted-foreground">No completed contracts</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
