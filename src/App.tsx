@@ -333,6 +333,7 @@ function AppContent() {
     { id: 'general', label: 'General', icon: Globe },
     { id: 'database', label: 'Database', icon: Database },
     { id: 'sync', label: 'Data Sync', icon: Clock },
+    { id: 'permissions', label: 'Permissions', icon: Shield },
   ];
 
   const handleTabChange = (value: string) => {

@@ -89,6 +89,7 @@ import {
 } from '@/lib/persistenceService';
 import { UserManagement } from '@/components/UserManagement';
 import { SyncSetupPanel } from '@/components/settings/SyncSetupPanel';
+import { PermissionsTab } from '@/components/settings/PermissionsTab';
 
 // Status Indicator Component
 const StatusIndicator: React.FC<{
@@ -2695,6 +2696,7 @@ echo "See README.md for detailed setup instructions"
             <TabsTrigger value="sde">EVE SDE</TabsTrigger>
             <TabsTrigger value="esi">Corporations</TabsTrigger>
             <TabsTrigger value="sync">Data Sync</TabsTrigger>
+            <TabsTrigger value="permissions">Permissions</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
@@ -2709,68 +2711,6 @@ echo "See README.md for detailed setup instructions"
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Corporation Information */}
-              <div className="space-y-4">
-                <h4 className="font-medium">Corporation Information</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="corpName">Corporation Name</Label>
-                    <Input
-                      id="corpName"
-                      value={generalSettings.corpName}
-                      onChange={(e) => updateGeneralSetting('corpName', e.target.value)}
-                      placeholder="Your Corporation Name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="corpTicker">Corporation Ticker</Label>
-                    <Input
-                      id="corpTicker"
-                      value={generalSettings.corpTicker}
-                      onChange={(e) => updateGeneralSetting('corpTicker', e.target.value)}
-                      placeholder="CORP"
-                      maxLength={5}
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="corpId">Corporation ID</Label>
-                  <Input
-                    id="corpId"
-                    type="number"
-                    value={generalSettings.corpId?.toString() || '0'}
-                    onChange={(e) => updateGeneralSetting('corpId', parseInt(e.target.value) || 0)}
-                    placeholder="98000001"
-                  />
-                </div>
-              </div>
-
-              {/* Regional Settings */}
-              <div className="space-y-4">
-                <h4 className="font-medium">Regional Settings</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="timezone">Timezone</Label>
-                    <Input
-                      id="timezone"
-                      value={generalSettings.timezone}
-                      onChange={(e) => updateGeneralSetting('timezone', e.target.value)}
-                      placeholder="UTC"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="language">Language</Label>
-                    <Input
-                      id="language"
-                      value={generalSettings.language}
-                      onChange={(e) => updateGeneralSetting('language', e.target.value)}
-                      placeholder="en"
-                    />
-                  </div>
-                </div>
-              </div>
-
               {/* Session Settings */}
               <div className="space-y-4">
                 <h4 className="font-medium">Session Settings</h4>
@@ -2805,66 +2745,6 @@ echo "See README.md for detailed setup instructions"
                     </p>
                   </div>
                 )}
-              </div>
-
-              {/* Application Settings */}
-              <div className="space-y-4">
-                <h4 className="font-medium">Application Settings</h4>
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Maintenance Mode</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Block all non-admin access for maintenance
-                    </p>
-                  </div>
-                  <Switch 
-                    checked={generalSettings.maintenanceMode}
-                    onCheckedChange={(checked) => updateGeneralSetting('maintenanceMode', checked)}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Debug Mode</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Enable detailed logging and debug information
-                    </p>
-                  </div>
-                  <Switch 
-                    checked={generalSettings.debugMode}
-                    onCheckedChange={(checked) => updateGeneralSetting('debugMode', checked)}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="logLevel">Log Level</Label>
-                    <select
-                      id="logLevel"
-                      value={generalSettings.logLevel}
-                      onChange={(e) => updateGeneralSetting('logLevel', e.target.value)}
-                      className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
-                    >
-                      <option value="error">Error</option>
-                      <option value="warn">Warning</option>
-                      <option value="info">Info</option>
-                      <option value="debug">Debug</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="maxLogRetentionDays">Log Retention (days)</Label>
-                    <Input
-                      id="maxLogRetentionDays"
-                      type="number"
-                      value={generalSettings.maxLogRetentionDays?.toString() || '30'}
-                      onChange={(e) => updateGeneralSetting('maxLogRetentionDays', parseInt(e.target.value) || 30)}
-                      min="1"
-                      max="365"
-                      placeholder="30"
-                    />
-                  </div>
-                </div>
               </div>
 
               {/* Save Actions */}
@@ -6893,6 +6773,10 @@ echo "See README.md for detailed setup instructions"
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="permissions" className="space-y-6">
+          <PermissionsTab isMobileView={isMobileView} />
         </TabsContent>
         
         </Tabs>

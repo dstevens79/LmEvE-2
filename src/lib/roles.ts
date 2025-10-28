@@ -248,6 +248,9 @@ export function canAccessSettingsTab(user: LMeveUser | null, settingsTab: string
     case 'sync':
       return hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
       
+    case 'permissions':
+      return hasPermission(user, 'canManageUsers') || hasPermission(user, 'canManageSystem');
+      
     default:
       return false;
   }

@@ -35,6 +35,7 @@ interface AuthContextType {
   // User management
   createManualUser: (username: string, password: string, role: UserRole, characterInfo?: CharacterInfo) => Promise<LMeveUser>;
   updateUserRole: (userId: string, newRole: UserRole) => Promise<void>;
+  updateUserPermissions: (userId: string, permissions: Partial<import('./types').RolePermissions>) => Promise<void>;
   deleteUser: (userId: string) => Promise<void>;
   getAllUsers: () => LMeveUser[];
   
@@ -465,6 +466,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
     console.log('✅ User role updated');
   }, [users, currentUser, setUsers, setCurrentUser, triggerAuthChange]);
 
+  // Update user permissions
+  const updateUserPermissions = useCallback(async (userId: string, permissions: Partial<import('./types').RolePermissions>) => {
+    console.log('🔄 Updating user permissions:', userId);
+    
+    setUsers(prev => prev.map(user => {
+      if (user.id === userId) {
+        return {
+          ...user,
+          permissions: { ...user.permissions, ...permissions },
+          updatedDate: new Date().toISOString(),
+          updatedBy: currentUser?.id
+        };
+      }
+      return user;
+    }));
+    
+    // Update current user if it's the same user
+    if (currentUser?.id === userId) {
+      setCurrentUser(prev => prev ? {
+        ...prev,
+        permissions: { ...prev.permissions, ...permissions },
+        updatedDate: new Date().toISOString(),
+        updatedBy: currentUser.id
+      } : null);
+      triggerAuthChange();
+    }
+    
+    console.log('✅ User permissions updated');
+  }, [users, currentUser, setUsers, setCurrentUser, triggerAuthChange]);
+
   // Delete user
   const deleteUser = useCallback(async (userId: string) => {
     console.log('🗑️ Deleting user:', userId);
@@ -647,6 +678,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // User management
     createManualUser,
     updateUserRole,
+    updateUserPermissions,
     deleteUser,
     getAllUsers,
     
