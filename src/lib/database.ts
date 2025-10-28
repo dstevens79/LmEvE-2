@@ -2101,4 +2101,52 @@ export class ESIDataStorageService {
   private escape(str: string): string {
     return str.replace(/'/g, "''").replace(/\\/g, '\\\\');
   }
+
+  async getIndustryJobs(): Promise<ESIIndustryJobData[]> {
+    try {
+      const result = await this.dbManager.query(LMeveQueries.getIndustryJobs());
+      if (result.success && result.data) {
+        return result.data.map((row: any) => ({
+          job_id: row.job_id,
+          installer_id: row.installer_id,
+          installer_name: row.installer_name,
+          facility_id: row.facility_id,
+          facility_name: row.facility_name,
+          station_id: row.station_id,
+          blueprint_id: row.blueprint_id,
+          blueprint_type_id: row.blueprint_type_id,
+          blueprint_type_name: row.blueprint_type_name || row.blueprint_name,
+          output_location_id: row.output_location_id,
+          runs: row.runs,
+          cost: row.cost,
+          product_type_id: row.product_type_id,
+          product_type_name: row.product_type_name || row.product_name,
+          product_quantity: row.product_quantity,
+          status: row.status,
+          duration: row.duration,
+          start_date: row.start_date,
+          end_date: row.end_date,
+          completed_date: row.completed_date,
+          activity_id: row.activity_id,
+          activity_name: row.activity_name
+        }));
+      }
+      return [];
+    } catch (error) {
+      console.error('❌ Failed to retrieve industry jobs from database:', error);
+      return [];
+    }
+  }
+}
+
+// Singleton database service instance
+let databaseServiceInstance: ESIDataStorageService | null = null;
+
+export function getDatabaseService(): ESIDataStorageService {
+  if (!databaseServiceInstance) {
+    // Create a mock database manager for browser environment
+    const mockDbManager = new DatabaseManager(defaultDatabaseConfig);
+    databaseServiceInstance = new ESIDataStorageService(mockDbManager);
+  }
+  return databaseServiceInstance;
 }

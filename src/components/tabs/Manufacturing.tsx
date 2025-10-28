@@ -3,6 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LoginPrompt } from '@/components/LoginPrompt';
 import { useKV } from '@github/spark/hooks';
 import { useAuth } from '@/lib/auth-provider';
@@ -23,7 +24,9 @@ import {
   CheckCircle,
   ArrowClockwise,
   Globe,
-  Users
+  Users,
+  Database,
+  Warning
 } from '@phosphor-icons/react';
 import { ManufacturingJob, Blueprint, ProductionPlan, ManufacturingTask, Member } from '@/lib/types';
 import { JobDetailsDialog } from '@/components/manufacturing/JobDetailsDialog';
@@ -34,6 +37,8 @@ import { UnassignedJobsView } from '@/components/manufacturing/UnassignedJobsVie
 import { BlueprintLibrary } from '@/components/manufacturing/BlueprintLibrary';
 import { StationInfoPopup } from '@/components/popups/StationInfoPopup';
 import { toast } from 'sonner';
+import { ESIDataFetchService } from '@/lib/esi-data-service';
+import { getDatabaseService } from '@/lib/database';
 
 interface ManufacturingProps {
   onLoginClick?: () => void;
@@ -41,7 +46,7 @@ interface ManufacturingProps {
 }
 
 export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps) {
-  const { user } = useAuth();
+  const { user, getRegisteredCorporations, getESIAccessToken } = useAuth();
   const [activeJobs, setActiveJobs] = useKV<ManufacturingJob[]>('manufacturing-jobs', []);
   const [blueprints, setBlueprints] = useKV<Blueprint[]>('blueprints-library', []);
   const [productionPlans, setProductionPlans] = useKV<ProductionPlan[]>('production-plans', []);
@@ -54,7 +59,7 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
   });
 
   const [payRatesPerHour, setPayRatesPerHour] = useKV('manufacturing-pay-rates', {
-    manufacturing: 50000, // ISK per hour
+    manufacturing: 50000,
     copying: 25000,
     reactions: 75000,
     research: 30000,
@@ -68,6 +73,10 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
   const [editingTask, setEditingTask] = useState<ManufacturingTask | null>(null);
   const [taskFilter, setTaskFilter] = useState<'my-tasks' | 'all-tasks'>('my-tasks');
   const [selectedStation, setSelectedStation] = useState<{ id: number; name: string } | null>(null);
+  
+  const [isLoadingESIData, setIsLoadingESIData] = useState(false);
+  const [esiDataLastSync, setESIDataLastSync] = useKV<string | null>('manufacturing-esi-last-sync', null);
+  const [useMockData, setUseMockData] = useState(true);
   
   // Handler for station click - show station popup
   const handleStationClick = (stationId: number, stationName?: string) => {
@@ -103,8 +112,160 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
     }
   };
 
-  // Initialize sample data if empty - includes test pilots and realistic industry jobs
+  // Load manufacturing data from ESI/Database
+  const loadESIManufacturingData = async () => {
+    if (!user) {
+      console.log('❌ No user authenticated - cannot load ESI data');
+      return;
+    }
+
+    const registeredCorps = getRegisteredCorporations();
+    if (registeredCorps.length === 0) {
+      console.log('⚠️ No registered corporations - using mock data');
+      setUseMockData(true);
+      return;
+    }
+
+    setIsLoadingESIData(true);
+    setUseMockData(false);
+
+    try {
+      const dbService = getDatabaseService();
+      const esiService = new ESIDataFetchService();
+
+      // Try to load from database first (cached data)
+      console.log('📥 Loading manufacturing jobs from database...');
+      const dbJobs = await dbService.getIndustryJobs();
+      
+      if (dbJobs && dbJobs.length > 0) {
+        console.log(`✅ Loaded ${dbJobs.length} industry jobs from database`);
+        
+        // Convert database jobs to manufacturing tasks
+        const tasks = dbJobs.map(job => convertESIJobToTask(job));
+        setManufacturingTasks(tasks);
+        setESIDataLastSync(new Date().toISOString());
+      } else {
+        // If no cached data, try to fetch from ESI directly
+        console.log('⚠️ No cached jobs in database, attempting ESI fetch...');
+        
+        const primaryCorp = registeredCorps[0];
+        const accessToken = await getESIAccessToken(primaryCorp.corporationId);
+        
+        if (!accessToken) {
+          throw new Error('Failed to get ESI access token');
+        }
+
+        const result = await esiService.fetchIndustryJobsDetailed({
+          corporationId: primaryCorp.corporationId,
+          accessToken,
+          useCache: true,
+          maxPages: 5
+        });
+
+        if (result.success && result.data.length > 0) {
+          console.log(`✅ Fetched ${result.data.length} industry jobs from ESI`);
+          
+          // Store in database for caching (pass corporation ID)
+          await dbService.storeIndustryJobs(primaryCorp.corporationId, result.data);
+          
+          // Convert to tasks
+          const tasks = result.data.map(job => convertESIJobToTask(job));
+          setManufacturingTasks(tasks);
+          setESIDataLastSync(new Date().toISOString());
+          
+          toast.success(`Loaded ${result.data.length} industry jobs from ESI`);
+        } else {
+          console.log('⚠️ No industry jobs found in ESI - using mock data');
+          setUseMockData(true);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error loading ESI manufacturing data:', error);
+      toast.error('Failed to load ESI data - using mock data');
+      setUseMockData(true);
+    } finally {
+      setIsLoadingESIData(false);
+    }
+  };
+
+  // Convert ESI industry job to manufacturing task
+  const convertESIJobToTask = (job: any): ManufacturingTask => {
+    // Map ESI status to our task status
+    let status: 'assigned' | 'in_progress' | 'completed' | 'unassigned' = 'in_progress';
+    if (job.status === 'active') {
+      status = 'in_progress';
+    } else if (job.status === 'delivered' || job.status === 'ready') {
+      status = 'completed';
+    } else if (job.status === 'cancelled' || job.status === 'reverted') {
+      status = 'unassigned';
+    }
+
+    // Find installer name from members
+    const installer = members?.find(m => m.characterId === job.installer_id);
+    const installerName = installer?.characterName || installer?.name || `Character ${job.installer_id}`;
+
+    return {
+      id: `esi-job-${job.job_id}`,
+      targetItem: {
+        typeId: job.product_type_id,
+        typeName: job.product_type_name || `Type ${job.product_type_id}`,
+        quantity: job.product_quantity || job.runs
+      },
+      assignedTo: job.installer_id.toString(),
+      assignedToName: installerName,
+      status: status,
+      payModifier: null,
+      estimatedDuration: job.duration || 0,
+      createdDate: job.start_date,
+      startedDate: job.start_date,
+      completedDate: job.completed_date,
+      corporationId: user?.corporationId,
+      stationId: job.station_id || job.facility_id,
+      stationName: job.facility_name || `Station ${job.station_id || job.facility_id}`,
+      materials: [],
+      
+      // Additional ESI fields
+      blueprintId: job.blueprint_type_id,
+      blueprintName: job.blueprint_type_name,
+      runs: job.runs,
+      taskType: getActivityType(job.activity_id)
+    };
+  };
+
+  // Map ESI activity IDs to task types
+  const getActivityType = (activityId?: number): 'manufacturing' | 'research' | 'invention' | 'copy' | 'reaction' => {
+    switch (activityId) {
+      case 1: return 'manufacturing';
+      case 3: return 'research'; // TE research
+      case 4: return 'research'; // ME research  
+      case 5: return 'copy';
+      case 8: return 'invention';
+      case 9: return 'reaction';
+      default: return 'manufacturing';
+    }
+  };
+
+  // Load ESI data on component mount if user is authenticated
+  useEffect(() => {
+    if (user && user.authMethod === 'esi') {
+      console.log('🔄 Manufacturing tab: User authenticated with ESI, loading data...');
+      loadESIManufacturingData();
+    } else if (user && user.authMethod === 'manual') {
+      console.log('ℹ️ Manufacturing tab: User authenticated manually, using mock data');
+      setUseMockData(true);
+    }
+  }, [user]);
+
+  // Initialize sample data if empty - only when using mock data
   React.useEffect(() => {
+    // Only initialize mock data if we're using mock data mode
+    if (!useMockData) {
+      console.log('ℹ️ Using ESI data mode - skipping mock data initialization');
+      return;
+    }
+
+    console.log('ℹ️ Using mock data mode - initializing sample data');
+
     // Sample members/pilots for task assignment (cached locally for testing)
     if ((members || []).length === 0) {
       const sampleMembers: Member[] = [
@@ -300,7 +461,7 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
       ];
       setManufacturingTasks(sampleTasks);
     }
-  }, [members, manufacturingTasks, setManufacturingTasks]);
+  }, [members, manufacturingTasks, setManufacturingTasks, useMockData]);
 
   const eveDataHook = null; // Removed eve data integration for simplification
 
@@ -398,15 +559,68 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Factory size={24} />
-          Manufacturing Operations
-        </h2>
-        <p className="text-muted-foreground">
-          Manage manufacturing tasks and track production progress
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Factory size={24} />
+            Manufacturing Operations
+          </h2>
+          <p className="text-muted-foreground">
+            Manage manufacturing tasks and track production progress
+          </p>
+        </div>
+        
+        {/* Data source indicator and refresh */}
+        <div className="flex items-center gap-3">
+          {useMockData ? (
+            <Badge variant="outline" className="bg-orange-500/20 text-orange-400 border-orange-500/50">
+              <Database size={14} className="mr-1" />
+              Mock Data
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/50">
+              <Database size={14} className="mr-1" />
+              ESI Data
+            </Badge>
+          )}
+          
+          {esiDataLastSync && !useMockData && (
+            <span className="text-xs text-muted-foreground">
+              Last sync: {new Date(esiDataLastSync).toLocaleTimeString()}
+            </span>
+          )}
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadESIManufacturingData}
+            disabled={isLoadingESIData || !user}
+            className="gap-2"
+          >
+            {isLoadingESIData ? (
+              <>
+                <ArrowClockwise size={16} className="animate-spin" />
+                Loading...
+              </>
+            ) : (
+              <>
+                <ArrowClockwise size={16} />
+                Refresh Data
+              </>
+            )}
+          </Button>
+        </div>
       </div>
+
+      {/* Show warning if using mock data with ESI user */}
+      {useMockData && user?.authMethod === 'esi' && (
+        <Alert>
+          <Warning size={16} />
+          <AlertDescription>
+            Using mock data. Click "Refresh Data" to load industry jobs from ESI, or ensure your corporation has industry jobs synced in Settings → Data Sync.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Navigation */}
       <div className="flex gap-4 border-b border-border">
