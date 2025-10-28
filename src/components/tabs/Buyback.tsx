@@ -117,11 +117,11 @@ export function Buyback({ isMobileView }: BuybackProps) {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useKV<string>('buyback-tab', 'calculator');
   const [contracts, setContracts] = useKV<BuybackContract[]>('buyback-contracts', []);
+  const [buybackPilotName, setBuybackPilotName] = useKV<string>('buyback-pilot-name', '');
   
   const [pasteText, setPasteText] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [calculatedItems, setCalculatedItems] = useState<BuybackCalculatedItem[]>([]);
-  const [pilotName, setPilotName] = useState('');
   
   const [priceConfig, setPriceConfig] = useKV<BuybackPriceConfig>('buyback-price-config', {
     comparisonStation: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
@@ -280,7 +280,6 @@ export function Buyback({ isMobileView }: BuybackProps) {
   const handleClearCalculation = () => {
     setPasteText('');
     setCalculatedItems([]);
-    setPilotName('');
     toast.success('Calculator cleared');
   };
 
@@ -291,16 +290,6 @@ export function Buyback({ isMobileView }: BuybackProps) {
   };
 
   const handleAcceptContract = () => {
-    if (calculatedItems.length === 0) {
-      toast.error('No items to create contract');
-      return;
-    }
-
-    if (!pilotName.trim()) {
-      toast.error('Please enter pilot name');
-      return;
-    }
-
     const validationKey = generateValidationKey();
     const totalValue = calculatedItems.reduce((sum, item) => sum + item.totalItemValue, 0);
     const payoutValue = calculatedItems.reduce((sum, item) => sum + item.totalPayout, 0);
@@ -308,7 +297,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
     const contract: BuybackContract = {
       id: Date.now().toString(),
       validationKey,
-      characterName: pilotName.trim(),
+      characterName: user?.characterName || 'Unknown',
       items: calculatedItems,
       totalValue,
       payoutValue,
@@ -323,7 +312,6 @@ export function Buyback({ isMobileView }: BuybackProps) {
     
     setPasteText('');
     setCalculatedItems([]);
-    setPilotName('');
     
     setActiveTab('contracts');
   };
@@ -566,24 +554,13 @@ export function Buyback({ isMobileView }: BuybackProps) {
         </TabsList>
 
         <TabsContent value="calculator" className="mt-6 space-y-4">
-          <div className={`grid ${calculatedItems.length > 0 ? 'lg:grid-cols-[1fr,400px]' : 'grid-cols-1'} gap-4`}>
+          <div className="grid lg:grid-cols-[1fr,400px] gap-4">
             <Card>
               <CardHeader>
                 <CardTitle>Paste Items from EVE Online</CardTitle>
                 <CardDescription>Drag and drop or paste copied item list from EVE Online</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="pilotName">Pilot Name</Label>
-                  <Input
-                    id="pilotName"
-                    value={pilotName}
-                    onChange={(e) => setPilotName(e.target.value)}
-                    placeholder="Enter pilot name for contract"
-                    disabled={calculatedItems.length > 0}
-                  />
-                </div>
-
                 <div
                   onDrop={handleDrop}
                   onDragOver={(e) => {
@@ -757,6 +734,33 @@ export function Buyback({ isMobileView }: BuybackProps) {
 
                   <Separator />
 
+                  {buybackPilotName && (
+                    <>
+                      <div className="bg-muted/50 border border-border rounded-lg p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0">
+                            <img 
+                              src={`https://images.evetech.net/characters/1/portrait?size=64`}
+                              alt="Buyback Pilot"
+                              className="w-12 h-12 rounded border border-accent/30"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjMzMzIi8+CjxjaXJjbGUgY3g9IjMyIiBjeT0iMjQiIHI9IjgiIGZpbGw9IiM5OTkiLz4KPHBhdGggZD0iTTQ4IDU2QzQ4IDQ3LjE2MzQgNDEuNzMyMSA0MCAzNCA0MEgzMEMyMi4yNjc5IDQwIDE2IDQ3LjE2MzQgMTYgNTZINDhaIiBmaWxsPSIjOTk5Ii8+Cjwvc3ZnPg==';
+                              }}
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-muted-foreground mb-1">Send in-game contract to:</p>
+                            <p className="font-semibold text-sm truncate">{buybackPilotName}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Include validation key in contract description
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <Separator />
+                    </>
+                  )}
+
                   <div className="space-y-3">
                     <p className="text-xs text-muted-foreground text-center">
                       Click Accept to generate contract validation key
@@ -764,7 +768,6 @@ export function Buyback({ isMobileView }: BuybackProps) {
                     <Button
                       onClick={handleAcceptContract}
                       size="lg"
-                      disabled={!pilotName.trim()}
                       className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
                     >
                       <CheckCircle size={20} className="mr-2" />
@@ -938,6 +941,41 @@ export function Buyback({ isMobileView }: BuybackProps) {
 
         {isAdmin && (
           <TabsContent value="admin" className="mt-6 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Gear size={20} />
+                  Buyback Configuration
+                </CardTitle>
+                <CardDescription>Configure buyback pilot and contract settings</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="buybackPilotName">Buyback Pilot Name</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="buybackPilotName"
+                      value={buybackPilotName}
+                      onChange={(e) => setBuybackPilotName(e.target.value)}
+                      placeholder="Enter character name to receive contracts"
+                      className="flex-1"
+                    />
+                    <Button
+                      onClick={() => {
+                        toast.success('Buyback pilot name saved');
+                      }}
+                      className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                    >
+                      Save
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    This character name will be displayed to users when creating buyback contracts
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
