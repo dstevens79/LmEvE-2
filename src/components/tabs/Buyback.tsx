@@ -39,7 +39,10 @@ import {
   Database,
   Copy,
   X,
-  FileText
+  FileText,
+  Clock,
+  ArrowsClockwise,
+  HourglassMedium
 } from '@phosphor-icons/react';
 import { useKV } from '@github/spark/hooks';
 import { toast } from 'sonner';
@@ -60,16 +63,22 @@ interface BuybackProgram {
   location?: string;
 }
 
+type ContractStatus = 'new' | 'waiting_on_pilot' | 'awaiting_payment' | 'completed';
+
 interface BuybackContract {
   id: string;
   validationKey: string;
   characterName: string;
+  contractPilotName: string;
   items: BuybackCalculatedItem[];
   totalValue: number;
   payoutValue: number;
-  status: 'open' | 'completed';
+  status: ContractStatus;
   createdAt: string;
   completedAt?: string;
+  lastSyncAt?: string;
+  statusChangedAt: string;
+  syncAttempts: number;
 }
 
 interface BuybackContractItem {
@@ -290,6 +299,11 @@ export function Buyback({ isMobileView }: BuybackProps) {
   };
 
   const handleAcceptContract = () => {
+    if (!buybackPilotName) {
+      toast.error('Please configure a buyback pilot name in the Admin tab');
+      return;
+    }
+
     const validationKey = generateValidationKey();
     const totalValue = calculatedItems.reduce((sum, item) => sum + item.totalItemValue, 0);
     const payoutValue = calculatedItems.reduce((sum, item) => sum + item.totalPayout, 0);
@@ -298,11 +312,14 @@ export function Buyback({ isMobileView }: BuybackProps) {
       id: Date.now().toString(),
       validationKey,
       characterName: user?.characterName || 'Unknown',
+      contractPilotName: buybackPilotName,
       items: calculatedItems,
       totalValue,
       payoutValue,
-      status: 'open',
-      createdAt: new Date().toISOString()
+      status: 'new',
+      createdAt: new Date().toISOString(),
+      statusChangedAt: new Date().toISOString(),
+      syncAttempts: 0
     };
 
     setContracts(current => [contract, ...current]);
@@ -320,11 +337,60 @@ export function Buyback({ isMobileView }: BuybackProps) {
     setContracts(current =>
       current.map(c =>
         c.id === contractId
-          ? { ...c, status: 'completed', completedAt: new Date().toISOString() }
+          ? { 
+              ...c, 
+              status: 'completed', 
+              completedAt: new Date().toISOString(),
+              statusChangedAt: new Date().toISOString()
+            }
           : c
       )
     );
     toast.success('Contract marked as completed');
+  };
+
+  const handleSyncContracts = async () => {
+    toast.info('Syncing contracts with ESI...');
+    
+    const pendingContracts = contracts.filter(c => 
+      c.status === 'new' || c.status === 'waiting_on_pilot'
+    );
+
+    if (pendingContracts.length === 0) {
+      toast.info('No pending contracts to sync');
+      return;
+    }
+
+    setContracts(current =>
+      current.map(contract => {
+        if (contract.status !== 'new' && contract.status !== 'waiting_on_pilot') {
+          return contract;
+        }
+
+        const syncTime = new Date().toISOString();
+        const foundContract = Math.random() > 0.5;
+
+        if (foundContract) {
+          toast.success(`Contract ${contract.validationKey} found - awaiting payment`);
+          return {
+            ...contract,
+            status: 'awaiting_payment' as ContractStatus,
+            lastSyncAt: syncTime,
+            statusChangedAt: syncTime,
+            syncAttempts: contract.syncAttempts + 1
+          };
+        } else {
+          toast.warning(`Contract ${contract.validationKey} not found - waiting on ${contract.contractPilotName}`);
+          return {
+            ...contract,
+            status: 'waiting_on_pilot' as ContractStatus,
+            lastSyncAt: syncTime,
+            statusChangedAt: syncTime,
+            syncAttempts: contract.syncAttempts + 1
+          };
+        }
+      })
+    );
   };
 
   const handleDeleteContract = (contractId: string) => {
@@ -446,7 +512,9 @@ export function Buyback({ isMobileView }: BuybackProps) {
 
   const calculateStats = () => {
     const totalContracts = contracts.length;
-    const openContracts = contracts.filter(c => c.status === 'open').length;
+    const newContracts = contracts.filter(c => c.status === 'new').length;
+    const waitingContracts = contracts.filter(c => c.status === 'waiting_on_pilot').length;
+    const awaitingPaymentContracts = contracts.filter(c => c.status === 'awaiting_payment').length;
     const completedContracts = contracts.filter(c => c.status === 'completed').length;
     const totalPayout = contracts
       .filter(c => c.status === 'completed')
@@ -454,7 +522,9 @@ export function Buyback({ isMobileView }: BuybackProps) {
 
     return {
       totalContracts,
-      openContracts,
+      newContracts,
+      waitingContracts,
+      awaitingPaymentContracts,
       completedContracts,
       totalPayout
     };
@@ -462,7 +532,9 @@ export function Buyback({ isMobileView }: BuybackProps) {
 
   const stats = calculateStats();
 
-  const openContracts = contracts.filter(c => c.status === 'open');
+  const newContracts = contracts.filter(c => c.status === 'new');
+  const waitingContracts = contracts.filter(c => c.status === 'waiting_on_pilot');
+  const awaitingPaymentContracts = contracts.filter(c => c.status === 'awaiting_payment');
   const completedContracts = contracts.filter(c => c.status === 'completed');
   
   const calculationSummary = useMemo(() => {
@@ -484,6 +556,53 @@ export function Buyback({ isMobileView }: BuybackProps) {
     user.role === 'corp_director'
   );
 
+  const getStatusBadge = (status: ContractStatus) => {
+    switch (status) {
+      case 'new':
+        return (
+          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+            <Clock size={12} className="mr-1" />
+            New
+          </Badge>
+        );
+      case 'waiting_on_pilot':
+        return (
+          <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+            <HourglassMedium size={12} className="mr-1" />
+            Waiting on Pilot
+          </Badge>
+        );
+      case 'awaiting_payment':
+        return (
+          <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">
+            <Coins size={12} className="mr-1" />
+            Awaiting Payment
+          </Badge>
+        );
+      case 'completed':
+        return (
+          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+            <CheckCircle size={12} className="mr-1" />
+            Completed
+          </Badge>
+        );
+    }
+  };
+
+  const getTimeInStatus = (statusChangedAt: string) => {
+    const now = new Date();
+    const statusTime = new Date(statusChangedAt);
+    const diffMs = now.getTime() - statusTime.getTime();
+    
+    const minutes = Math.floor(diffMs / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}d ${hours % 24}h`;
+    if (hours > 0) return `${hours}h ${minutes % 60}m`;
+    return `${minutes}m`;
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -496,15 +615,15 @@ export function Buyback({ isMobileView }: BuybackProps) {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Total Contracts</p>
-                <p className="text-2xl font-bold">{stats.totalContracts}</p>
+                <p className="text-sm font-medium text-muted-foreground">New</p>
+                <p className="text-2xl font-bold">{stats.newContracts}</p>
               </div>
-              <Receipt size={32} className="text-accent opacity-50" />
+              <Clock size={32} className="text-blue-400 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -513,10 +632,36 @@ export function Buyback({ isMobileView }: BuybackProps) {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Open Contracts</p>
-                <p className="text-2xl font-bold">{stats.openContracts}</p>
+                <p className="text-sm font-medium text-muted-foreground">Waiting on Pilot</p>
+                <p className="text-2xl font-bold">{stats.waitingContracts}</p>
               </div>
-              <Package size={32} className="text-orange-500 opacity-50" />
+              <HourglassMedium size={32} className="text-yellow-400 opacity-50" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Awaiting Payment</p>
+                <p className="text-2xl font-bold">{stats.awaitingPaymentContracts}</p>
+              </div>
+              <Coins size={32} className="text-orange-400 opacity-50" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Total Contracts</p>
+                <p className="text-2xl font-bold">{stats.totalContracts}</p>
+              </div>
+              <Receipt size={32} className="text-accent opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -830,26 +975,50 @@ export function Buyback({ isMobileView }: BuybackProps) {
         </TabsContent>
 
         <TabsContent value="contracts" className="mt-6 space-y-6">
+          {isAdmin && (
+            <Card className="border-accent/50">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold mb-1">Sync Corporation Contracts</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Check ESI for matching contracts with validation keys
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleSyncContracts}
+                    className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                  >
+                    <ArrowsClockwise size={16} className="mr-2" />
+                    Sync Now
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
-              <CardTitle>Open Contracts</CardTitle>
-              <CardDescription>Contracts awaiting completion</CardDescription>
+              <CardTitle>New Contracts</CardTitle>
+              <CardDescription>Just created - awaiting first sync</CardDescription>
             </CardHeader>
             <CardContent>
-              {openContracts.length > 0 ? (
+              {newContracts.length > 0 ? (
                 <div className="space-y-4">
-                  {openContracts.map((contract) => (
-                    <Card key={contract.id} className="border-accent/30">
+                  {newContracts.map((contract) => (
+                    <Card key={contract.id} className="border-blue-500/30">
                       <CardContent className="pt-6">
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
                               <h4 className="text-lg font-semibold">{contract.characterName}</h4>
-                              <Badge className="bg-orange-500/20 text-orange-500 border-orange-500/30">
-                                Open
+                              {getStatusBadge(contract.status)}
+                              <Badge variant="outline" className="text-xs">
+                                <Clock size={10} className="mr-1" />
+                                {getTimeInStatus(contract.statusChangedAt)}
                               </Badge>
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
                               <div>
                                 <span className="text-muted-foreground">Validation Key:</span>
                                 <div className="flex items-center gap-2 mt-1">
@@ -870,37 +1039,33 @@ export function Buyback({ isMobileView }: BuybackProps) {
                                 </div>
                               </div>
                               <div>
-                                <span className="text-muted-foreground">Items:</span>
-                                <p className="font-medium">{contract.items.length}</p>
+                                <span className="text-muted-foreground">Contract To:</span>
+                                <p className="font-medium">{contract.contractPilotName}</p>
                               </div>
                               <div>
-                                <span className="text-muted-foreground">Total Value:</span>
-                                <p className="font-medium">{formatISK(contract.totalValue)}</p>
+                                <span className="text-muted-foreground">Items:</span>
+                                <p className="font-medium">{contract.items.length}</p>
                               </div>
                               <div>
                                 <span className="text-muted-foreground">Payout:</span>
                                 <p className="font-medium text-green-500">{formatISK(contract.payoutValue)}</p>
                               </div>
                             </div>
+                            <p className="text-xs text-muted-foreground">
+                              Include this validation key in your contract description to {contract.contractPilotName}
+                            </p>
                           </div>
                           <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleCompleteContract(contract.id)}
-                              className="text-green-500 border-green-500/50 hover:bg-green-500/10"
-                            >
-                              <CheckCircle size={16} className="mr-2" />
-                              Complete
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDeleteContract(contract.id)}
-                              className="text-destructive hover:text-destructive"
-                            >
-                              <Trash size={16} />
-                            </Button>
+                            {isAdmin && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteContract(contract.id)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash size={16} />
+                              </Button>
+                            )}
                           </div>
                         </div>
                         
@@ -913,8 +1078,186 @@ export function Buyback({ isMobileView }: BuybackProps) {
                 </div>
               ) : (
                 <div className="text-center py-12">
-                  <Package size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
-                  <p className="text-muted-foreground">No open contracts</p>
+                  <Clock size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
+                  <p className="text-muted-foreground">No new contracts</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Waiting on Pilot</CardTitle>
+              <CardDescription>Contract not found in ESI sync - waiting on {buybackPilotName || 'pilot'}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {waitingContracts.length > 0 ? (
+                <div className="space-y-4">
+                  {waitingContracts.map((contract) => (
+                    <Card key={contract.id} className="border-yellow-500/30">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h4 className="text-lg font-semibold">{contract.characterName}</h4>
+                              {getStatusBadge(contract.status)}
+                              <Badge variant="outline" className="text-xs">
+                                <Clock size={10} className="mr-1" />
+                                {getTimeInStatus(contract.statusChangedAt)}
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
+                              <div>
+                                <span className="text-muted-foreground">Validation Key:</span>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <code className="font-mono text-xs bg-muted px-2 py-1 rounded">
+                                    {contract.validationKey}
+                                  </code>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(contract.validationKey);
+                                      toast.success('Validation key copied');
+                                    }}
+                                  >
+                                    <Copy size={14} />
+                                  </Button>
+                                </div>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Sync Attempts:</span>
+                                <p className="font-medium">{contract.syncAttempts}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Items:</span>
+                                <p className="font-medium">{contract.items.length}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Payout:</span>
+                                <p className="font-medium text-green-500">{formatISK(contract.payoutValue)}</p>
+                              </div>
+                            </div>
+                            <p className="text-xs text-yellow-400">
+                              ⚠️ No matching contract found. Ensure validation key "{contract.validationKey}" is in the contract description to {contract.contractPilotName}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            {isAdmin && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteContract(contract.id)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash size={16} />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-4 text-xs text-muted-foreground">
+                          <span>Created: {new Date(contract.createdAt).toLocaleString()}</span>
+                          {contract.lastSyncAt && (
+                            <span>Last Sync: {new Date(contract.lastSyncAt).toLocaleString()}</span>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <HourglassMedium size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
+                  <p className="text-muted-foreground">No contracts waiting</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Awaiting Payment</CardTitle>
+              <CardDescription>Contract found and validated - ready for payment</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {awaitingPaymentContracts.length > 0 ? (
+                <div className="space-y-4">
+                  {awaitingPaymentContracts.map((contract) => (
+                    <Card key={contract.id} className="border-orange-500/30">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h4 className="text-lg font-semibold">{contract.characterName}</h4>
+                              {getStatusBadge(contract.status)}
+                              <Badge variant="outline" className="text-xs">
+                                <Clock size={10} className="mr-1" />
+                                {getTimeInStatus(contract.statusChangedAt)}
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
+                              <div>
+                                <span className="text-muted-foreground">Validation Key:</span>
+                                <p className="font-mono text-xs mt-1">{contract.validationKey}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Contract To:</span>
+                                <p className="font-medium">{contract.contractPilotName}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Items:</span>
+                                <p className="font-medium">{contract.items.length}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Payout:</span>
+                                <p className="font-medium text-green-500">{formatISK(contract.payoutValue)}</p>
+                              </div>
+                            </div>
+                            <p className="text-xs text-orange-400">
+                              ✓ Contract validated - ready to accept and pay {formatISK(contract.payoutValue)}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            {isAdmin && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleCompleteContract(contract.id)}
+                                  className="text-green-500 border-green-500/50 hover:bg-green-500/10"
+                                >
+                                  <CheckCircle size={16} className="mr-2" />
+                                  Mark Paid
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDeleteContract(contract.id)}
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  <Trash size={16} />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-4 text-xs text-muted-foreground">
+                          <span>Created: {new Date(contract.createdAt).toLocaleString()}</span>
+                          {contract.lastSyncAt && (
+                            <span>Validated: {new Date(contract.lastSyncAt).toLocaleString()}</span>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Coins size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
+                  <p className="text-muted-foreground">No contracts awaiting payment</p>
                 </div>
               )}
             </CardContent>
@@ -935,9 +1278,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
                               <h4 className="text-lg font-semibold">{contract.characterName}</h4>
-                              <Badge className="bg-green-500/20 text-green-500 border-green-500/30">
-                                Completed
-                              </Badge>
+                              {getStatusBadge(contract.status)}
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                               <div>
@@ -958,14 +1299,16 @@ export function Buyback({ isMobileView }: BuybackProps) {
                               </div>
                             </div>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeleteContract(contract.id)}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash size={16} />
-                          </Button>
+                          {isAdmin && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteContract(contract.id)}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash size={16} />
+                            </Button>
+                          )}
                         </div>
                         
                         <div className="flex gap-4 text-xs text-muted-foreground">
