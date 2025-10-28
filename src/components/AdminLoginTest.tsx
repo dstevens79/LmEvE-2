@@ -1,7 +1,7 @@
 import React from 'react';
 
-export function AdminLoginTest() {
-  return null;
+}
+export default
 }
 
 export default AdminLoginTest;
