@@ -17,7 +17,6 @@ import {
   Building,
   Cube,
   X,
-  FunnelSimple,
   Database,
   Blueprint,
   Rocket,
@@ -412,27 +411,57 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
             </Card>
           ) : (
             <>
-              {/* Filter Bar */}
+              {/* Stats Bar - Moved Above Filters */}
               <Card>
-                <CardContent className="pt-6">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <FunnelSimple size={18} className="text-muted-foreground" />
-                      <span className="text-sm font-medium">Quick Filters</span>
-                      {activeFilters.length > 0 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={clearAllFilters}
-                          className="ml-auto h-7 text-xs"
-                        >
-                          <X size={14} className="mr-1" />
-                          Clear All
-                        </Button>
-                      )}
+                <CardContent className="py-3">
+                  <div className={`grid ${isMobileView ? 'grid-cols-2' : 'grid-cols-4'} gap-3`}>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-foreground">
+                        {formatNumber(stats.count)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {activeFilters.length > 0 || searchQuery ? 'Filtered Items' : 'Total Items'}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-foreground">
+                        {formatNumber(stats.totalQuantity)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Total Quantity</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-accent">
+                        {formatISK(stats.totalValue)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Total Value</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-foreground">
+                        {formatVolume(stats.totalVolume)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Total Volume</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Filter Bar - Search Inline with Buttons */}
+              <Card>
+                <CardContent className="py-3">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                    {/* Search Input - Left Side */}
+                    <div className="relative w-full sm:w-64">
+                      <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Search items..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9 h-8"
+                      />
                     </div>
                     
-                    <div className="flex flex-wrap gap-2">
+                    {/* Filter Buttons - Right Side */}
+                    <div className="flex flex-wrap items-center gap-2 flex-1">
                       {filterOptions.map((filter) => {
                         const isActive = activeFilters.includes(filter.id);
                         const Icon = 
@@ -456,50 +485,18 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                           </Button>
                         );
                       })}
-                    </div>
-
-                    <div className="relative">
-                      <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        placeholder="Search items by name, category, or group..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9"
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Stats Bar */}
-              <Card>
-                <CardContent className="pt-6">
-                  <div className={`grid ${isMobileView ? 'grid-cols-2' : 'grid-cols-4'} gap-4`}>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-foreground">
-                        {formatNumber(stats.count)}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {activeFilters.length > 0 || searchQuery ? 'Filtered Items' : 'Total Items'}
-                      </div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-foreground">
-                        {formatNumber(stats.totalQuantity)}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">Total Quantity</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-accent">
-                        {formatISK(stats.totalValue)}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">Total Value</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-foreground">
-                        {formatVolume(stats.totalVolume)}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">Total Volume</div>
+                      
+                      {activeFilters.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={clearAllFilters}
+                          className="h-8 text-xs ml-auto"
+                        >
+                          <X size={14} className="mr-1" />
+                          Clear All
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>
