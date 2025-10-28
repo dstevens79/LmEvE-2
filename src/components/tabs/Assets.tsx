@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,20 +23,24 @@ import {
   Target,
   Robot,
   Stack,
-  Circle
+  Circle,
+  ArrowsClockwise,
+  SpinnerGap
 } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/auth-provider';
 import { TabComponentProps, ManufacturingTask } from '@/lib/types';
 import { useKV } from '@github/spark/hooks';
 import { ItemInfoPopup } from '@/components/popups/ItemInfoPopup';
 import { BlueprintInfoPopup } from '@/components/popups/BlueprintInfoPopup';
+import { useLMeveData } from '@/lib/LMeveDataContext';
+import { toast } from 'sonner';
 
 interface Station {
   id: number;
   name: string;
-  system: string;
-  region: string;
-  hasOffice: boolean;
+  system?: string;
+  region?: string;
+  hasOffice?: boolean;
 }
 
 interface CorpHangar {
@@ -48,17 +52,18 @@ interface CorpHangar {
 }
 
 interface AssetItem {
-  itemId: string;
+  id: string;
   typeId: number;
   typeName: string;
   quantity: number;
   locationId: number;
-  locationFlag: string;
-  isSingleton: boolean;
-  volume: number;
+  locationFlag?: string;
+  hangar?: string;
+  isSingleton?: boolean;
+  volume?: number;
   estimatedValue: number;
   category: string;
-  group: string;
+  group?: string;
 }
 
 interface FilterOption {
@@ -79,99 +84,165 @@ interface SupplyNeed {
   priority: 'high' | 'medium' | 'low';
 }
 
-const MOCK_STATIONS: Station[] = [
-  { id: 1, name: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant', system: 'Jita', region: 'The Forge', hasOffice: true },
-  { id: 2, name: 'Amarr VIII (Oris) - Emperor Family Academy', system: 'Amarr', region: 'Domain', hasOffice: true },
-  { id: 3, name: 'Dodixie IX - Moon 20 - Federation Navy Assembly Plant', system: 'Dodixie', region: 'Sinq Laison', hasOffice: true },
-  { id: 4, name: 'Rens VI - Moon 8 - Brutor Tribe Treasury', system: 'Rens', region: 'Heimatar', hasOffice: true },
-  { id: 5, name: 'Hek VIII - Moon 12 - Boundless Creation Factory', system: 'Hek', region: 'Metropolis', hasOffice: true },
-  { id: 6, name: 'Perimeter - Tranquility Trading Tower', system: 'Perimeter', region: 'The Forge', hasOffice: true },
-  { id: 7, name: 'Oursulaert VII - Moon 4 - Federal Intelligence Office', system: 'Oursulaert', region: 'Essence', hasOffice: true },
-  { id: 8, name: 'Tash-Murkon Prime V - Moon 1 - Tash-Murkon Family Bureau', system: 'Tash-Murkon Prime', region: 'Tash-Murkon', hasOffice: true },
-];
+const HANGAR_NAMES: Record<number, string> = {
+  1: 'Hangar 1',
+  2: 'Hangar 2', 
+  3: 'Hangar 3',
+  4: 'Hangar 4',
+  5: 'Hangar 5',
+  6: 'Hangar 6',
+  7: 'Hangar 7'
+};
 
-const MOCK_HANGARS: CorpHangar[] = [
-  { division: 1, name: 'Raw Materials', itemCount: 142, totalVolume: 125450.5, totalValue: 850000000 },
-  { division: 2, name: 'Compressed Ores', itemCount: 68, totalVolume: 45230.2, totalValue: 320000000 },
-  { division: 3, name: 'Blueprints', itemCount: 234, totalVolume: 2.34, totalValue: 4500000000 },
-  { division: 4, name: 'Components', itemCount: 89, totalVolume: 8920.5, totalValue: 680000000 },
-  { division: 5, name: 'Ships & Modules', itemCount: 156, totalVolume: 234567.8, totalValue: 1200000000 },
-  { division: 6, name: 'Ammo & Drones', itemCount: 423, totalVolume: 12345.6, totalValue: 180000000 },
-  { division: 7, name: 'Miscellaneous', itemCount: 91, totalVolume: 5678.9, totalValue: 95000000 },
-];
-
-const MOCK_SUPPLY_NEEDS: SupplyNeed[] = [
-  { typeId: 34, typeName: 'Tritanium', needed: 5000000, available: 3200000, shortage: 1800000, source: 'Manufacturing Job #1234', priority: 'high' },
-  { typeId: 35, typeName: 'Pyerite', needed: 2500000, available: 2100000, shortage: 400000, source: 'Manufacturing Job #1234', priority: 'medium' },
-  { typeId: 36, typeName: 'Mexallon', needed: 500000, available: 450000, shortage: 50000, source: 'Manufacturing Job #1235', priority: 'low' },
-  { typeId: 37, typeName: 'Isogen', needed: 150000, available: 0, shortage: 150000, source: 'Manufacturing Job #1235', priority: 'high' },
-  { typeId: 38, typeName: 'Nocxium', needed: 50000, available: 48000, shortage: 2000, source: 'Manufacturing Job #1236', priority: 'low' },
-];
-
-const generateMockItems = (hangar: CorpHangar, count: number = 50): AssetItem[] => {
-  const items: AssetItem[] = [];
-  const categories = {
-    1: ['Mineral', 'Processed Materials', 'Ice Products'],
-    2: ['Ore', 'Compressed Ore', 'Moon Ore'],
-    3: ['Blueprint', 'Blueprint Copy'],
-    4: ['Ship Components', 'Structure Components', 'Advanced Components'],
-    5: ['Frigate', 'Destroyer', 'Cruiser', 'Battlecruiser', 'Battleship', 'Ship Equipment'],
-    6: ['Projectile Ammo', 'Hybrid Ammo', 'Missiles', 'Combat Drone', 'Mining Drone'],
-    7: ['Fuel', 'Salvage', 'Planetary Materials', 'Data Cores']
-  };
-
-  const itemsByCategory = {
-    'Mineral': ['Tritanium', 'Pyerite', 'Mexallon', 'Isogen', 'Nocxium', 'Zydrine', 'Megacyte'],
-    'Ore': ['Compressed Veldspar', 'Compressed Scordite', 'Compressed Pyroxeres', 'Compressed Plagioclase'],
-    'Blueprint': ['Raven Blueprint', 'Drake Blueprint', 'Naga Blueprint', 'Ferox Blueprint'],
-    'Ship Components': ['Capital Construction Parts', 'R.A.M.- Starship Tech', 'Fusion Reactor Unit'],
-    'Frigate': ['Rifter', 'Merlin', 'Incursus', 'Punisher', 'Tristan'],
-    'Cruiser': ['Rupture', 'Caracal', 'Vexor', 'Maller', 'Osprey'],
-    'Battleship': ['Raven', 'Scorpion', 'Rokh', 'Megathron', 'Hyperion'],
-    'Projectile Ammo': ['EMP S', 'EMP M', 'EMP L', 'Fusion S', 'Fusion M', 'Fusion L'],
-    'Combat Drone': ['Warrior I', 'Warrior II', 'Valkyrie I', 'Valkyrie II', 'Hornet I', 'Hornet II'],
-  };
-
-  const relevantCategories = categories[hangar.division as keyof typeof categories] || [];
+const categorizeItem = (typeName: string): string => {
+  const name = typeName.toLowerCase();
   
-  for (let i = 0; i < count; i++) {
-    const category = relevantCategories[Math.floor(Math.random() * relevantCategories.length)];
-    const itemList = itemsByCategory[category as keyof typeof itemsByCategory] || ['Generic Item'];
-    const typeName = itemList[Math.floor(Math.random() * itemList.length)];
-    
-    const baseQuantity = category === 'Mineral' ? 100000 : category === 'Ore' ? 5000 : category === 'Blueprint' ? 1 : 50;
-    const quantity = Math.floor(Math.random() * baseQuantity) + 1;
-    const volume = category === 'Blueprint' ? 0.01 : Math.random() * 100 + 1;
-    const estimatedValue = Math.floor(Math.random() * 10000000) + 1000;
-
-    items.push({
-      itemId: `${hangar.division}-${i}`,
-      typeId: 34 + i,
-      typeName,
-      quantity,
-      locationId: 60003760,
-      locationFlag: `CorpSAG${hangar.division}`,
-      isSingleton: false,
-      volume: volume * quantity,
-      estimatedValue: estimatedValue * quantity,
-      category,
-      group: category
-    });
-  }
-
-  return items;
+  if (name.includes('tritanium') || name.includes('pyerite') || name.includes('mexallon') || 
+      name.includes('isogen') || name.includes('nocxium') || name.includes('zydrine') || 
+      name.includes('megacyte')) return 'Mineral';
+  
+  if (name.includes('ore') || name.includes('veldspar') || name.includes('scordite') || 
+      name.includes('pyroxeres') || name.includes('plagioclase')) return 'Ore';
+  
+  if (name.includes('blueprint')) return 'Blueprint';
+  
+  if (name.includes('frigate') || name.includes('destroyer') || name.includes('cruiser') || 
+      name.includes('battlecruiser') || name.includes('battleship') || name.includes('carrier') || 
+      name.includes('dreadnought')) return 'Ship';
+  
+  if (name.includes('ammo') || name.includes('charge') || name.includes('missile')) return 'Ammo';
+  
+  if (name.includes('drone')) return 'Drone';
+  
+  if (name.includes('component') || name.includes('parts')) return 'Component';
+  
+  return 'Other';
 };
 
 export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   const { user } = useAuth();
-  const [selectedStation, setSelectedStation] = useKV<number>('assets-selected-station', 1);
+  const { assets, loading, refreshAssets } = useLMeveData();
+  const [selectedStation, setSelectedStation] = useKV<number | null>('assets-selected-station', null);
   const [selectedHangar, setSelectedHangar] = useKV<number | null>('assets-selected-hangar', null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilters, setActiveFilters] = useKV<string[]>('assets-active-filters', []);
-  const [hangarItems, setHangarItems] = useState<AssetItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<AssetItem | null>(null);
   const [selectedBlueprint, setSelectedBlueprint] = useState<any | null>(null);
   const [manufacturingTasks] = useKV<ManufacturingTask[]>('manufacturing-tasks', []);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const stations = useMemo<Station[]>(() => {
+    const locationMap = new Map<number, Station>();
+    
+    assets.forEach(asset => {
+      if (!locationMap.has(asset.locationId)) {
+        locationMap.set(asset.locationId, {
+          id: asset.locationId,
+          name: asset.location || `Location ${asset.locationId}`,
+        });
+      }
+    });
+    
+    return Array.from(locationMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [assets]);
+
+  const hangars = useMemo<CorpHangar[]>(() => {
+    if (!selectedStation) return [];
+    
+    const hangarMap = new Map<number, AssetItem[]>();
+    
+    const stationAssets = assets.filter(a => a.locationId === selectedStation);
+    
+    stationAssets.forEach(asset => {
+      const hangarFlag = asset.hangar || asset.locationFlag || 'Hangar 1';
+      const hangarMatch = hangarFlag.match(/(\d)/);
+      const division = hangarMatch ? parseInt(hangarMatch[1]) : 1;
+      
+      if (!hangarMap.has(division)) {
+        hangarMap.set(division, []);
+      }
+      hangarMap.get(division)!.push({
+        id: asset.id,
+        typeId: asset.typeId,
+        typeName: asset.typeName || `Item ${asset.typeId}`,
+        quantity: asset.quantity,
+        locationId: asset.locationId,
+        locationFlag: asset.locationFlag,
+        hangar: asset.hangar,
+        isSingleton: asset.isSingleton,
+        volume: (asset.volume || 1) * asset.quantity,
+        estimatedValue: asset.estimatedValue,
+        category: categorizeItem(asset.typeName || ''),
+        group: asset.category
+      });
+    });
+    
+    return Array.from(hangarMap.entries()).map(([division, items]) => {
+      const totalVolume = items.reduce((sum, i) => sum + (i.volume || 0), 0);
+      const totalValue = items.reduce((sum, i) => sum + i.estimatedValue, 0);
+      
+      return {
+        division,
+        name: HANGAR_NAMES[division] || `Hangar ${division}`,
+        itemCount: items.length,
+        totalVolume,
+        totalValue
+      };
+    }).sort((a, b) => a.division - b.division);
+  }, [assets, selectedStation]);
+
+  const hangarItems = useMemo<AssetItem[]>(() => {
+    if (!selectedStation || selectedHangar === null) return [];
+    
+    return assets
+      .filter(a => {
+        if (a.locationId !== selectedStation) return false;
+        
+        const hangarFlag = a.hangar || a.locationFlag || 'Hangar 1';
+        const hangarMatch = hangarFlag.match(/(\d)/);
+        const division = hangarMatch ? parseInt(hangarMatch[1]) : 1;
+        
+        return division === selectedHangar;
+      })
+      .map(asset => ({
+        id: asset.id,
+        typeId: asset.typeId,
+        typeName: asset.typeName || `Item ${asset.typeId}`,
+        quantity: asset.quantity,
+        locationId: asset.locationId,
+        locationFlag: asset.locationFlag,
+        hangar: asset.hangar,
+        isSingleton: asset.isSingleton,
+        volume: (asset.volume || 1) * asset.quantity,
+        estimatedValue: asset.estimatedValue,
+        category: categorizeItem(asset.typeName || ''),
+        group: asset.category
+      }));
+  }, [assets, selectedStation, selectedHangar]);
+
+  useEffect(() => {
+    if (stations.length > 0 && !selectedStation) {
+      setSelectedStation(stations[0].id);
+    }
+  }, [stations, selectedStation, setSelectedStation]);
+
+  useEffect(() => {
+    if (user && assets.length === 0 && !loading.assets) {
+      refreshAssets();
+    }
+  }, [user, assets.length, loading.assets]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshAssets();
+      toast.success('Assets refreshed successfully');
+    } catch (error) {
+      toast.error('Failed to refresh assets');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const filterOptions: FilterOption[] = [
     { 
@@ -189,42 +260,30 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
     { 
       id: 'ships', 
       label: 'Ships', 
-      categories: ['Frigate', 'Destroyer', 'Cruiser', 'Battlecruiser', 'Battleship', 'Capital', 'Freighter'],
+      categories: ['Ship', 'Frigate', 'Destroyer', 'Cruiser', 'Battlecruiser', 'Battleship', 'Capital', 'Freighter'],
       active: false 
     },
     { 
       id: 'ammo', 
       label: 'Ammo', 
-      categories: ['Projectile Ammo', 'Hybrid Ammo', 'Missiles', 'Bombs', 'Charges'],
+      categories: ['Ammo', 'Projectile Ammo', 'Hybrid Ammo', 'Missiles', 'Bombs', 'Charges'],
       active: false 
     },
     { 
       id: 'drones', 
       label: 'Drones', 
-      categories: ['Combat Drone', 'Mining Drone', 'Salvage Drone', 'Logistics Drone'],
+      categories: ['Drone', 'Combat Drone', 'Mining Drone', 'Salvage Drone', 'Logistics Drone'],
       active: false 
     },
     { 
       id: 'components', 
       label: 'Components', 
-      categories: ['Ship Components', 'Structure Components', 'Advanced Components'],
+      categories: ['Component', 'Ship Components', 'Structure Components', 'Advanced Components'],
       active: false 
     },
   ];
 
-  const currentStation = MOCK_STATIONS.find(s => s.id === selectedStation) || MOCK_STATIONS[0];
-
-  useEffect(() => {
-    if (selectedHangar !== null) {
-      const hangar = MOCK_HANGARS.find(h => h.division === selectedHangar);
-      if (hangar) {
-        const items = generateMockItems(hangar);
-        setHangarItems(items);
-      }
-    } else {
-      setHangarItems([]);
-    }
-  }, [selectedHangar]);
+  const currentStation = stations.find(s => s.id === selectedStation) || stations[0];
 
   const toggleFilter = (filterId: string) => {
     setActiveFilters((current) => {
@@ -358,50 +417,114 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex-1">
           <h2 className="text-2xl font-bold flex items-center gap-2">
             <Package size={24} />
-            Corporation Hangars
+            Corporation Assets
           </h2>
           <p className="text-muted-foreground text-sm">
-            Browse and manage items across all corporation hangar divisions
+            {loading.assets ? 'Loading assets from ESI...' : 
+             assets.length > 0 ? `${assets.length} items across ${stations.length} locations` :
+             'No assets found - refresh to load from ESI'}
           </p>
         </div>
-        <div className="w-96">
-          <Select 
-            value={selectedStation.toString()} 
-            onValueChange={(value) => setSelectedStation(parseInt(value))}
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing || loading.assets}
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Select a station">
-                {currentStation && (
-                  <div className="flex items-center gap-2">
-                    <Building size={16} className="shrink-0" />
-                    <div className="text-left truncate">
-                      <div className="font-medium text-sm truncate">{currentStation.name}</div>
-                    </div>
-                  </div>
-                )}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {MOCK_STATIONS.map(station => (
-                <SelectItem key={station.id} value={station.id.toString()}>
-                  <div className="flex items-start gap-2 py-1">
-                    <Building size={16} className="mt-0.5 shrink-0" />
-                    <div>
-                      <div className="font-medium text-sm">{station.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {station.system} • {station.region}
+            {isRefreshing || loading.assets ? (
+              <>
+                <SpinnerGap size={16} className="mr-2 animate-spin" />
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <ArrowsClockwise size={16} className="mr-2" />
+                Refresh ESI Data
+              </>
+            )}
+          </Button>
+          {stations.length > 0 && (
+            <div className="w-96">
+              <Select 
+                value={selectedStation?.toString() || ''} 
+                onValueChange={(value) => {
+                  setSelectedStation(parseInt(value));
+                  setSelectedHangar(null);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a station">
+                    {currentStation && (
+                      <div className="flex items-center gap-2">
+                        <Building size={16} className="shrink-0" />
+                        <div className="text-left truncate">
+                          <div className="font-medium text-sm truncate">{currentStation.name}</div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {stations.map(station => (
+                    <SelectItem key={station.id} value={station.id.toString()}>
+                      <div className="flex items-start gap-2 py-1">
+                        <Building size={16} className="mt-0.5 shrink-0" />
+                        <div>
+                          <div className="font-medium text-sm">{station.name}</div>
+                          {station.system && station.region && (
+                            <div className="text-xs text-muted-foreground">
+                              {station.system} • {station.region}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       </div>
+
+      {loading.assets && assets.length === 0 ? (
+        <Card>
+          <CardContent className="flex items-center justify-center h-96">
+            <div className="text-center space-y-3">
+              <SpinnerGap size={48} className="mx-auto text-accent animate-spin" />
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Loading Assets</h3>
+                <p className="text-sm text-muted-foreground">
+                  Fetching asset data from ESI...
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : stations.length === 0 ? (
+        <Card>
+          <CardContent className="flex items-center justify-center h-96">
+            <div className="text-center space-y-3">
+              <Database size={48} className="mx-auto text-muted-foreground" />
+              <div>
+                <h3 className="text-lg font-semibold mb-1">No Assets Found</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Click "Refresh ESI Data" to load your corporation's assets
+                </p>
+                <Button onClick={handleRefresh} disabled={isRefreshing}>
+                  <ArrowsClockwise size={16} className="mr-2" />
+                  Refresh Assets
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
 
       <div className={`grid ${isMobileView ? 'grid-cols-1 gap-4' : 'grid-cols-12 gap-4'}`}>
         {/* Left Side - Hangar List */}
@@ -409,12 +532,12 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Database size={18} />
-              Hangars ({MOCK_HANGARS.length})
+              Hangars ({hangars.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y divide-border">
-              {MOCK_HANGARS.map((hangar) => {
+              {hangars.map((hangar) => {
                 const isSelected = selectedHangar === hangar.division;
                 return (
                   <button
@@ -553,11 +676,11 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                             const handleItemClick = () => {
                               if (isBlueprint) {
                                 setSelectedBlueprint({
-                                  id: item.itemId,
+                                  id: item.id,
                                   typeId: item.typeId,
                                   typeName: item.typeName,
-                                  location: currentStation.name,
-                                  locationId: currentStation.id,
+                                  location: currentStation?.name || 'Unknown',
+                                  locationId: currentStation?.id || item.locationId,
                                   materialEfficiency: Math.floor(Math.random() * 11),
                                   timeEfficiency: Math.floor(Math.random() * 21),
                                   runs: item.category === 'Blueprint' ? -1 : Math.floor(Math.random() * 300) + 1,
@@ -572,7 +695,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                             if (isMobileView) {
                               return (
                                 <button 
-                                  key={item.itemId} 
+                                  key={item.id} 
                                   onClick={handleItemClick}
                                   className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer"
                                 >
@@ -594,7 +717,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                                     </div>
                                     <div>
                                       <div className="text-muted-foreground">Volume</div>
-                                      <div className="font-medium">{formatVolume(item.volume)}</div>
+                                      <div className="font-medium">{formatVolume(item.volume || 0)}</div>
                                     </div>
                                     <div>
                                       <div className="text-muted-foreground">Value</div>
@@ -607,7 +730,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
 
                             return (
                               <button 
-                                key={item.itemId} 
+                                key={item.id} 
                                 onClick={handleItemClick}
                                 className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 text-sm transition-colors cursor-pointer"
                               >
@@ -619,7 +742,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
                                   {formatNumber(item.quantity)}
                                 </span>
                                 <span className="w-24 text-right text-muted-foreground">
-                                  {formatVolume(item.volume)}
+                                  {formatVolume(item.volume || 0)}
                                 </span>
                                 <span className="w-24 text-right text-accent">
                                   {formatISK(item.estimatedValue)}
@@ -750,6 +873,8 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
           </div>
         </CardContent>
       </Card>
+        </>
+      )}
 
       {/* Item Info Popup */}
       {selectedItem && (
