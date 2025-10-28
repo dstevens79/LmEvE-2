@@ -16,13 +16,6 @@ interface DiscordNotificationsProps {
 export function DiscordNotifications({ isMobileView }: DiscordNotificationsProps) {
   const [notificationSettings, setNotificationSettings] = useNotificationSettings();
 
-  const updateNotificationEvent = (event: string, enabled: boolean) => {
-    setNotificationSettings(prev => ({
-      ...prev,
-      events: { ...prev.events, [event]: enabled }
-    }));
-  };
-
   const saveNotificationSettings = async () => {
     try {
       const errors: string[] = [];
@@ -75,63 +68,6 @@ export function DiscordNotifications({ isMobileView }: DiscordNotificationsProps
 
         {notificationSettings.discord?.enabled && (
           <div className="space-y-6 pl-6 border-l-2 border-[#5865F2]/20">
-            <div className="space-y-4">
-              <h5 className="font-medium text-sm">Event Notifications</h5>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Manufacturing Jobs</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Notifications about manufacturing job completions and issues
-                    </p>
-                  </div>
-                  <Switch
-                    checked={notificationSettings.events.manufacturing}
-                    onCheckedChange={(checked) => updateNotificationEvent('manufacturing', checked)}
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Mining Operations</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Updates on mining fleet activities and yields
-                    </p>
-                  </div>
-                  <Switch
-                    checked={notificationSettings.events.mining}
-                    onCheckedChange={(checked) => updateNotificationEvent('mining', checked)}
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Killmails</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Corporation member kills and losses
-                    </p>
-                  </div>
-                  <Switch
-                    checked={notificationSettings.events.killmails}
-                    onCheckedChange={(checked) => updateNotificationEvent('killmails', checked)}
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Market Updates</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Price alerts and market order notifications
-                    </p>
-                  </div>
-                  <Switch
-                    checked={notificationSettings.events.markets}
-                    onCheckedChange={(checked) => updateNotificationEvent('markets', checked)}
-                  />
-                </div>
-              </div>
-            </div>
-
             <div className="space-y-4">
               <h5 className="font-medium text-sm">Webhook Configuration</h5>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

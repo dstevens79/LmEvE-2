@@ -128,6 +128,13 @@ export interface NotificationSettings {
     assetMovements: boolean;
     incomeUpdates: boolean;
   };
+  eventChannels?: {
+    [eventId: string]: {
+      toast?: boolean;
+      discord?: boolean;
+      eveMail?: boolean;
+    };
+  };
   emailSettings: {
     smtpHost: string;
     smtpPort: number;
@@ -137,6 +144,30 @@ export interface NotificationSettings {
     fromEmail: string;
   };
   webhookUrl: string;
+  discord?: {
+    enabled?: boolean;
+    webhookUrl?: string;
+    botName?: string;
+    avatarUrl?: string;
+    channels?: string[];
+    roles?: string[];
+    userMentions?: string[];
+    embedFormat?: boolean;
+    includeThumbnails?: boolean;
+    throttleMinutes?: number;
+  };
+  eveMail?: {
+    enabled?: boolean;
+    senderCharacterId?: number;
+    subjectPrefix?: string;
+    recipientIds?: number[];
+    mailingLists?: Array<{ name: string; id: number }>;
+    sendToCorporation?: boolean;
+    sendToAlliance?: boolean;
+    onlyToOnlineCharacters?: boolean;
+    cspaChargeCheck?: boolean;
+    throttleMinutes?: number;
+  };
   quietHours: {
     enabled: boolean;
     startTime: string;
@@ -346,6 +377,19 @@ export const defaultNotificationSettings: NotificationSettings = {
     assetMovements: false,
     incomeUpdates: false,
   },
+  eventChannels: {
+    manufacturing: { toast: true, discord: false, eveMail: false },
+    mining: { toast: false, discord: false, eveMail: false },
+    planetary: { toast: false, discord: false, eveMail: false },
+    projects: { toast: false, discord: false, eveMail: false },
+    killmails: { toast: false, discord: false, eveMail: false },
+    markets: { toast: false, discord: false, eveMail: false },
+    wallet: { toast: false, discord: false, eveMail: false },
+    assets: { toast: false, discord: false, eveMail: false },
+    members: { toast: true, discord: false, eveMail: false },
+    buyback: { toast: false, discord: false, eveMail: false },
+    system: { toast: true, discord: false, eveMail: false },
+  },
   emailSettings: {
     smtpHost: '',
     smtpPort: 587,
@@ -355,6 +399,30 @@ export const defaultNotificationSettings: NotificationSettings = {
     fromEmail: '',
   },
   webhookUrl: '',
+  discord: {
+    enabled: false,
+    webhookUrl: '',
+    botName: 'LMeve Notifications',
+    avatarUrl: '',
+    channels: [],
+    roles: [],
+    userMentions: [],
+    embedFormat: true,
+    includeThumbnails: true,
+    throttleMinutes: 5,
+  },
+  eveMail: {
+    enabled: false,
+    senderCharacterId: 0,
+    subjectPrefix: '[LMeve]',
+    recipientIds: [],
+    mailingLists: [],
+    sendToCorporation: false,
+    sendToAlliance: false,
+    onlyToOnlineCharacters: false,
+    cspaChargeCheck: true,
+    throttleMinutes: 15,
+  },
   quietHours: {
     enabled: false,
     startTime: '22:00',
