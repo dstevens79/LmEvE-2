@@ -350,9 +350,9 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
                 size="sm"
                 variant={activeView === 'transactions' ? 'default' : 'outline'}
                 onClick={() => setActiveView('transactions')}
-                className="h-7 text-xs px-2"
+                className="h-7 text-xs px-3"
               >
-                Txns
+                Transactions
               </Button>
             </div>
 
