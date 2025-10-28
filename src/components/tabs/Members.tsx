@@ -103,8 +103,7 @@ export function Members({ onLoginClick, isMobileView }: MembersProps) {
     return 'outline';
   };
 
-  // Show login prompt if not authenticated - TEMPORARILY DISABLED FOR DEBUG
-  if (!user && onLoginClick && false) { // Added && false to disable this check
+  if (!user && onLoginClick) {
     return (
       <LoginPrompt 
         onLoginClick={onLoginClick || (() => {})}

@@ -91,19 +91,21 @@ export function Dashboard({ onLoginClick, isMobileView }: DashboardProps) {
     }
   }, [dashboardStats, refreshDashboard]);
 
-  // Use real data if available, fall back to mock data
+  // Use real data from context - show zeros if no data available yet
   const stats = dashboardStats || {
-    totalMembers: 42,
-    activeMembers: 38,
-    totalAssets: 1247,
-    totalAssetsValue: 15600000000,
-    activeJobs: 3,
-    completedJobsThisMonth: 28,
-    miningOperationsThisMonth: 156,
-    miningValueThisMonth: 2100000000,
-    corpWalletBalance: 45000000000,
+    totalMembers: 0,
+    activeMembers: 0,
+    totalAssets: 0,
+    totalAssetsValue: 0,
+    activeJobs: 0,
+    completedJobsThisMonth: 0,
+    miningOperationsThisMonth: 0,
+    miningValueThisMonth: 0,
+    corpWalletBalance: 0,
     recentActivity: []
   };
+
+  const hasNoData = stats.totalMembers === 0 && stats.totalAssets === 0;
 
   const formatISK = (amount: number): string => {
     if (amount >= 1e12) return `${(amount / 1e12).toFixed(1)}T ISK`;
@@ -164,6 +166,19 @@ export function Dashboard({ onLoginClick, isMobileView }: DashboardProps) {
           </Button>
         </div>
       </div>
+
+      {/* No Data Notice */}
+      {hasNoData && (
+        <div className="bg-muted/30 border border-border rounded-lg p-4 flex items-start gap-3">
+          <Database size={20} className="text-muted-foreground mt-0.5" />
+          <div className="flex-1">
+            <h3 className="font-medium mb-1">No Data Available</h3>
+            <p className="text-sm text-muted-foreground">
+              Click "Refresh Data" to load corporation statistics from ESI, or configure data sync in Settings.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Key Metrics */}
       <div className={`grid ${isMobileView ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4'} gap-4`}>
