@@ -1,35 +1,46 @@
 import React from 'react';
 import { X, Building, Package, ArrowRight, Wrench, Users, Clock } from '@phosphor-icons/react';
-import { Tabs, TabsContent, TabsList, TabsTrigge
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+
+interface StationInfoPopupProps {
   stationId: number;
+  stationName: string;
   onClose: () => void;
+  onViewAssets: () => void;
+}
 
 interface StationData {
+  name: string;
   typeId: number;
+  typeName: string;
   systemId: number;
+  systemName: string;
   regionName: string;
+  securityStatus: number;
   owner?: string;
+}
 
+interface SupplyItem {
+  typeId: number;
+  typeName: string;
+  requiredQuantity: number;
+  availableQuantity: number;
+  category: string;
+}
 
-  requiredQuantity: num
-  category: str
-
-  const [stationDat
-  const [loading, s
-  React.useEffect(() 
-      setLoading(true
-        const cachedStati
-        
- 
-
-            typeId: 52
-            syste
-            regionN
-            owner: 'Your Co
-        }
-        const tasks
- 
+interface ManufacturingTask {
+  id: string;
+  stationId: number;
+  requirements: {
+    materials: Array<{
+      typeId: number;
+      typeName: string;
+      quantity: number;
+    }>;
+  };
+}
 
 export function StationInfoPopup({ stationId, stationName, onClose, onViewAssets }: StationInfoPopupProps) {
   const [stationData, setStationData] = React.useState<StationData | null>(null);
@@ -64,37 +75,38 @@ export function StationInfoPopup({ stationId, stationName, onClose, onViewAssets
         const supplyMap = new Map<number, SupplyItem>();
         
         stationTasks.forEach(task => {
-  const formatNumber = (num: number): string 
+          if (task.requirements?.materials) {
             task.requirements.materials.forEach(mat => {
-
+              const existing = supplyMap.get(mat.typeId);
+              
               if (existing) {
-    if (sec > 0.0) return 'text-yellow-400';
+                existing.requiredQuantity += mat.quantity;
               } else {
-
+                supplyMap.set(mat.typeId, {
                   typeId: mat.typeId,
                   typeName: mat.typeName,
                   requiredQuantity: mat.quantity,
                   availableQuantity: Math.floor(mat.quantity * (0.3 + Math.random() * 0.7)),
                   category: 'Raw Materials'
-    <div 
+                });
               }
-    >
+            });
           }
-        onC
+        });
         
-        <div className="bg-gr
+        if (cachedSupplies) {
           setSupplies(cachedSupplies);
-            <div
+        } else {
           setSupplies(Array.from(supplyMap.values()));
         }
       } catch (error) {
         console.error('Error loading station data:', error);
       } finally {
-            </div>
+        setLoading(false);
       }
-      
-
-                  <h2 
+    };
+    
+    loadStationData();
   }, [stationId, stationName]);
 
   const formatNumber = (num: number): string => {
@@ -104,8 +116,8 @@ export function StationInfoPopup({ stationId, stationName, onClose, onViewAssets
   const getSecurityColor = (sec: number): string => {
     if (sec >= 0.5) return 'text-green-400';
     if (sec > 0.0) return 'text-yellow-400';
-                  )}
-    
+    return 'text-red-400';
+  };
 
   const getSupplyStatus = (item: SupplyItem): { color: string; text: string } => {
     const percentage = (item.availableQuantity / item.requiredQuantity) * 100;
@@ -118,150 +130,127 @@ export function StationInfoPopup({ stationId, stationName, onClose, onViewAssets
     <div 
       className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={onClose}
-     
+    >
       <div 
         className="bg-card border-2 border-accent/30 rounded-lg w-full max-w-4xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
-       
+      >
         {/* EVE-style Header */}
         <div className="bg-gradient-to-r from-accent/20 to-accent/10 border-b-2 border-accent/30 p-4">
           <div className="flex items-start gap-4">
             {/* Station Image */}
             <div className="w-24 h-24 bg-background/50 border border-accent/30 rounded flex-shrink-0 overflow-hidden">
-              </Tab
+              <img 
                 src={stationData ? `https://images.evetech.net/types/${stationData.typeId}/render?size=128` : `https://images.evetech.net/types/52678/render?size=128`}
-                              <Ba
-                                className={`${status.col
-                                {
-                            </div>
-                  
-                
-                  
-
-                                <sp
-                                  {formatNum
-                              </div>
-                                <div className="
-                                  <span className="text-red-400 font-medium">
-                                 
-                       
-                          </div>
-                      </div>
-                  })}
-              )}
-
-            <TabsContent value="info" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                    <h4 class
-                  </div>
-                    <h4 className="text-sm text-
-                    <p classN
-                  <div cla
-                    
-                    </
-                
-                    <p 
+                alt={stationName}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDEyOCAxMjgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiBmaWxsPSIjMjIyIi8+CjxwYXRoIGQ9Ik02NCAxNkw5NiA2NEw2NCAxMTJMMzIgNjRMNjQgMTZaIiBmaWxsPSIjNjY2Ii8+Cjwvc3ZnPg==';
+                }}
+              />
+            </div>
+            
+            {/* Station Info */}
+            <div className="flex-1">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-accent mb-1">{stationName}</h2>
+                  {stationData && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <span className="text-muted-foreground">{stationData.systemName}</span>
+                      <span className="text-muted-foreground">•</span>
+                      <span className={getSecurityColor(stationData.securityStatus)}>
+                        {stationData.securityStatus.toFixed(1)}
+                      </span>
+                      <span className="text-muted-foreground">•</span>
+                      <span className="text-muted-foreground">{stationData.regionName}</span>
+                    </div>
+                  )}
                 </div>
-            </TabsContent>
-            {/* Activity Tab */}
-              <div className="text-center py-12 bg-muted/20 rounded-lg bo
-                <
-                  Station activit
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClose}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X size={20} />
+                </Button>
               </div>
-          </Tabs>
-      </div>
-  );
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+              
+              <div className="flex items-center gap-2 mt-3">
+                <Button
+                  onClick={() => {
+                    onViewAssets();
+                    onClose();
+                  }}
+                  size="sm"
+                  className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                >
+                  <Package size={16} className="mr-2" />
+                  View Assets
+                  <ArrowRight size={16} className="ml-2" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Content Tabs */}
+        <div className="p-6">
+          <Tabs defaultValue="supplies" className="w-full">
+            <TabsList className="grid w-full grid-cols-3 mb-4">
+              <TabsTrigger value="supplies">
+                <Package size={16} className="mr-2" />
+                Required Supplies
+              </TabsTrigger>
+              <TabsTrigger value="info">
+                <Building size={16} className="mr-2" />
+                Station Info
+              </TabsTrigger>
+              <TabsTrigger value="activity">
+                <Clock size={16} className="mr-2" />
+                Activity
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Supplies Tab */}
+            <TabsContent value="supplies" className="space-y-4">
+              {loading ? (
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground">Loading supplies...</p>
+                </div>
+              ) : supplies.length === 0 ? (
+                <div className="text-center py-12 bg-muted/20 rounded-lg border border-border">
+                  <Package size={48} className="mx-auto mb-4 text-muted-foreground" />
+                  <h4 className="text-lg font-semibold mb-2">No Supply Requirements</h4>
+                  <p className="text-muted-foreground">
+                    This station has no active manufacturing jobs requiring supplies.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {supplies.map((item) => {
+                    const status = getSupplyStatus(item);
+                    const shortage = Math.max(0, item.requiredQuantity - item.availableQuantity);
+                    
+                    return (
+                      <div 
+                        key={item.typeId}
+                        className="bg-muted/20 border border-border rounded p-4 hover:bg-muted/30 transition-colors"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <img 
+                                src={`https://images.evetech.net/types/${item.typeId}/icon?size=32`}
+                                alt={item.typeName}
+                                className="w-8 h-8"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiBmaWxsPSIjMzMzIi8+Cjwvc3ZnPg==';
+                                }}
+                              />
+                              <h4 className="font-semibold text-foreground">{item.typeName}</h4>
                               <Badge 
                                 variant="outline" 
                                 className={`${status.color} border-current/30 whitespace-nowrap`}
