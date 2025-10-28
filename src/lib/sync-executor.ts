@@ -19,7 +19,8 @@ export type SyncProcessType =
   | 'wallet' 
   | 'mining' 
   | 'killmails'
-  | 'container_logs';
+  | 'container_logs'
+  | 'contracts';
 
 export interface SyncResult {
   success: boolean;
@@ -64,6 +65,8 @@ export class SyncExecutor {
           return await this.syncKillmails(context);
         case 'container_logs':
           return await this.syncContainerLogs(context);
+        case 'contracts':
+          return await this.syncContracts(context);
         default:
           throw new Error(`Unknown sync process type: ${processType}`);
       }
@@ -378,6 +381,79 @@ export class SyncExecutor {
     return {
       success: true,
       itemsProcessed: logs.length
+    };
+  }
+
+  private async syncContracts(context: SyncExecutionContext): Promise<SyncResult> {
+    const { processId, corporationId, accessToken, storageService, fetchService } = context;
+    
+    await this.stateManager.updateSyncProgress(processId, 10, 'Fetching corporation contracts from ESI...');
+    
+    const contracts = await fetchService.fetchCorporationContracts(corporationId, accessToken);
+    
+    if (!contracts || contracts.length === 0) {
+      console.warn(`⚠️ No contracts retrieved for corporation ${corporationId}`);
+      await this.stateManager.completeSync(processId, 0);
+      return { success: true, itemsProcessed: 0 };
+    }
+    
+    await this.stateManager.updateSyncProgress(
+      processId, 
+      40, 
+      'Storing contracts in database...',
+      0,
+      contracts.length
+    );
+    
+    await storageService.storeContracts(corporationId, contracts);
+    
+    await this.stateManager.updateSyncProgress(
+      processId, 
+      60, 
+      'Fetching contract items...',
+      contracts.length,
+      contracts.length
+    );
+    
+    let totalItems = 0;
+    for (let i = 0; i < contracts.length; i++) {
+      const contract = contracts[i];
+      const progress = 60 + ((i / contracts.length) * 25);
+      
+      try {
+        const items = await fetchService.fetchContractItems(
+          corporationId,
+          contract.contract_id,
+          accessToken
+        );
+        
+        if (items && items.length > 0) {
+          await storageService.storeContractItems(contract.contract_id, items);
+          totalItems += items.length;
+        }
+      } catch (error) {
+        console.warn(`⚠️ Failed to fetch items for contract ${contract.contract_id}:`, error);
+      }
+      
+      if (i % 10 === 0) {
+        await this.stateManager.updateSyncProgress(
+          processId, 
+          progress, 
+          `Processing contract items (${i}/${contracts.length})...`,
+          i,
+          contracts.length
+        );
+      }
+    }
+    
+    await this.stateManager.updateSyncProgress(processId, 90, 'Finalizing...');
+    await this.stateManager.completeSync(processId, contracts.length);
+    
+    console.log(`✅ Contracts sync complete: ${contracts.length} contracts and ${totalItems} items stored`);
+    
+    return {
+      success: true,
+      itemsProcessed: contracts.length
     };
   }
 }

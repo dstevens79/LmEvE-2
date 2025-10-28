@@ -1586,6 +1586,47 @@ export interface ESIContainerLogData {
   quantity: number;
 }
 
+export interface ESIContractData {
+  contract_id: number;
+  issuer_id: number;
+  issuer_name?: string;
+  issuer_corporation_id: number;
+  assignee_id: number;
+  assignee_name?: string;
+  acceptor_id?: number;
+  acceptor_name?: string;
+  start_location_id?: number;
+  start_location_name?: string;
+  end_location_id?: number;
+  end_location_name?: string;
+  type: 'item_exchange' | 'auction' | 'courier' | 'loan';
+  status: 'outstanding' | 'in_progress' | 'finished_issuer' | 'finished_contractor' | 'finished' | 'cancelled' | 'rejected' | 'failed' | 'deleted' | 'reversed';
+  title?: string;
+  for_corporation: boolean;
+  availability: 'public' | 'personal' | 'corporation' | 'alliance';
+  date_issued: string;
+  date_expired: string;
+  date_accepted?: string;
+  date_completed?: string;
+  days_to_complete?: number;
+  price?: number;
+  reward?: number;
+  collateral?: number;
+  buyout?: number;
+  volume?: number;
+}
+
+export interface ESIContractItemData {
+  contract_id: number;
+  record_id: number;
+  type_id: number;
+  type_name?: string;
+  quantity: number;
+  is_included: boolean;
+  is_singleton: boolean;
+  raw_quantity?: number;
+}
+
 export class ESIDataStorageService {
   constructor(private dbManager: DatabaseManager) {}
 
@@ -1950,6 +1991,109 @@ export class ESIDataStorageService {
       return result;
     } catch (error) {
       console.error('❌ Failed to store container logs:', error);
+      throw error;
+    }
+  }
+
+  async storeContracts(corporationId: number, contractsData: ESIContractData[]): Promise<QueryResult> {
+    try {
+      console.log(`📥 Storing ${contractsData.length} contracts for corp ${corporationId}`);
+      
+      const values = contractsData.map(contract => `(
+        ${contract.contract_id},
+        ${corporationId},
+        ${contract.issuer_id},
+        ${contract.issuer_name ? `'${this.escape(contract.issuer_name)}'` : 'NULL'},
+        ${contract.issuer_corporation_id},
+        ${contract.assignee_id},
+        ${contract.assignee_name ? `'${this.escape(contract.assignee_name)}'` : 'NULL'},
+        ${contract.acceptor_id || 'NULL'},
+        ${contract.acceptor_name ? `'${this.escape(contract.acceptor_name)}'` : 'NULL'},
+        ${contract.start_location_id || 'NULL'},
+        ${contract.start_location_name ? `'${this.escape(contract.start_location_name)}'` : 'NULL'},
+        ${contract.end_location_id || 'NULL'},
+        ${contract.end_location_name ? `'${this.escape(contract.end_location_name)}'` : 'NULL'},
+        '${contract.type}',
+        '${contract.status}',
+        ${contract.title ? `'${this.escape(contract.title)}'` : 'NULL'},
+        ${contract.for_corporation ? 1 : 0},
+        '${contract.availability}',
+        '${contract.date_issued}',
+        '${contract.date_expired}',
+        ${contract.date_accepted ? `'${contract.date_accepted}'` : 'NULL'},
+        ${contract.date_completed ? `'${contract.date_completed}'` : 'NULL'},
+        ${contract.days_to_complete || 'NULL'},
+        ${contract.price || 'NULL'},
+        ${contract.reward || 'NULL'},
+        ${contract.collateral || 'NULL'},
+        ${contract.buyout || 'NULL'},
+        ${contract.volume || 'NULL'},
+        CURRENT_TIMESTAMP
+      )`).join(',\n');
+
+      const sql = `
+        INSERT INTO contracts (
+          contract_id, corporation_id, issuer_id, issuer_name, issuer_corporation_id,
+          assignee_id, assignee_name, acceptor_id, acceptor_name,
+          start_location_id, start_location_name, end_location_id, end_location_name,
+          type, status, title, for_corporation, availability,
+          date_issued, date_expired, date_accepted, date_completed,
+          days_to_complete, price, reward, collateral, buyout, volume, last_update
+        ) VALUES ${values}
+        ON DUPLICATE KEY UPDATE
+          issuer_name = VALUES(issuer_name),
+          assignee_name = VALUES(assignee_name),
+          acceptor_id = VALUES(acceptor_id),
+          acceptor_name = VALUES(acceptor_name),
+          start_location_name = VALUES(start_location_name),
+          end_location_name = VALUES(end_location_name),
+          status = VALUES(status),
+          date_accepted = VALUES(date_accepted),
+          date_completed = VALUES(date_completed),
+          last_update = CURRENT_TIMESTAMP
+      `;
+
+      const result = await this.dbManager.query(sql);
+      console.log(`✅ Stored ${contractsData.length} contracts successfully`);
+      return result;
+    } catch (error) {
+      console.error('❌ Failed to store contracts:', error);
+      throw error;
+    }
+  }
+
+  async storeContractItems(contractId: number, itemsData: ESIContractItemData[]): Promise<QueryResult> {
+    try {
+      console.log(`📥 Storing ${itemsData.length} contract items for contract ${contractId}`);
+      
+      const values = itemsData.map(item => `(
+        ${contractId},
+        ${item.record_id},
+        ${item.type_id},
+        ${item.type_name ? `'${this.escape(item.type_name)}'` : 'NULL'},
+        ${item.quantity},
+        ${item.is_included ? 1 : 0},
+        ${item.is_singleton ? 1 : 0},
+        ${item.raw_quantity || 'NULL'},
+        CURRENT_TIMESTAMP
+      )`).join(',\n');
+
+      const sql = `
+        INSERT INTO contract_items (
+          contract_id, record_id, type_id, type_name, quantity,
+          is_included, is_singleton, raw_quantity, last_update
+        ) VALUES ${values}
+        ON DUPLICATE KEY UPDATE
+          type_name = VALUES(type_name),
+          quantity = VALUES(quantity),
+          last_update = CURRENT_TIMESTAMP
+      `;
+
+      const result = await this.dbManager.query(sql);
+      console.log(`✅ Stored ${itemsData.length} contract items successfully`);
+      return result;
+    } catch (error) {
+      console.error('❌ Failed to store contract items:', error);
       throw error;
     }
   }

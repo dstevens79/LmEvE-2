@@ -27,7 +27,8 @@ import {
   TrendUp,
   Crosshair,
   CurrencyDollar,
-  Building
+  Building,
+  FileText
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useSyncSettings } from '@/lib/persistenceService';
@@ -185,6 +186,19 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       currentVersion: 'v1',
       availableVersions: ['v1'],
       nextRun: null
+    },
+    {
+      id: 'corporation_contracts',
+      name: 'Corp Contracts',
+      description: 'Sync corporation contracts and contract items',
+      icon: FileText,
+      enabled: syncSettings.corporationContracts?.enabled ?? true,
+      interval: syncSettings.corporationContracts?.interval ?? 30,
+      lastSync: null,
+      status: 'idle',
+      currentVersion: 'v1',
+      availableVersions: ['v1'],
+      nextRun: null
     }
   ]);
 
@@ -258,7 +272,8 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
         'corporation_wallets': 'wallet',
         'mining_ledger': 'mining',
         'killmails': 'killmails',
-        'structures': 'container_logs'
+        'structures': 'container_logs',
+        'corporation_contracts': 'contracts'
       };
 
       const processType = processTypeMap[processId];

@@ -6,7 +6,9 @@ import type {
   ESIMarketOrderData,
   ESIWalletTransactionData,
   ESIMiningLedgerData,
-  ESIContainerLogData
+  ESIContainerLogData,
+  ESIContractData,
+  ESIContractItemData
 } from './database';
 
 export interface ESIFetchOptions {
@@ -123,7 +125,7 @@ export class ESIDataFetchService {
     return allData;
   }
 
-  async fetchCorporationMembers(options: ESIFetchOptions): Promise<ESIFetchResult<ESIMemberData>> {
+  async fetchCorporationMembersDetailed(options: ESIFetchOptions): Promise<ESIFetchResult<ESIMemberData>> {
     try {
       console.log(`📥 Fetching corporation members for corp ${options.corporationId}`);
 
@@ -168,7 +170,7 @@ export class ESIDataFetchService {
     }
   }
 
-  async fetchCorporationAssets(options: ESIFetchOptions): Promise<ESIFetchResult<ESIAssetData>> {
+  async fetchCorporationAssetsDetailed(options: ESIFetchOptions): Promise<ESIFetchResult<ESIAssetData>> {
     try {
       console.log(`📥 Fetching corporation assets for corp ${options.corporationId}`);
 
@@ -214,7 +216,7 @@ export class ESIDataFetchService {
     }
   }
 
-  async fetchIndustryJobs(options: ESIFetchOptions): Promise<ESIFetchResult<ESIIndustryJobData>> {
+  async fetchIndustryJobsDetailed(options: ESIFetchOptions): Promise<ESIFetchResult<ESIIndustryJobData>> {
     try {
       console.log(`📥 Fetching industry jobs for corp ${options.corporationId}`);
 
@@ -274,7 +276,7 @@ export class ESIDataFetchService {
     }
   }
 
-  async fetchMarketOrders(options: ESIFetchOptions): Promise<ESIFetchResult<ESIMarketOrderData>> {
+  async fetchMarketOrdersDetailed(options: ESIFetchOptions): Promise<ESIFetchResult<ESIMarketOrderData>> {
     try {
       console.log(`📥 Fetching market orders for corp ${options.corporationId}`);
 
@@ -321,7 +323,7 @@ export class ESIDataFetchService {
     }
   }
 
-  async fetchWalletData(
+  async fetchWalletDataDetailed(
     options: ESIFetchOptions & { division: number }
   ): Promise<ESIFetchResult<ESIWalletTransactionData>> {
     try {
@@ -367,7 +369,7 @@ export class ESIDataFetchService {
     }
   }
 
-  async fetchMiningLedger(options: ESIFetchOptions): Promise<ESIFetchResult<ESIMiningLedgerData>> {
+  async fetchMiningLedgerDetailed(options: ESIFetchOptions): Promise<ESIFetchResult<ESIMiningLedgerData>> {
     try {
       console.log(`📥 Fetching mining ledger for corp ${options.corporationId}`);
 
@@ -414,7 +416,7 @@ export class ESIDataFetchService {
     }
   }
 
-  async fetchContainerLogs(options: ESIFetchOptions): Promise<ESIFetchResult<ESIContainerLogData>> {
+  async fetchContainerLogsDetailed(options: ESIFetchOptions): Promise<ESIFetchResult<ESIContainerLogData>> {
     try {
       console.log(`📥 Fetching container logs for corp ${options.corporationId}`);
 
@@ -447,6 +449,96 @@ export class ESIDataFetchService {
       };
     } catch (error) {
       console.error('❌ Failed to fetch container logs:', error);
+      return {
+        success: false,
+        data: [],
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  async fetchCorporationContractsDetailed(options: ESIFetchOptions): Promise<ESIFetchResult<any>> {
+    try {
+      console.log(`📥 Fetching corporation contracts for corp ${options.corporationId}`);
+
+      const url = `${ESI_BASE_URL}/corporations/${options.corporationId}/contracts/`;
+      const contractsRaw = await this.fetchPaginated<any>(url, options.accessToken, options.maxPages || 10);
+
+      const contractsData = contractsRaw.map(contract => ({
+        contract_id: contract.contract_id,
+        issuer_id: contract.issuer_id,
+        issuer_corporation_id: contract.issuer_corporation_id,
+        assignee_id: contract.assignee_id,
+        acceptor_id: contract.acceptor_id,
+        start_location_id: contract.start_location_id,
+        end_location_id: contract.end_location_id,
+        type: contract.type,
+        status: contract.status,
+        title: contract.title,
+        for_corporation: contract.for_corporation,
+        availability: contract.availability,
+        date_issued: contract.date_issued,
+        date_expired: contract.date_expired,
+        date_accepted: contract.date_accepted,
+        date_completed: contract.date_completed,
+        days_to_complete: contract.days_to_complete,
+        price: contract.price,
+        reward: contract.reward,
+        collateral: contract.collateral,
+        buyout: contract.buyout,
+        volume: contract.volume,
+      }));
+
+      console.log(`✅ Fetched ${contractsData.length} corporation contracts`);
+      return {
+        success: true,
+        data: contractsData,
+        pages: Math.ceil(contractsRaw.length / 1000)
+      };
+    } catch (error) {
+      console.error('❌ Failed to fetch corporation contracts:', error);
+      return {
+        success: false,
+        data: [],
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  async fetchContractItemsDetailed(options: ESIFetchOptions & { contractId: number }): Promise<ESIFetchResult<any>> {
+    try {
+      console.log(`📥 Fetching items for contract ${options.contractId}`);
+
+      const url = `${ESI_BASE_URL}/corporations/${options.corporationId}/contracts/${options.contractId}/items/`;
+      const result = await this.fetchWithRetry<any[]>(url, options.accessToken);
+
+      const itemsData = result.data.map((item, index) => ({
+        contract_id: options.contractId,
+        record_id: item.record_id || index,
+        type_id: item.type_id,
+        quantity: item.quantity,
+        is_included: item.is_included,
+        is_singleton: item.is_singleton,
+        raw_quantity: item.raw_quantity,
+      }));
+
+      for (const item of itemsData) {
+        try {
+          item.type_name = await this.getTypeName(item.type_id);
+        } catch (error) {
+          console.warn(`⚠️ Failed to fetch type name for contract item`);
+        }
+      }
+
+      console.log(`✅ Fetched ${itemsData.length} items for contract ${options.contractId}`);
+      return {
+        success: true,
+        data: itemsData,
+        cached: result.fromCache,
+        etag: result.etag
+      };
+    } catch (error) {
+      console.error(`❌ Failed to fetch contract items for contract ${options.contractId}:`, error);
       return {
         success: false,
         data: [],
@@ -499,6 +591,51 @@ export class ESIDataFetchService {
         return `Station ${stationId}`;
       }
     }
+  }
+
+  async fetchCorporationMembers(corporationId: number, accessToken: string): Promise<ESIMemberData[]> {
+    const result = await this.fetchCorporationMembersDetailed({ corporationId, accessToken });
+    return result.success ? result.data : [];
+  }
+
+  async fetchCorporationAssets(corporationId: number, accessToken: string): Promise<ESIAssetData[]> {
+    const result = await this.fetchCorporationAssetsDetailed({ corporationId, accessToken });
+    return result.success ? result.data : [];
+  }
+
+  async fetchIndustryJobs(corporationId: number, accessToken: string): Promise<ESIIndustryJobData[]> {
+    const result = await this.fetchIndustryJobsDetailed({ corporationId, accessToken });
+    return result.success ? result.data : [];
+  }
+
+  async fetchMarketOrders(corporationId: number, accessToken: string): Promise<ESIMarketOrderData[]> {
+    const result = await this.fetchMarketOrdersDetailed({ corporationId, accessToken });
+    return result.success ? result.data : [];
+  }
+
+  async fetchWalletTransactions(corporationId: number, division: number, accessToken: string): Promise<ESIWalletTransactionData[]> {
+    const result = await this.fetchWalletDataDetailed({ corporationId, accessToken, division });
+    return result.success ? result.data : [];
+  }
+
+  async fetchMiningLedger(corporationId: number, accessToken: string): Promise<ESIMiningLedgerData[]> {
+    const result = await this.fetchMiningLedgerDetailed({ corporationId, accessToken });
+    return result.success ? result.data : [];
+  }
+
+  async fetchContainerLogs(corporationId: number, accessToken: string): Promise<ESIContainerLogData[]> {
+    const result = await this.fetchContainerLogsDetailed({ corporationId, accessToken });
+    return result.success ? result.data : [];
+  }
+
+  async fetchCorporationContracts(corporationId: number, accessToken: string): Promise<ESIContractData[]> {
+    const result = await this.fetchCorporationContractsDetailed({ corporationId, accessToken });
+    return result.success ? result.data : [];
+  }
+
+  async fetchContractItems(corporationId: number, contractId: number, accessToken: string): Promise<ESIContractItemData[]> {
+    const result = await this.fetchContractItemsDetailed({ corporationId, accessToken, contractId });
+    return result.success ? result.data : [];
   }
 }
 
