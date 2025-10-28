@@ -583,165 +583,189 @@ export function Buyback({ isMobileView }: BuybackProps) {
             </Card>
           )}
 
-          <div className="space-y-4">
-            <div className="grid lg:grid-cols-2 gap-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Paste Items from EVE Online</CardTitle>
-                  <CardDescription>Drag and drop or paste copied item list from EVE Online</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div
-                    onDrop={handleDrop}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setIsDragging(true);
-                    }}
-                    onDragLeave={() => setIsDragging(false)}
-                    className={`
-                      border-2 border-dashed rounded-lg p-6 transition-colors
-                      ${isDragging ? 'border-accent bg-accent/10' : 'border-border'}
-                      ${calculatedItems.length > 0 ? 'opacity-50' : ''}
-                    `}
-                  >
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-center">
-                        <FileText size={48} className="text-muted-foreground opacity-50" />
-                      </div>
-                      <div className="text-center">
-                        <p className="text-sm text-muted-foreground mb-2">
-                          Drag and drop text here or paste below
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Copy items from EVE inventory (Ctrl+C in game) and paste here
-                        </p>
-                      </div>
-                      
-                      <textarea
-                        value={pasteText}
-                        onChange={(e) => setPasteText(e.target.value)}
-                        placeholder="Tritanium  50000&#10;Pyerite  25000&#10;Mexallon  10000"
-                        disabled={calculatedItems.length > 0}
-                        className="w-full h-32 px-3 py-2 text-sm rounded-md border border-input bg-input/50 resize-none focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                      />
-
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={handlePaste}
-                          disabled={!pasteText.trim() || calculatedItems.length > 0}
-                          className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
-                        >
-                          <TrendUp size={16} className="mr-2" />
-                          Calculate Buyback
-                        </Button>
-                        {calculatedItems.length > 0 && (
-                          <Button
-                            onClick={handleClearCalculation}
-                            variant="outline"
-                          >
-                            <X size={16} className="mr-2" />
-                            Clear
-                          </Button>
-                        )}
-                      </div>
+          <div className="grid lg:grid-cols-3 gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Paste Items</CardTitle>
+                <CardDescription>Drag and drop or paste item list</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  className={`
+                    border-2 border-dashed rounded-lg p-4 transition-colors
+                    ${isDragging ? 'border-accent bg-accent/10' : 'border-border'}
+                    ${calculatedItems.length > 0 ? 'opacity-50' : ''}
+                  `}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-center">
+                      <FileText size={40} className="text-muted-foreground opacity-50" />
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-accent/50">
-                <CardHeader>
-                  <CardTitle>Summary</CardTitle>
-                  <CardDescription>
-                    {calculatedItems.length > 0 ? `${calculatedItems.length} items calculated` : 'Ready to calculate'}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Items</p>
-                      <p className="text-2xl font-bold">{calculatedItems.length || 0}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Effective Rate</p>
-                      <p className="text-2xl font-bold">
-                        {calculationSummary.totalValue > 0 
-                          ? ((calculationSummary.totalPayout / calculationSummary.totalValue) * 100).toFixed(1)
-                          : 0}%
+                    <div className="text-center">
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Drag text here or paste below
                       </p>
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total Value</p>
-                      <p className="text-lg font-bold">{formatISK(calculationSummary.totalValue)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Your Payout</p>
-                      <p className="text-lg font-bold text-green-500">{formatISK(calculationSummary.totalPayout)}</p>
-                    </div>
-                  </div>
+                    
+                    <textarea
+                      value={pasteText}
+                      onChange={(e) => setPasteText(e.target.value)}
+                      placeholder="Tritanium  50000&#10;Pyerite  25000&#10;Mexallon  10000"
+                      disabled={calculatedItems.length > 0}
+                      className="w-full h-24 px-3 py-2 text-sm rounded-md border border-input bg-input/50 resize-none focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                    />
 
-                  {calculatedItems.length > 0 && (calculationSummary.excludedCount > 0 || calculationSummary.manualCount > 0) && (
-                    <>
-                      <Separator />
-                      <div className="flex gap-2">
-                        {calculationSummary.excludedCount > 0 && (
-                          <Badge variant="destructive" className="bg-red-500/20 text-red-500 border-red-500/30 flex-1 justify-center">
-                            {calculationSummary.excludedCount} excluded
-                          </Badge>
-                        )}
-                        {calculationSummary.manualCount > 0 && (
-                          <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30 flex-1 justify-center">
-                            {calculationSummary.manualCount} manual
-                          </Badge>
-                        )}
-                      </div>
-                    </>
-                  )}
-
-                  <Separator />
-
-                  <div className="space-y-3">
-                    {calculatedItems.length > 0 ? (
-                      <>
-                        <p className="text-xs text-muted-foreground text-center">
-                          Click Accept to generate contract validation key
-                        </p>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handlePaste}
+                        disabled={!pasteText.trim() || calculatedItems.length > 0}
+                        className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
+                        size="sm"
+                      >
+                        <TrendUp size={14} className="mr-2" />
+                        Calculate
+                      </Button>
+                      {calculatedItems.length > 0 && (
                         <Button
-                          onClick={handleAcceptContract}
-                          size="lg"
-                          className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
+                          onClick={handleClearCalculation}
+                          variant="outline"
+                          size="sm"
                         >
-                          <CheckCircle size={20} className="mr-2" />
-                          Accept & Generate Contract
+                          <X size={14} />
                         </Button>
-                      </>
-                    ) : (
-                      <div className="text-center py-4">
-                        <p className="text-sm text-muted-foreground">
-                          Paste items to see your buyback calculation
-                        </p>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
+                </div>
+              </CardContent>
+            </Card>
 
-            {calculatedItems.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Parsed Items</CardTitle>
-                  <CardDescription>{calculatedItems.length} items ready for contract</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="border border-border rounded-lg overflow-hidden">
+            <Card className="border-accent/50">
+              <CardHeader>
+                <CardTitle>Summary & Items</CardTitle>
+                <CardDescription>
+                  {calculatedItems.length > 0 ? `${calculatedItems.length} items` : 'Ready to calculate'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Items</p>
+                    <p className="text-xl font-bold">{calculatedItems.length || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Effective Rate</p>
+                    <p className="text-xl font-bold">
+                      {calculationSummary.totalValue > 0 
+                        ? ((calculationSummary.totalPayout / calculationSummary.totalValue) * 100).toFixed(1)
+                        : 0}%
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Value</p>
+                    <p className="text-sm font-bold">{formatISK(calculationSummary.totalValue)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Your Payout</p>
+                    <p className="text-sm font-bold text-green-500">{formatISK(calculationSummary.totalPayout)}</p>
+                  </div>
+                </div>
+
+                {calculatedItems.length > 0 && (calculationSummary.excludedCount > 0 || calculationSummary.manualCount > 0) && (
+                  <>
+                    <Separator />
+                    <div className="flex gap-2">
+                      {calculationSummary.excludedCount > 0 && (
+                        <Badge variant="destructive" className="bg-red-500/20 text-red-500 border-red-500/30 flex-1 justify-center text-xs">
+                          {calculationSummary.excludedCount} excluded
+                        </Badge>
+                      )}
+                      {calculationSummary.manualCount > 0 && (
+                        <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30 flex-1 justify-center text-xs">
+                          {calculationSummary.manualCount} manual
+                        </Badge>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <Separator />
+
+                <div className="space-y-2">
+                  {calculatedItems.length > 0 ? (
+                    <>
+                      <p className="text-xs text-muted-foreground text-center">
+                        Click Accept to generate validation key
+                      </p>
+                      <Button
+                        onClick={handleAcceptContract}
+                        className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
+                        size="sm"
+                      >
+                        <CheckCircle size={16} className="mr-2" />
+                        Accept Contract
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="text-center py-3">
+                      <p className="text-xs text-muted-foreground">
+                        Paste items to calculate
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {calculatedItems.length > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      <p className="text-xs font-semibold text-muted-foreground">Parsed Items</p>
+                      {calculatedItems.map((item, index) => (
+                        <div 
+                          key={index}
+                          className={`flex items-center justify-between text-xs p-2 rounded ${
+                            item.excluded ? 'bg-red-500/10' : item.isManualPrice ? 'bg-yellow-500/10' : 'bg-muted/30'
+                          }`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium truncate">{item.typeName}</div>
+                            <div className="text-muted-foreground">
+                              {item.quantity.toLocaleString()} × {formatISK(item.unitPrice)}
+                            </div>
+                          </div>
+                          <div className="text-right ml-2">
+                            <div className={`font-medium ${item.excluded ? 'text-red-500' : 'text-green-500'}`}>
+                              {formatISK(item.totalPayout)}
+                            </div>
+                            <div className="text-muted-foreground">{item.buybackPercentage}%</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Item Details</CardTitle>
+                <CardDescription>Full breakdown of calculated items</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {calculatedItems.length > 0 ? (
+                  <div className="border border-border rounded-lg overflow-hidden max-h-[600px] overflow-y-auto">
                     <Table>
-                      <TableHeader>
+                      <TableHeader className="sticky top-0 bg-card z-10">
                         <TableRow>
                           <TableHead>Item</TableHead>
-                          <TableHead className="text-right">Quantity</TableHead>
-                          <TableHead className="text-right">Unit Price</TableHead>
-                          <TableHead className="text-right">Total Value</TableHead>
+                          <TableHead className="text-right">Qty</TableHead>
                           <TableHead className="text-right">Rate</TableHead>
                           <TableHead className="text-right">Payout</TableHead>
                         </TableRow>
@@ -753,8 +777,11 @@ export function Buyback({ isMobileView }: BuybackProps) {
                             className={item.excluded ? 'bg-red-500/10' : item.isManualPrice ? 'bg-yellow-500/10' : ''}
                           >
                             <TableCell>
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{item.typeName}</span>
+                              <div className="space-y-1">
+                                <div className="font-medium text-sm">{item.typeName}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {formatISK(item.unitPrice)}/unit
+                                </div>
                                 {item.excluded && (
                                   <Badge variant="destructive" className="text-xs bg-red-500/20 text-red-500 border-red-500/30">
                                     Not Accepted
@@ -762,30 +789,24 @@ export function Buyback({ isMobileView }: BuybackProps) {
                                 )}
                                 {item.isManualPrice && !item.excluded && (
                                   <Badge variant="secondary" className="text-xs bg-yellow-500/20 text-yellow-500 border-yellow-500/30">
-                                    Manual Rate
+                                    Manual
                                   </Badge>
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell className="text-right font-mono">
+                            <TableCell className="text-right font-mono text-sm">
                               {item.quantity.toLocaleString()}
                             </TableCell>
-                            <TableCell className="text-right font-mono text-sm">
-                              {formatISK(item.unitPrice)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              {formatISK(item.totalItemValue)}
-                            </TableCell>
                             <TableCell className="text-right">
-                              <span className={`font-medium ${item.excluded ? 'text-red-500' : item.isManualPrice ? 'text-yellow-500' : ''}`}>
+                              <div className="text-sm font-medium">
                                 {item.buybackPercentage}%
-                                {item.isManualPrice && !item.excluded && (
-                                  <span className="text-xs ml-1">({formatISK(item.payoutPerItem)}/unit)</span>
-                                )}
-                              </span>
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {formatISK(item.totalItemValue)}
+                              </div>
                             </TableCell>
                             <TableCell className="text-right font-mono">
-                              <span className={item.excluded ? 'text-red-500' : 'text-green-500'}>
+                              <span className={`font-medium ${item.excluded ? 'text-red-500' : 'text-green-500'}`}>
                                 {formatISK(item.totalPayout)}
                               </span>
                             </TableCell>
@@ -794,9 +815,17 @@ export function Buyback({ isMobileView }: BuybackProps) {
                       </TableBody>
                     </Table>
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                ) : (
+                  <div className="text-center py-12">
+                    <Package size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
+                    <p className="text-sm text-muted-foreground">No items calculated yet</p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Paste items in the left panel to see details
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
