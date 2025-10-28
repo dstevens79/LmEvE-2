@@ -143,7 +143,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
       }
     });
     
-    return Array.from(locationMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(locationMap.values()).sort((stationA, stationB) => stationA.name.localeCompare(stationB.name));
   }, [assets]);
 
   const hangars = useMemo<CorpHangar[]>(() => {
