@@ -583,7 +583,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
             </Card>
           )}
 
-          <div className="grid lg:grid-cols-[1fr,400px] gap-4">
+          <div className="grid lg:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
                 <CardTitle>Paste Items from EVE Online</CardTitle>
