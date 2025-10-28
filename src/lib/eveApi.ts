@@ -188,6 +188,22 @@ class EVEApi {
   }
 
   /**
+   * Get corporation members (requires authentication)
+   */
+  async getCorporationMembers(corporationId: number, token?: string): Promise<number[]> {
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    
+    return this.makeRequest<number[]>(
+      `/corporations/${corporationId}/members/`,
+      { headers },
+      300000 // 5 minute cache for members
+    );
+  }
+
+  /**
    * Get corporation industry jobs (requires authentication)
    * Note: This would require proper OAuth implementation in production
    */
@@ -296,6 +312,49 @@ class EVEApi {
   }
 
   /**
+   * Get structure information by structure ID (requires authentication)
+   */
+  async getStructure(structureId: number, token?: string): Promise<{ name: string; solar_system_id: number; type_id?: number }> {
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    
+    return this.makeRequest<{ name: string; solar_system_id: number; type_id?: number }>(
+      `/universe/structures/${structureId}/`,
+      { headers },
+      86400000 // 24 hour cache for structure info
+    );
+  }
+
+  /**
+   * Resolve location name (station or structure) - handles both NPC stations and player structures
+   */
+  async getLocationName(locationId: number, token?: string): Promise<string> {
+    try {
+      if (locationId >= 60000000 && locationId < 64000000) {
+        const station = await this.getStation(locationId);
+        return station.name;
+      } else if (locationId > 1000000000000) {
+        if (!token) {
+          return `Structure ${locationId}`;
+        }
+        try {
+          const structure = await this.getStructure(locationId, token);
+          return structure.name;
+        } catch {
+          return `Structure ${locationId}`;
+        }
+      } else {
+        return `Unknown Location ${locationId}`;
+      }
+    } catch (error) {
+      console.error(`Failed to resolve location ${locationId}:`, error);
+      return `Location ${locationId}`;
+    }
+  }
+
+  /**
    * Search for items by name
    */
   async search(query: string, categories: string[] = ['inventory_type']): Promise<{ inventory_type?: number[] }> {
@@ -308,22 +367,44 @@ class EVEApi {
   }
 
   /**
-   * Batch get type names for multiple type IDs
+   * Batch get names for multiple IDs (types, characters, corporations, stations, etc.)
+   */
+  async getNames(ids: number[]): Promise<Array<{ id: number; name: string; category: string }>> {
+    if (ids.length === 0) return [];
+    
+    // ESI limits batch requests to 1000 IDs
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += 1000) {
+      chunks.push(ids.slice(i, i + 1000));
+    }
+    
+    const results = await Promise.all(
+      chunks.map(chunk =>
+        this.makeRequest<Array<{ id: number; name: string; category: string }>>(
+          '/universe/names/',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(chunk),
+          },
+          3600000 // 1 hour cache for names
+        )
+      )
+    );
+    
+    return results.flat();
+  }
+
+  /**
+   * Batch get type names for multiple type IDs (convenience wrapper)
    */
   async getTypeNames(typeIds: number[]): Promise<Array<{ type_id: number; type_name: string }>> {
     if (typeIds.length === 0) return [];
     
-    return this.makeRequest<Array<{ type_id: number; type_name: string }>>(
-      '/universe/names/',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(typeIds),
-      },
-      3600000 // 1 hour cache for type names
-    );
+    const names = await this.getNames(typeIds);
+    return names.map(n => ({ type_id: n.id, type_name: n.name }));
   }
 
   /**

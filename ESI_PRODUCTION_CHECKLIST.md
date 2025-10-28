@@ -28,14 +28,13 @@ This document outlines all areas where test/fake data needs to be replaced with 
 ## 2. Corporation Data
 
 ### 2.1 Corporation Members
-- ❌ **Member list** (`src/lib/LMeveDataContext.tsx` line 121-150)
-  - Current: Mock data with hardcoded members
+- ✅ **Member list** (`src/lib/LMeveDataContext.tsx` line 121-150)
+  - Status: Implemented with ESI integration
   - ESI Route: `GET /corporations/{corporation_id}/members/`
   - ESI Scopes: `esi-corporations.read_corporation_membership.v1`
-  - Additional Routes Needed:
-    - `GET /characters/{character_id}/` for each member (public data)
-    - `GET /corporations/{corporation_id}/membertracking/` for login tracking (requires director role)
-  - Priority: HIGH
+  - Implementation: Fetches member IDs and resolves names via `POST /universe/names/`
+  - Note: Additional member tracking data (login times, etc.) requires director role
+  - Priority: HIGH ✅
 
 ### 2.2 Corporation Info
 - ⚠️ **Corporation details** (`src/lib/eveApi.ts` line 186-188)
@@ -49,54 +48,62 @@ This document outlines all areas where test/fake data needs to be replaced with 
 ## 3. Assets & Hangars
 
 ### 3.1 Corporation Assets
-- ❌ **Asset retrieval** (`src/components/tabs/Assets.tsx`)
-  - Current: Mock station/hangar data with fake items
+- ✅ **Asset retrieval** (`src/lib/LMeveDataContext.tsx`)
+  - Status: Fully implemented with ESI integration
   - ESI Route: `GET /corporations/{corporation_id}/assets/`
   - ESI Scopes: `esi-assets.read_corporation_assets.v1`
-  - Additional Processing Needed:
-    - Asset name resolution: `POST /universe/names/` (batch resolve item_ids)
-    - Location resolution: `POST /universe/names/` (for station_ids)
-    - Type information: `GET /universe/types/{type_id}/` (for each unique type)
-  - Priority: CRITICAL
+  - Implementation: 
+    - Batch name resolution via `POST /universe/names/` for types
+    - Location resolution via `getLocationName()` helper
+    - Efficient batching to minimize API calls
+  - Priority: CRITICAL ✅
 
 ### 3.2 Hangar Organization
-- ❌ **Hangar divisions** (`src/components/tabs/Assets.tsx` line 46-58)
-  - Current: Fake hangar structure
-  - Needed: Parse ESI assets by `location_flag` field
+- ✅ **Hangar divisions** (`src/lib/LMeveDataContext.tsx`)
+  - Status: Implemented with proper location_flag parsing
+  - Implementation: `parseHangarFlag()` function maps ESI location flags
   - Location Flags Map:
     - `CorpSAG1` through `CorpSAG7` = Corporation hangars 1-7
     - `Hangar` = Personal hangar (for character assets)
-  - Priority: CRITICAL
+  - Priority: CRITICAL ✅
 
 ### 3.3 Station Information
-- ❌ **Station/Structure details** (`src/lib/eveApi.ts` line 290-296)
-  - Current: Basic API exists but not used for asset locations
+- ✅ **Station/Structure details** (`src/lib/eveApi.ts`)
+  - Status: Fully implemented with smart location resolution
   - ESI Routes:
     - NPC Stations: `GET /universe/stations/{station_id}/`
     - Player Structures: `GET /universe/structures/{structure_id}/` (requires auth + docking rights)
+  - Implementation: `getLocationName()` helper automatically detects and resolves stations vs structures
   - Required Scopes: `esi-universe.read_structures.v1`
-  - Priority: CRITICAL (for showing full station names in manufacturing tasks)
+  - Priority: CRITICAL ✅
 
 ---
 
 ## 4. Manufacturing & Industry
 
 ### 4.1 Industry Jobs
-- ❌ **Active jobs** (`src/components/tabs/Manufacturing.tsx` line 43)
-  - Current: Using mock local task system
+- ✅ **Active jobs** (`src/lib/LMeveDataContext.tsx`)
+  - Status: Fully implemented with ESI integration
   - ESI Route: `GET /corporations/{corporation_id}/industry/jobs/`
   - ESI Scopes: `esi-industry.read_corporation_jobs.v1`
+  - Implementation:
+    - Fetches all corporation industry jobs
+    - Batch resolves blueprint and product type names via `POST /universe/names/`
+    - Resolves installer character names
+    - Full station/structure name resolution
   - Returns: `activity_id`, `blueprint_id`, `blueprint_type_id`, `cost`, `duration`, `end_date`, `facility_id`, `installer_id`, `job_id`, `runs`, `start_date`, `station_id`, `status`
-  - Priority: CRITICAL
+  - Priority: CRITICAL ✅
 
 ### 4.2 Job Station/Facility Resolution
-- ❌ **Facility/Station names** (Manufacturing task assignments)
-  - Current: Hardcoded station names "Jita IV - Moon 4..." etc
-  - Needed: 
-    - Use `station_id` from industry job
-    - Call `GET /universe/stations/{station_id}/` or `GET /universe/structures/{structure_id}/`
-    - Display full station name (not just system)
-  - Priority: CRITICAL (explicitly requested)
+- ✅ **Facility/Station names** (`src/lib/LMeveDataContext.tsx`)
+  - Status: Fully implemented with smart location resolution
+  - Implementation: 
+    - Uses `getLocationName()` helper to resolve station_id from industry jobs
+    - Calls `GET /universe/stations/{station_id}/` for NPC stations
+    - Calls `GET /universe/structures/{structure_id}/` for player structures (with auth)
+    - Displays full station name (e.g., "Jita IV - Moon 4 - Caldari Navy Assembly Plant")
+    - Batch processing for efficiency
+  - Priority: CRITICAL ✅
 
 ### 4.3 Blueprints
 - ❌ **Blueprint library** (`src/components/tabs/Manufacturing.tsx` line 44)
@@ -239,12 +246,22 @@ This document outlines all areas where test/fake data needs to be replaced with 
 
 ## Implementation Priority Order
 
-### Phase 1: Critical Foundation (Do First)
+### Phase 1: Critical Foundation (COMPLETED ✅)
 1. ✅ Fix token passing in all ESI calls (add `user.accessToken` parameter)
+   - Status: All ESI API methods now properly accept and use token parameter
+   - Implementation: `eveApi.ts` methods include optional `token` parameter with Bearer auth
 2. ✅ Implement asset retrieval with proper hangar parsing
+   - Status: Full ESI asset retrieval with `parseHangarFlag()` function
+   - Implementation: Batch name resolution, location parsing, hangar division mapping
 3. ✅ Implement station/structure name resolution
+   - Status: `getLocationName()` helper resolves both NPC stations and player structures
+   - Implementation: Automatic detection and resolution with fallback handling
 4. ✅ Fix manufacturing job data to use ESI industry jobs endpoint
+   - Status: Full ESI integration with batch data resolution
+   - Implementation: Industry jobs fetch with type/installer/station name resolution
 5. ✅ Show full station names in manufacturing tasks (not just system)
+   - Status: Complete station name resolution in manufacturing jobs
+   - Implementation: Uses `getLocationName()` to display full station names
 
 ### Phase 2: Core Features
 6. ✅ Implement corporation member list

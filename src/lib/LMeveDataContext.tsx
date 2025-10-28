@@ -125,19 +125,30 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
       // First try to get from database
       let members = await dataService.getMembers(user.corporationId);
       
-      // If we have valid ESI token, try to enhance with real data
+      // If we have valid ESI token, fetch real member data
       if (user.accessToken && !isTokenExpired()) {
         try {
-          // Get corporation info to get member count
-          const corpInfo = await eveApi.getCorporation(user.corporationId);
+          const memberIds = await eveApi.getCorporationMembers(user.corporationId, user.accessToken);
           
-          // For a full implementation, we'd fetch the actual member list
-          // For now, we'll update the existing mock data with real corp info
-          members = members.map(member => ({
-            ...member,
+          const memberDetails = await eveApi.getNames(memberIds);
+          
+          const enhancedMembers: Member[] = memberDetails.map(detail => ({
+            id: detail.id.toString(),
+            characterId: detail.id,
+            characterName: detail.name,
             corporationId: user.corporationId,
-            // Could enhance with real character info here
+            corporationName: user.corporationName || 'Unknown',
+            role: 'member',
+            joinDate: new Date().toISOString(),
+            lastLogin: new Date().toISOString(),
+            status: 'active' as const,
+            location: 'Unknown',
+            shipType: 'Unknown',
+            skillPoints: 0,
+            roles: []
           }));
+          
+          return enhancedMembers;
         } catch (esiError) {
           console.warn('ESI member data fetch failed, using database data:', esiError);
         }
@@ -157,37 +168,47 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
       // First try to get from database
       let assets = await dataService.getAssets(user.corporationId);
       
-      // If we have valid ESI token, try to get real asset data
+      // If we have valid ESI token, fetch real asset data
       if (user.accessToken && !isTokenExpired()) {
         try {
           const esiAssets = await eveApi.getCorporationAssets(user.corporationId, user.accessToken);
           
-          // Convert ESI assets to our format
-          const enhancedAssets = await Promise.all(
-            esiAssets.slice(0, 100).map(async (esiAsset) => { // Limit to first 100 for demo
-              try {
-                const typeInfo = await eveApi.getType(esiAsset.type_id);
-                return {
-                  id: `esi_${esiAsset.item_id}`,
-                  typeId: esiAsset.type_id,
-                  typeName: typeInfo.name,
-                  quantity: esiAsset.quantity,
-                  location: `Location ${esiAsset.location_id}`, // Would resolve with ESI
-                  locationId: esiAsset.location_id,
-                  owner: user.characterName,
-                  ownerId: user.characterId,
-                  category: 'unknown', // Would determine from type info
-                  estimatedValue: 0, // Would calculate from market data
-                  lastUpdate: new Date().toISOString()
-                };
-              } catch {
-                return null;
-              }
+          const uniqueTypeIds = [...new Set(esiAssets.map(a => a.type_id))];
+          const typeNames = await eveApi.getNames(uniqueTypeIds);
+          const typeNameMap = new Map(typeNames.map(t => [t.id, t.name]));
+          
+          const uniqueLocationIds = [...new Set(esiAssets.map(a => a.location_id))];
+          const locationNames = await Promise.all(
+            uniqueLocationIds.map(async (locId) => {
+              const name = await eveApi.getLocationName(locId, user.accessToken);
+              return { id: locId, name };
             })
           );
-
-          const validAssets = enhancedAssets.filter(Boolean) as Asset[];
-          assets = [...assets, ...validAssets];
+          const locationNameMap = new Map(locationNames.map(l => [l.id, l.name]));
+          
+          const parseHangarFlag = (flag: string): string => {
+            const hangarMatch = flag.match(/CorpSAG(\d)/);
+            if (hangarMatch) return `Hangar ${hangarMatch[1]}`;
+            if (flag === 'Hangar') return 'Personal Hangar';
+            return flag;
+          };
+          
+          const enhancedAssets: Asset[] = esiAssets.map((esiAsset) => ({
+            id: `esi_${esiAsset.item_id}`,
+            typeId: esiAsset.type_id,
+            typeName: typeNameMap.get(esiAsset.type_id) || `Type ${esiAsset.type_id}`,
+            quantity: esiAsset.quantity,
+            location: locationNameMap.get(esiAsset.location_id) || `Location ${esiAsset.location_id}`,
+            locationId: esiAsset.location_id,
+            hangar: parseHangarFlag(esiAsset.location_flag),
+            owner: user.characterName,
+            ownerId: user.characterId,
+            category: 'unknown',
+            estimatedValue: 0,
+            lastUpdate: new Date().toISOString()
+          }));
+          
+          return enhancedAssets;
         } catch (esiError) {
           console.warn('ESI asset data fetch failed, using database data:', esiError);
         }
@@ -207,48 +228,57 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
       // First try to get from database
       let jobs = await dataService.getManufacturingJobs();
       
-      // If we have valid ESI token, try to get real industry jobs
+      // If we have valid ESI token, fetch real industry jobs
       if (user.accessToken && !isTokenExpired()) {
         try {
           const esiJobs = await eveApi.getCorporationIndustryJobs(user.corporationId, user.accessToken);
           
-          // Convert ESI jobs to our format
-          const enhancedJobs = await Promise.all(
-            esiJobs.slice(0, 50).map(async (esiJob) => { // Limit for demo
-              try {
-                const blueprintInfo = await eveApi.getType(esiJob.blueprint_type_id);
-                const productInfo = esiJob.product_type_id ? await eveApi.getType(esiJob.product_type_id) : null;
-                
-                return {
-                  id: `esi_${esiJob.job_id}`,
-                  blueprintId: esiJob.blueprint_type_id,
-                  blueprintName: blueprintInfo.name,
-                  productTypeId: esiJob.product_type_id || 0,
-                  productTypeName: productInfo?.name || 'Unknown',
-                  runs: esiJob.runs,
-                  startDate: esiJob.start_date,
-                  endDate: esiJob.end_date,
-                  status: esiJob.status,
-                  facility: `Station ${esiJob.station_id}`, // Would resolve with ESI
-                  facilityId: esiJob.station_id,
-                  installerId: esiJob.installer_id,
-                  installerName: 'Unknown', // Would resolve with ESI
-                  cost: esiJob.cost || 0,
-                  productQuantity: esiJob.runs,
-                  materialEfficiency: 0, // Not available in industry jobs endpoint
-                  timeEfficiency: 0,
-                  duration: esiJob.duration,
-                  materials: [], // Would need to calculate from blueprints
-                  priority: 'normal' as const
-                };
-              } catch {
-                return null;
-              }
+          const uniqueTypeIds = [
+            ...new Set([
+              ...esiJobs.map(j => j.blueprint_type_id),
+              ...esiJobs.filter(j => j.product_type_id).map(j => j.product_type_id!)
+            ])
+          ];
+          const typeNames = await eveApi.getNames(uniqueTypeIds);
+          const typeNameMap = new Map(typeNames.map(t => [t.id, t.name]));
+          
+          const uniqueInstallerIds = [...new Set(esiJobs.map(j => j.installer_id))];
+          const installerNames = await eveApi.getNames(uniqueInstallerIds);
+          const installerNameMap = new Map(installerNames.map(i => [i.id, i.name]));
+          
+          const uniqueStationIds = [...new Set(esiJobs.map(j => j.station_id))];
+          const stationNames = await Promise.all(
+            uniqueStationIds.map(async (stationId) => {
+              const name = await eveApi.getLocationName(stationId, user.accessToken);
+              return { id: stationId, name };
             })
           );
-
-          const validJobs = enhancedJobs.filter(Boolean) as ManufacturingJob[];
-          jobs = [...jobs, ...validJobs];
+          const stationNameMap = new Map(stationNames.map(s => [s.id, s.name]));
+          
+          const enhancedJobs: ManufacturingJob[] = esiJobs.map((esiJob) => ({
+            id: `esi_${esiJob.job_id}`,
+            blueprintId: esiJob.blueprint_type_id,
+            blueprintName: typeNameMap.get(esiJob.blueprint_type_id) || `Blueprint ${esiJob.blueprint_type_id}`,
+            productTypeId: esiJob.product_type_id || 0,
+            productTypeName: esiJob.product_type_id ? (typeNameMap.get(esiJob.product_type_id) || 'Unknown') : 'Unknown',
+            runs: esiJob.runs,
+            startDate: esiJob.start_date,
+            endDate: esiJob.end_date,
+            status: esiJob.status,
+            facility: stationNameMap.get(esiJob.station_id) || `Station ${esiJob.station_id}`,
+            facilityId: esiJob.station_id,
+            installerId: esiJob.installer_id,
+            installerName: installerNameMap.get(esiJob.installer_id) || 'Unknown',
+            cost: esiJob.cost || 0,
+            productQuantity: esiJob.runs,
+            materialEfficiency: 0,
+            timeEfficiency: 0,
+            duration: esiJob.duration,
+            materials: [],
+            priority: 'normal' as const
+          }));
+          
+          return enhancedJobs;
         } catch (esiError) {
           console.warn('ESI industry job data fetch failed, using database data:', esiError);
         }
