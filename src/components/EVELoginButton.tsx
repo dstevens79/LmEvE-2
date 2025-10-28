@@ -1,5 +1,5 @@
 import React from 'react';
-import { Rocket, Shield, Warning } from '@phosphor-icons/react';
+import { Shield, Warning } from '@phosphor-icons/react';
 
 interface EVELoginButtonProps {
   onClick: () => void;
@@ -19,35 +19,15 @@ export function EVELoginButton({
   showValidationStatus
 }: EVELoginButtonProps) {
   const sizeClasses = {
-    small: 'h-6 text-xs px-2',
-    medium: 'h-8 text-sm px-3', 
-    large: 'h-10 text-base px-4'
+    small: 'h-[30px]',
+    medium: 'h-[40px]', 
+    large: 'h-[50px]'
   };
 
   const iconSizes = {
     small: 12,
     medium: 16,
     large: 20
-  };
-
-  const getStatusIcon = () => {
-    if (showValidationStatus === 'configured') {
-      return <Shield size={iconSizes[size]} className="text-green-400" />;
-    } else if (showValidationStatus === 'no-corps') {
-      return <Warning size={iconSizes[size]} className="text-yellow-400" />;
-    } else if (showValidationStatus === 'not-configured') {
-      return <Warning size={iconSizes[size]} className="text-red-400" />;
-    }
-    return <Rocket size={iconSizes[size]} className="text-orange-400" />;
-  };
-
-  const getStatusText = () => {
-    if (showValidationStatus === 'not-configured') {
-      return 'ESI Not Configured';
-    } else if (showValidationStatus === 'no-corps') {
-      return 'Sign In with EVE Online';
-    }
-    return 'Sign In with EVE Online';
   };
 
   const getTooltipText = () => {
@@ -61,46 +41,54 @@ export function EVELoginButton({
     return 'Authenticate with EVE Online SSO';
   };
 
+  const getStatusIndicator = () => {
+    if (showValidationStatus === 'configured') {
+      return (
+        <div className="absolute -top-1 -right-1 bg-green-500 rounded-full p-1">
+          <Shield size={12} className="text-white" />
+        </div>
+      );
+    } else if (showValidationStatus === 'no-corps') {
+      return (
+        <div className="absolute -top-1 -right-1 bg-yellow-500 rounded-full p-1">
+          <Warning size={12} className="text-white" />
+        </div>
+      );
+    } else if (showValidationStatus === 'not-configured') {
+      return (
+        <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-1">
+          <Warning size={12} className="text-white" />
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="relative group">
       <button
         onClick={onClick}
         disabled={disabled}
-        className={`transition-all duration-200 hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+        className={`relative transition-all duration-200 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
         title={getTooltipText()}
       >
-        {/* EVE Online SSO Login Button */}
-        <div 
-          className={`bg-black text-white py-1 rounded font-medium flex items-center gap-2 ${sizeClasses[size]} ${
-            showValidationStatus === 'not-configured' ? 'border border-red-400/50' :
-            showValidationStatus === 'no-corps' ? 'border border-yellow-400/50' :
-            showValidationStatus === 'configured' ? 'border border-green-400/50' :
-            'border border-orange-400/30'
-          }`}
-          style={{
-            background: showValidationStatus === 'not-configured' 
-              ? 'linear-gradient(135deg, #2d1b1b 0%, #1a0000 100%)'
-              : showValidationStatus === 'no-corps'
-              ? 'linear-gradient(135deg, #2d2b1b 0%, #1a1800 100%)'
-              : showValidationStatus === 'configured'
-              ? 'linear-gradient(135deg, #1b2d1b 0%, #001a00 100%)'
-              : 'linear-gradient(135deg, #1a1a1a 0%, #000000 100%)'
-          }}
-        >
-          {getStatusIcon()}
-          <span>{getStatusText()}</span>
-          {showCorporationCount !== undefined && showCorporationCount > 0 && (
-            <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
-              showValidationStatus === 'configured' ? 'bg-green-400/20 text-green-400' : 'bg-orange-400/20 text-orange-400'
-            }`}>
-              {showCorporationCount}
-            </span>
-          )}
-        </div>
+        <img 
+          src="https://web.ccpgamescdn.com/eveonlineassets/developers/eve-sso-login-black-large.png"
+          alt="Sign in with EVE Online"
+          className={`${sizeClasses[size]} w-auto object-contain`}
+        />
+        
+        {getStatusIndicator()}
+        
+        {showCorporationCount !== undefined && showCorporationCount > 0 && (
+          <div className="absolute -bottom-1 -right-1 bg-accent rounded-full px-2 py-0.5 text-xs font-bold text-accent-foreground border-2 border-background">
+            {showCorporationCount}
+          </div>
+        )}
       </button>
       
       {/* Tooltip */}
-      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-50">
+      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1.5 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-50 shadow-lg">
         {getTooltipText()}
         <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-black"></div>
       </div>

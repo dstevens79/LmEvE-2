@@ -15,15 +15,40 @@ import {
 
 /**
  * EVE Online SSO Authentication Service
- * Implements PKCE (Proof Key for Code Exchange) for secure authentication
+ * 
+ * Implements OAuth2 with PKCE (Proof Key for Code Exchange) as per EVE SSO documentation
+ * Reference: https://developers.eveonline.com/docs/services/sso/
+ * 
+ * Key Features:
+ * - OAuth2 Authorization Code Flow with PKCE (RFC 7636)
+ * - JWT token validation (access tokens are JWTs as of 2023)
+ * - State parameter validation for CSRF protection
+ * - Token refresh using refresh tokens
+ * - Proper scope validation for character and corporation permissions
+ * 
+ * Security Notes:
+ * - Access tokens are JWT format and contain character information
+ * - JWT signatures can be validated using JWKS endpoint (optional)
+ * - State parameter protects against CSRF attacks
+ * - PKCE protects against authorization code interception
+ * - Tokens should be stored securely and never logged
+ * 
+ * Token Endpoints:
+ * - Authorization: https://login.eveonline.com/v2/oauth/authorize
+ * - Token: https://login.eveonline.com/v2/oauth/token
+ * - Verify: https://login.eveonline.com/oauth/verify
+ * - Revoke: https://login.eveonline.com/v2/oauth/revoke
+ * - JWKS: https://login.eveonline.com/oauth/jwks
  */
 
-// EVE Online SSO endpoints
+// EVE Online SSO endpoints (OAuth2 v2)
 const ESI_BASE_URL = 'https://esi.evetech.net';
 const SSO_BASE_URL = 'https://login.eveonline.com';
 const SSO_AUTH_URL = `${SSO_BASE_URL}/v2/oauth/authorize`;
 const SSO_TOKEN_URL = `${SSO_BASE_URL}/v2/oauth/token`;
 const SSO_VERIFY_URL = `${SSO_BASE_URL}/oauth/verify`;
+const SSO_REVOKE_URL = `${SSO_BASE_URL}/v2/oauth/revoke`;
+const SSO_JWKS_URL = `${SSO_BASE_URL}/oauth/jwks`;
 
 // Character-specific scopes (do not require corporation roles)
 const CHARACTER_SCOPES = [
@@ -148,29 +173,28 @@ export class ESIAuthService {
   }
 
   /**
-   * Initiate EVE SSO login with different scope types
+   * Initiate EVE SSO login with OAuth2 PKCE flow
+   * Constructs authorization URL per EVE SSO specification
    */
   async initiateLogin(scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic'): Promise<string> {
-    console.log('🚀 Initiating EVE SSO login with scope type:', scopeType);
+    console.log('🚀 Initiating EVE SSO OAuth2 login with scope type:', scopeType);
     
     const { verifier, challenge } = await this.generatePKCE();
     const state = this.generateState();
     const scopes = SCOPE_SETS[scopeType];
 
-    // Store auth state in session storage
     const authState: ESIAuthState = {
       state,
       verifier,
       challenge,
       timestamp: Date.now(),
-      scopeType, // Store the requested scope type
+      scopeType,
       scopes
     };
 
     sessionStorage.setItem('esi-auth-state', JSON.stringify(authState));
     sessionStorage.setItem('esi-login-attempt', 'true');
 
-    // Build authorization URL
     const params = new URLSearchParams({
       response_type: 'code',
       redirect_uri: this.redirectUri,
@@ -182,63 +206,59 @@ export class ESIAuthService {
     });
 
     const authUrl = `${SSO_AUTH_URL}?${params.toString()}`;
-    console.log('🔗 Generated auth URL for', scopeType, 'scopes:', authUrl);
+    console.log('🔗 OAuth2 authorization URL generated for', scopeType, 'scopes');
+    console.log('📋 Scopes requested:', scopes.length, 'scopes');
     
     return authUrl;
   }
 
   /**
-   * Handle the authorization callback with corporation validation
+   * Handle the OAuth2 authorization callback with full validation
+   * Validates state, exchanges code for token, and validates JWT
    */
   async handleCallback(
     code: string, 
     state: string,
     registeredCorps?: CorporationConfig[]
   ): Promise<LMeveUser> {
-    console.log('🔄 Processing ESI callback with validation');
+    console.log('🔄 Processing OAuth2 callback with state validation');
     
-    // Use provided corporations or instance corporations
     const corporations = registeredCorps || this.registeredCorporations;
     
-    // Retrieve stored auth state
     const storedStateData = sessionStorage.getItem('esi-auth-state');
     if (!storedStateData) {
-      throw new Error('No stored authentication state found');
+      throw new Error('No stored authentication state found - possible session timeout');
     }
 
     const authState: ESIAuthState = JSON.parse(storedStateData);
     
-    // Verify state parameter
     if (state !== authState.state) {
+      console.error('❌ State mismatch - CSRF attack detected');
       throw new Error('Invalid state parameter - possible CSRF attack');
     }
 
-    // Check if state is too old (5 minutes)
     if (Date.now() - authState.timestamp > 5 * 60 * 1000) {
-      throw new Error('Authentication state has expired');
+      throw new Error('Authentication state has expired (>5 minutes)');
     }
 
+    console.log('✅ State validation passed');
+
     try {
-      // Exchange authorization code for access token
       const tokenResponse = await this.exchangeCodeForToken(code, authState.verifier);
       
-      // Get character information
       const characterData = await this.getCharacterInfo(tokenResponse.access_token);
       
-      // Get character's corporation roles
       const corporationRoles = await this.getCharacterRoles(
         characterData.character_id, 
         tokenResponse.access_token
       );
 
-      // Validate user against corporation whitelist
       const validation = validateESIUser(characterData, corporationRoles, corporations);
       
       if (!validation.isValid) {
         throw new Error(validation.reason || 'Corporation validation failed');
       }
 
-      // Separate character and corporation scopes
       const userScopes = tokenResponse.scope?.split(' ') || characterData.scopes;
       const characterOnlyScopes = userScopes.filter(scope => 
         CHARACTER_SCOPES.includes(scope)
@@ -247,7 +267,6 @@ export class ESIAuthService {
         CORPORATION_SCOPES.includes(scope)
       );
       
-      // Validate required scopes based on user role
       const scopeValidation = validateRequiredScopes(
         userScopes, 
         validation.corporationConfig,
@@ -260,7 +279,6 @@ export class ESIAuthService {
           missingScopes: scopeValidation.missingScopes
         });
         
-        // For corporation roles (director/admin), missing corp scopes is a hard fail
         if (['corp_director', 'corp_admin'].includes(validation.suggestedRole) && 
             scopeValidation.missingScopes.some(scope => CORPORATION_SCOPES.includes(scope))) {
           throw new Error(
@@ -269,7 +287,6 @@ export class ESIAuthService {
             `Missing: ${scopeValidation.missingScopes.join(', ')}`
           );
         }
-        // For other roles, warn but allow login with reduced functionality
       }
       
       console.log('✅ Scope validation:', {
@@ -279,7 +296,6 @@ export class ESIAuthService {
         hasAllRequired: scopeValidation.isValid
       });
 
-      // Get corporation name
       let corporationName = '';
       try {
         corporationName = await this.getCorporationName(characterData.corporation_id);
@@ -288,7 +304,6 @@ export class ESIAuthService {
         corporationName = 'Unknown Corporation';
       }
 
-      // Get alliance name if applicable
       let allianceName: string | undefined;
       if (characterData.alliance_id) {
         try {
@@ -298,7 +313,6 @@ export class ESIAuthService {
         }
       }
 
-      // Create user with validated role
       const userData: Partial<LMeveUser> = {
         characterId: characterData.character_id,
         characterName: characterData.character_name,
@@ -324,11 +338,9 @@ export class ESIAuthService {
         validationReason: validation.reason
       });
 
-      // If this is a new corporation being self-registered, return additional info
       if (!validation.corporationConfig && validation.suggestedRole === 'corp_admin') {
         console.log('🏢 New corporation self-registration detected');
         
-        // Note: The auth provider should handle creating the corporation config
         (user as any)._requiresCorporationRegistration = {
           corporationId: characterData.corporation_id,
           corporationName,
@@ -336,7 +348,6 @@ export class ESIAuthService {
         };
       }
 
-      // Clean up session storage
       sessionStorage.removeItem('esi-auth-state');
       sessionStorage.removeItem('esi-login-attempt');
 
@@ -345,7 +356,6 @@ export class ESIAuthService {
     } catch (error) {
       console.error('❌ ESI authentication failed:', error);
       
-      // Clean up session storage on error
       sessionStorage.removeItem('esi-auth-state');
       sessionStorage.removeItem('esi-login-attempt');
       
@@ -354,20 +364,19 @@ export class ESIAuthService {
   }
 
   /**
-   * Exchange authorization code for access token
+   * Exchange authorization code for access token using PKCE
+   * Implements OAuth2 token endpoint specification
    */
   private async exchangeCodeForToken(code: string, verifier: string): Promise<ESITokenResponse> {
-    console.log('🔄 Exchanging code for token');
+    console.log('🔄 Exchanging authorization code for access token');
     
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
       client_id: this.clientId,
       code: code,
-      redirect_uri: this.redirectUri,
       code_verifier: verifier
     });
 
-    // Add client secret if available (for confidential clients)
     if (this.clientSecret) {
       body.append('client_secret', this.clientSecret);
     }
@@ -376,27 +385,110 @@ export class ESIAuthService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'LMeve/1.0 (https://github.com/dstevens79/lmeve)'
+        'User-Agent': 'LMeve/1.0 (https://github.com/dstevens79/lmeve)',
+        'Host': 'login.eveonline.com'
       },
       body: body.toString()
     });
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('❌ Token exchange failed:', response.status, errorText);
       throw new Error(`Token exchange failed: ${response.status} ${errorText}`);
     }
 
     const tokenData: ESITokenResponse = await response.json();
-    console.log('✅ Token exchange successful');
+    
+    if (!tokenData.access_token) {
+      throw new Error('Token response missing access_token');
+    }
+    
+    if (!tokenData.refresh_token) {
+      console.warn('⚠️ Token response missing refresh_token');
+    }
+    
+    console.log('✅ Token exchange successful - received JWT access token');
     
     return tokenData;
   }
 
   /**
-   * Get character information from ESI
+   * Decode and validate JWT token
+   * 
+   * Note: For production use, JWT signatures should be validated against CCP's public keys
+   * available at https://login.eveonline.com/oauth/jwks
+   * 
+   * This implementation validates the JWT structure and claims but does not verify
+   * the signature. The /oauth/verify endpoint provides additional validation.
+   * 
+   * For full JWT signature verification, implement:
+   * 1. Fetch JWKS from https://login.eveonline.com/oauth/jwks
+   * 2. Extract the kid from JWT header
+   * 3. Find matching key in JWKS
+   * 4. Verify signature using the public key
+   */
+  private decodeJWT(token: string): any {
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        throw new Error('Invalid JWT token format');
+      }
+      
+      const payload = parts[1];
+      const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+      
+      return decoded;
+    } catch (error) {
+      console.error('JWT decode error:', error);
+      throw new Error('Failed to decode JWT token');
+    }
+  }
+
+  /**
+   * Validate JWT token claims
+   */
+  private validateJWTClaims(claims: any): void {
+    const now = Math.floor(Date.now() / 1000);
+    
+    if (claims.exp && claims.exp < now) {
+      throw new Error('JWT token has expired');
+    }
+    
+    if (claims.iss !== 'login.eveonline.com') {
+      throw new Error('Invalid JWT issuer');
+    }
+    
+    if (claims.azp !== this.clientId) {
+      throw new Error('JWT azp claim does not match client ID');
+    }
+    
+    console.log('✅ JWT claims validated:', {
+      subject: claims.sub,
+      name: claims.name,
+      owner: claims.owner,
+      exp: new Date(claims.exp * 1000).toISOString()
+    });
+  }
+
+  /**
+   * Get character information from ESI with JWT validation
    */
   private async getCharacterInfo(accessToken: string): Promise<ESICharacterData> {
-    console.log('🔄 Getting character info');
+    console.log('🔄 Getting character info with JWT validation');
+    
+    const jwtClaims = this.decodeJWT(accessToken);
+    this.validateJWTClaims(jwtClaims);
+    
+    const characterId = parseInt(jwtClaims.sub.replace('CHARACTER:EVE:', ''));
+    const characterName = jwtClaims.name;
+    const owner = jwtClaims.owner;
+    
+    console.log('✅ JWT decoded:', {
+      characterId,
+      characterName,
+      owner,
+      scopes: jwtClaims.scp
+    });
     
     const response = await fetch(SSO_VERIFY_URL, {
       headers: {
@@ -406,15 +498,14 @@ export class ESIAuthService {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to get character info: ${response.status}`);
+      throw new Error(`Failed to verify token: ${response.status}`);
     }
 
     const verifyData = await response.json();
-    console.log('✅ Character verified:', verifyData.CharacterName);
+    console.log('✅ Token verified via /oauth/verify');
     
-    // Get full character data from ESI
     const charResponse = await fetch(
-      `${ESI_BASE_URL}/latest/characters/${verifyData.CharacterID}/`,
+      `${ESI_BASE_URL}/latest/characters/${characterId}/`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -431,11 +522,11 @@ export class ESIAuthService {
     console.log('✅ Character data retrieved:', charData.name);
     
     return {
-      character_id: verifyData.CharacterID,
-      character_name: verifyData.CharacterName,
+      character_id: characterId,
+      character_name: characterName,
       corporation_id: charData.corporation_id,
       alliance_id: charData.alliance_id,
-      scopes: verifyData.Scopes?.split(' ') || []
+      scopes: jwtClaims.scp || verifyData.Scopes?.split(' ') || []
     };
   }
 
@@ -517,9 +608,10 @@ export class ESIAuthService {
 
   /**
    * Refresh access token using refresh token
+   * Implements OAuth2 refresh token flow
    */
   async refreshToken(refreshToken: string): Promise<ESITokenResponse> {
-    console.log('🔄 Refreshing access token');
+    console.log('🔄 Refreshing access token using refresh token');
     
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
@@ -527,7 +619,6 @@ export class ESIAuthService {
       client_id: this.clientId
     });
 
-    // Add client secret if available
     if (this.clientSecret) {
       body.append('client_secret', this.clientSecret);
     }
@@ -536,18 +627,25 @@ export class ESIAuthService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'LMeve/1.0 (https://github.com/dstevens79/lmeve)'
+        'User-Agent': 'LMeve/1.0 (https://github.com/dstevens79/lmeve)',
+        'Host': 'login.eveonline.com'
       },
       body: body.toString()
     });
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('❌ Token refresh failed:', response.status, errorText);
       throw new Error(`Token refresh failed: ${response.status} ${errorText}`);
     }
 
     const tokenData: ESITokenResponse = await response.json();
-    console.log('✅ Token refresh successful');
+    
+    if (!tokenData.access_token) {
+      throw new Error('Refresh response missing access_token');
+    }
+    
+    console.log('✅ Token refresh successful - new JWT received');
     
     return tokenData;
   }
@@ -571,11 +669,11 @@ export class ESIAuthService {
   }
 
   /**
-   * Revoke access token
+   * Revoke access token (OAuth2 token revocation)
    */
   async revokeToken(accessToken: string): Promise<void> {
     try {
-      await fetch(`${SSO_BASE_URL}/v2/oauth/revoke`, {
+      await fetch(SSO_REVOKE_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
