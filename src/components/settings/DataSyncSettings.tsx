@@ -32,6 +32,11 @@ import {
 import { toast } from 'sonner';
 import { useSyncSettings } from '@/lib/persistenceService';
 import { esiRouteManager, useESIRoutes } from '@/lib/esi-routes';
+import { SyncStateManager, useSyncState } from '@/lib/sync-state-manager';
+import { SyncExecutor, type SyncProcessType } from '@/lib/sync-executor';
+import { ESIDataFetchService } from '@/lib/esi-data-service';
+import { ESIDataStorageService, getDatabaseService } from '@/lib/database';
+import { useAuth } from '@/lib/auth-provider';
 
 interface DataSyncSettingsProps {
   isMobileView?: boolean;
@@ -54,6 +59,8 @@ interface SyncProcess {
 
 export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps) {
   const [syncSettings, setSyncSettings] = useSyncSettings();
+  const { user } = useAuth();
+  const syncState = useSyncState();
 
   // Update helper function
   const updateSyncSettings = (updates: any) => {
@@ -182,14 +189,20 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
   useEffect(() => {
   }, []);
 
-  // Update sync processes when settings change
+  // Update sync processes when settings or sync state changes
   useEffect(() => {
-    setSyncProcesses(prev => prev.map(process => ({
-      ...process,
-      enabled: (syncSettings as any)?.[process.id as keyof typeof syncSettings]?.enabled ?? process.enabled,
-      interval: (syncSettings as any)?.[process.id as keyof typeof syncSettings]?.interval ?? process.interval
-    })));
-  }, [syncSettings]);
+    setSyncProcesses(prev => prev.map(process => {
+      const syncStatus = syncState.getSyncStatus(process.id);
+      return {
+        ...process,
+        enabled: (syncSettings as any)?.[process.id as keyof typeof syncSettings]?.enabled ?? process.enabled,
+        interval: (syncSettings as any)?.[process.id as keyof typeof syncSettings]?.interval ?? process.interval,
+        status: syncStatus.status,
+        progress: syncStatus.progress,
+        lastSync: syncStatus.lastRunTime ? new Date(syncStatus.lastRunTime).toISOString() : process.lastSync
+      };
+    }));
+  }, [syncSettings, syncState.state]);
 
   const updateProcessConfig = (processId: string, updates: Partial<SyncProcess>) => {
     setSyncProcesses(prev => prev.map(process => 
@@ -206,25 +219,60 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
   };
 
   const runSyncProcess = async (processId: string) => {
-    updateProcessConfig(processId, { status: 'running', progress: 0 });
+    if (!user?.corporationId || !user?.accessToken) {
+      toast.error('Corporation authentication required. Please log in with ESI.');
+      return;
+    }
+
+    if (syncState.isProcessRunning(processId)) {
+      toast.warning('Sync process is already running');
+      return;
+    }
+
+    const processName = syncProcesses.find(p => p.id === processId)?.name || processId;
     
     try {
-      // Simulate sync process
-      for (let i = 0; i <= 100; i += 10) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-        updateProcessConfig(processId, { progress: i });
+      console.log(`🚀 Starting sync process: ${processId}`);
+      
+      const dbService = getDatabaseService();
+      const storageService = new ESIDataStorageService(dbService);
+      const fetchService = new ESIDataFetchService();
+      const executor = new SyncExecutor();
+
+      const processTypeMap: Record<string, SyncProcessType> = {
+        'corporation_members': 'members',
+        'corporation_assets': 'assets',
+        'industry_jobs': 'manufacturing',
+        'market_orders': 'market',
+        'corporation_wallets': 'wallet',
+        'mining_ledger': 'mining',
+        'killmails': 'killmails',
+        'structures': 'container_logs'
+      };
+
+      const processType = processTypeMap[processId];
+      if (!processType) {
+        toast.error(`Unknown sync process: ${processId}`);
+        return;
       }
-      
-      updateProcessConfig(processId, { 
-        status: 'success', 
-        lastSync: new Date().toISOString(),
-        progress: undefined
+
+      const result = await executor.executeSyncProcess(processType, {
+        processId,
+        corporationId: user.corporationId,
+        accessToken: user.accessToken,
+        storageService,
+        fetchService
       });
-      
-      toast.success(`${syncProcesses.find(p => p.id === processId)?.name} sync completed`);
+
+      if (result.success) {
+        toast.success(`${processName} sync completed - ${result.itemsProcessed} items processed`);
+      } else {
+        toast.error(`${processName} sync failed: ${result.errorMessage}`);
+      }
     } catch (error) {
-      updateProcessConfig(processId, { status: 'error', progress: undefined });
-      toast.error(`${syncProcesses.find(p => p.id === processId)?.name} sync failed`);
+      console.error(`❌ Sync process ${processId} failed:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast.error(`${processName} sync failed: ${errorMessage}`);
     }
   };
 
@@ -334,7 +382,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription>
@@ -342,6 +390,26 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
               individually configured with different polling intervals based on your needs.
             </AlertDescription>
           </Alert>
+
+          {(!user?.corporationId || !user?.accessToken) && (
+            <Alert variant="destructive">
+              <Warning className="h-4 w-4" />
+              <AlertDescription>
+                <strong>ESI Authentication Required:</strong> You must log in with EVE SSO to use data sync features. 
+                Manual sync processes require corporation-level ESI authentication.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {user?.authMethod === 'manual' && (
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                You are logged in with manual credentials. For data sync to work, you need to authenticate 
+                with EVE SSO using the "EVE Login" button in the header.
+              </AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       </Card>
 
@@ -441,12 +509,20 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
-                {process.progress !== undefined && (
-                  <div className="space-y-1">
+                {process.progress !== undefined && process.progress > 0 && (
+                  <div className="space-y-2">
                     <Progress value={process.progress} className="w-full" />
-                    <p className="text-xs text-muted-foreground text-center">
-                      {process.progress}% complete
-                    </p>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">
+                        {syncState.getSyncStatus(process.id).currentStep || 'Processing...'}
+                      </span>
+                      <span className="font-medium">{process.progress}%</span>
+                    </div>
+                    {syncState.getSyncStatus(process.id).itemsProcessed !== undefined && (
+                      <p className="text-xs text-muted-foreground text-center">
+                        {syncState.getSyncStatus(process.id).itemsProcessed} / {syncState.getSyncStatus(process.id).totalItems || '?'} items
+                      </p>
+                    )}
                   </div>
                 )}
                 
@@ -460,6 +536,15 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                     <div className="font-medium">{process.interval}m</div>
                   </div>
                 </div>
+
+                {syncState.getSyncStatus(process.id).errorMessage && (
+                  <Alert variant="destructive">
+                    <Warning className="h-4 w-4" />
+                    <AlertDescription className="text-xs">
+                      {syncState.getSyncStatus(process.id).errorMessage}
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 <Separator />
 
@@ -585,6 +670,80 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
               Save Sync Settings
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Sync History */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Activity size={20} />
+              Recent Sync History
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => syncState.clearHistory()}
+            >
+              Clear History
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {syncState.state.history.length === 0 ? (
+            <div className="text-center py-8">
+              <Info size={32} className="mx-auto text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">No sync history yet</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {syncState.state.history.slice().reverse().slice(0, 20).map((historyItem, index) => {
+                const process = syncProcesses.find(p => p.id === historyItem.processId);
+                const IconComponent = process?.icon || Activity;
+                
+                return (
+                  <div 
+                    key={`${historyItem.processId}-${historyItem.timestamp}-${index}`}
+                    className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <IconComponent size={16} className="text-muted-foreground" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{process?.name || historyItem.processId}</span>
+                          {historyItem.status === 'success' ? (
+                            <CheckCircle size={14} className="text-green-400" />
+                          ) : (
+                            <X size={14} className="text-red-400" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                          <span>{new Date(historyItem.timestamp).toLocaleString()}</span>
+                          <span>•</span>
+                          <span>{(historyItem.duration / 1000).toFixed(1)}s</span>
+                          {historyItem.itemsProcessed !== undefined && (
+                            <>
+                              <span>•</span>
+                              <span>{historyItem.itemsProcessed} items</span>
+                            </>
+                          )}
+                        </div>
+                        {historyItem.errorMessage && (
+                          <p className="text-xs text-red-400 mt-1">{historyItem.errorMessage}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {syncState.state.history.length > 20 && (
+                <p className="text-xs text-center text-muted-foreground pt-2">
+                  Showing 20 most recent entries out of {syncState.state.history.length} total
+                </p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

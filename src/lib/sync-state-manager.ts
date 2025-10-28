@@ -1,4 +1,4 @@
-import { useKV } from '@github/spark/hooks';
+import { useState, useEffect } from 'react';
 
 export interface SyncStatus {
   processId: string;
@@ -6,13 +6,11 @@ export interface SyncStatus {
   progress: number;
   currentStep: string;
   lastRunTime?: number;
-export interface SyncHistor
-  timestamp: number;
-  duration: number;
-  errorMessage?: stri
-
-  statuses: Record<str
- 
+  errorCount: number;
+  itemsProcessed?: number;
+  totalItems?: number;
+  errorMessage?: string;
+}
 
 export interface SyncHistory {
   processId: string;
@@ -30,38 +28,39 @@ export interface SyncStateData {
 }
 
 export class SyncStateManager {
-      this.notifyListeners();
-      console.error('Failed to load sync state:', error);
-  
-  private async saveState() {
-      await spark
-    } catch (err
+  private static instance: SyncStateManager;
+  private state: SyncStateData;
+  private listeners: Set<(state: SyncStateData) => void>;
+
+  private constructor() {
+    this.state = {
+      statuses: {},
+      history: [],
+      runningProcesses: new Set()
+    };
+    this.listeners = new Set();
+    this.loadState();
+  }
+
+  static getInstance(): SyncStateManager {
+    if (!SyncStateManager.instance) {
+      SyncStateManager.instance = new SyncStateManager();
     }
-
-
-
-    this.listeners.ad
-   
-
+    return SyncStateManager.instance;
   }
-  getState(): SyncStateData {
-  }
-  get
-      processId,
-   
 
-  }
-  isProce
-  }
-  async startSync(processId: string) {
-    th
-      status: 'running',
-      currentStep: 'Initializing...',
-      e
-    
-    await this.saveState();
-
-    pr
+  private async loadState() {
+    try {
+      const statuses = await spark.kv.get<Record<string, SyncStatus>>('sync-statuses');
+      const history = await spark.kv.get<SyncHistory[]>('sync-history');
+      
+      if (statuses) {
+        this.state.statuses = statuses;
+      }
+      if (history) {
+        this.state.history = history;
+      }
+      
       this.notifyListeners();
     } catch (error) {
       console.error('Failed to load sync state:', error);
@@ -126,143 +125,118 @@ export class SyncStateManager {
   async updateSyncProgress(
     processId: string, 
     progress: number, 
-    history: state.histo
-    getSyncStatus: (processI
-    isProcessRunning: (
-    g
+    currentStep: string,
+    itemsProcessed?: number,
+    totalItems?: number
+  ) {
+    if (this.state.statuses[processId]) {
+      this.state.statuses[processId] = {
+        ...this.state.statuses[processId],
+        progress,
+        currentStep,
+        itemsProcessed,
+        totalItems
+      };
+      
+      this.notifyListeners();
+      await this.saveState();
+    }
+  }
+
+  async completeSync(processId: string, itemsProcessed: number = 0) {
+    const status = this.state.statuses[processId];
+    if (!status) return;
+
+    const duration = status.lastRunTime ? Date.now() - status.lastRunTime : 0;
+    
+    this.state.statuses[processId] = {
+      ...status,
+      status: 'success',
+      progress: 100,
+      currentStep: 'Completed',
+      itemsProcessed
+    };
+    
+    this.state.runningProcesses.delete(processId);
+    
+    this.state.history.push({
+      processId,
+      timestamp: Date.now(),
+      status: 'success',
+      duration,
+      itemsProcessed
+    });
+    
+    this.notifyListeners();
+    await this.saveState();
+  }
+
+  async failSync(processId: string, errorMessage: string) {
+    const status = this.state.statuses[processId];
+    if (!status) return;
+
+    const duration = status.lastRunTime ? Date.now() - status.lastRunTime : 0;
+    
+    this.state.statuses[processId] = {
+      ...status,
+      status: 'error',
+      currentStep: 'Failed',
+      errorMessage,
+      errorCount: (status.errorCount || 0) + 1
+    };
+    
+    this.state.runningProcesses.delete(processId);
+    
+    this.state.history.push({
+      processId,
+      timestamp: Date.now(),
+      status: 'error',
+      duration,
+      errorMessage
+    });
+    
+    this.notifyListeners();
+    await this.saveState();
+  }
+
+  getHistory(processId?: string): SyncHistory[] {
+    if (processId) {
+      return this.state.history.filter(h => h.processId === processId);
+    }
+    return this.state.history;
+  }
+
+  clearHistory(processId?: string) {
+    if (processId) {
+      this.state.history = this.state.history.filter(h => h.processId !== processId);
+    } else {
+      this.state.history = [];
+    }
+    this.notifyListeners();
+    this.saveState();
+  }
+}
+
+export function useSyncState() {
+  const [state, setState] = useState<SyncStateData>(() => 
+    SyncStateManager.getInstance().getState()
+  );
+
+  useEffect(() => {
+    const manager = SyncStateManager.getInstance();
+    const unsubscribe = manager.subscribe(setState);
+    return unsubscribe;
+  }, []);
+
+  return {
+    state,
+    getSyncStatus: (processId: string) => 
+      SyncStateManager.getInstance().getSyncStatus(processId),
+    isProcessRunning: (processId: string) => 
+      SyncStateManager.getInstance().isProcessRunning(processId),
+    getHistory: (processId?: string) => 
+      SyncStateManager.getInstance().getHistory(processId),
+    clearHistory: (processId?: string) => 
+      SyncStateManager.getInstance().clearHistory(processId)
   };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+}
