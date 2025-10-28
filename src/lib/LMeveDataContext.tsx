@@ -291,10 +291,6 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const isTokenExpired = (): boolean => {
-    return user ? Date.now() >= user.tokenExpiry - 300000 : true; // 5 min buffer
-  };
-
   // Data refresh functions
   const refreshMembers = async () => {
     setLoading(prev => ({ ...prev, members: true }));
