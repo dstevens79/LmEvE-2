@@ -101,33 +101,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     }
   }, [esiConfiguration, registeredCorporations]);
-
-  // Auto-refresh token when it's about to expire
-  useEffect(() => {
-    if (!currentUser || currentUser.authMethod !== 'esi' || !currentUser.refreshToken) {
-      return;
-    }
-    
-    // Check token expiration every minute
-    const intervalId = setInterval(() => {
-      if (isTokenExpired()) {
-        console.log('⏰ Token expiring soon - auto-refreshing');
-        refreshUserToken().catch(error => {
-          console.error('❌ Auto-refresh failed:', error);
-        });
-      }
-    }, 60 * 1000); // Check every minute
-    
-    // Also check immediately on mount
-    if (isTokenExpired()) {
-      console.log('⏰ Token already expired - refreshing immediately');
-      refreshUserToken().catch(error => {
-        console.error('❌ Initial refresh failed:', error);
-      });
-    }
-    
-    return () => clearInterval(intervalId);
-  }, [currentUser, isTokenExpired, refreshUserToken]);
   
   // Session validation for manual logins
   useEffect(() => {
@@ -142,6 +115,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const triggerAuthChange = useCallback(() => {
     setAuthTrigger(prev => prev + 1);
   }, []);
+
+  // Check if token is expired (must be defined before used in effects)
+  const isTokenExpired = useCallback(() => {
+    if (!currentUser || currentUser.authMethod !== 'esi' || !currentUser.tokenExpiry) {
+      return false;
+    }
+    
+    const expiryTime = new Date(currentUser.tokenExpiry).getTime();
+    const now = Date.now();
+    const fiveMinutes = 5 * 60 * 1000;
+    
+    return expiryTime - now < fiveMinutes;
+  }, [currentUser]);
 
   // Manual login with username/password
   const loginWithCredentials = useCallback(async (username: string, password: string) => {
@@ -383,18 +369,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [currentUser, setUsers, setCurrentUser, logout, triggerAuthChange]);
 
-  // Check if token is expired
-  const isTokenExpired = useCallback(() => {
-    if (!currentUser || currentUser.authMethod !== 'esi' || !currentUser.tokenExpiry) {
-      return false;
+  // Auto-refresh token when it's about to expire
+  useEffect(() => {
+    if (!currentUser || currentUser.authMethod !== 'esi' || !currentUser.refreshToken) {
+      return;
     }
     
-    const expiryTime = new Date(currentUser.tokenExpiry).getTime();
-    const now = Date.now();
-    const fiveMinutes = 5 * 60 * 1000;
+    // Check token expiration every minute
+    const intervalId = setInterval(() => {
+      if (isTokenExpired()) {
+        console.log('⏰ Token expiring soon - auto-refreshing');
+        refreshUserToken().catch(error => {
+          console.error('❌ Auto-refresh failed:', error);
+        });
+      }
+    }, 60 * 1000); // Check every minute
     
-    return expiryTime - now < fiveMinutes;
-  }, [currentUser]);
+    // Also check immediately on mount
+    if (isTokenExpired()) {
+      console.log('⏰ Token already expired - refreshing immediately');
+      refreshUserToken().catch(error => {
+        console.error('❌ Initial refresh failed:', error);
+      });
+    }
+    
+    return () => clearInterval(intervalId);
+  }, [currentUser, isTokenExpired, refreshUserToken]);
 
   // Create manual user
   const createManualUser = useCallback(async (username: string, password: string, role: UserRole, characterInfo?: CharacterInfo): Promise<LMeveUser> => {
