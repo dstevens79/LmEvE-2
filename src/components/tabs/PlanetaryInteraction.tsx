@@ -327,6 +327,7 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
   };
 
   const formatISK = (amount: number) => {
+    if (amount === undefined || amount === null || isNaN(amount)) return '0 ISK';
     if (amount >= 1000000000) {
       return `${(amount / 1000000000).toFixed(2)}B ISK`;
     } else if (amount >= 1000000) {
@@ -338,6 +339,7 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
   };
 
   const formatNumber = (num: number) => {
+    if (num === undefined || num === null || isNaN(num)) return '0';
     return num.toLocaleString();
   };
 

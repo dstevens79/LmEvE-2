@@ -328,10 +328,12 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   const filteredItems = getFilteredItems();
 
   const formatNumber = (num: number) => {
+    if (num === undefined || num === null || isNaN(num)) return '0';
     return new Intl.NumberFormat('en-US').format(Math.floor(num));
   };
 
   const formatISK = (num: number) => {
+    if (num === undefined || num === null || isNaN(num)) return '0 ISK';
     if (num >= 1000000000) return `${(num / 1000000000).toFixed(2)}B ISK`;
     if (num >= 1000000) return `${(num / 1000000).toFixed(2)}M ISK`;
     if (num >= 1000) return `${(num / 1000).toFixed(2)}K ISK`;
@@ -339,6 +341,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   };
 
   const formatVolume = (num: number) => {
+    if (num === undefined || num === null || isNaN(num)) return '0 m³';
     if (num >= 1000000) return `${(num / 1000000).toFixed(2)}M m³`;
     if (num >= 1000) return `${(num / 1000).toFixed(2)}K m³`;
     return `${num.toFixed(2)} m³`;

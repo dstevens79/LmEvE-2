@@ -228,6 +228,7 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
   }, [monthlyData, selectedPeriod]);
 
   const formatISK = (amount: number): string => {
+    if (amount === undefined || amount === null || isNaN(amount)) return '0 ISK';
     const absAmount = Math.abs(amount);
     if (absAmount >= 1e12) return `${(amount / 1e12).toFixed(2)}T ISK`;
     if (absAmount >= 1e9) return `${(amount / 1e9).toFixed(2)}B ISK`;
@@ -311,7 +312,7 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
 
           <div className="space-y-2">
             {divisions.map((division) => {
-              const percentage = (division.balance / totalBalance) * 100;
+              const percentage = totalBalance > 0 ? (division.balance / totalBalance) * 100 : 0;
               const isSelected = selectedDivision === division.divisionId;
               const divisionMonthlyProfit = monthlyData
                 .slice(-(selectedPeriod === '12m' ? 12 : selectedPeriod === '6m' ? 6 : 3))

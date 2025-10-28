@@ -108,6 +108,7 @@ export function Dashboard({ onLoginClick, isMobileView }: DashboardProps) {
   const hasNoData = stats.totalMembers === 0 && stats.totalAssets === 0;
 
   const formatISK = (amount: number): string => {
+    if (amount === undefined || amount === null || isNaN(amount)) return '0 ISK';
     if (amount >= 1e12) return `${(amount / 1e12).toFixed(1)}T ISK`;
     if (amount >= 1e9) return `${(amount / 1e9).toFixed(1)}B ISK`;
     if (amount >= 1e6) return `${(amount / 1e6).toFixed(1)}M ISK`;

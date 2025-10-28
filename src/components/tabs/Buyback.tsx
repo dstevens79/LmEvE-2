@@ -639,6 +639,7 @@ export function Buyback({ isMobileView }: BuybackProps) {
   };
 
   const formatISK = (value: number) => {
+    if (value === undefined || value === null || isNaN(value)) return '0.00 ISK';
     return new Intl.NumberFormat('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2

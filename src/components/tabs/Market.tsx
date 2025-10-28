@@ -226,6 +226,7 @@ export function Market({ onLoginClick, isMobileView }: TabComponentProps) {
   }, [filteredOrders, filteredSales]);
 
   const formatISK = (amount: number): string => {
+    if (amount === undefined || amount === null || isNaN(amount)) return '0 ISK';
     if (amount >= 1e12) return `${(amount / 1e12).toFixed(2)}T ISK`;
     if (amount >= 1e9) return `${(amount / 1e9).toFixed(2)}B ISK`;
     if (amount >= 1e6) return `${(amount / 1e6).toFixed(2)}M ISK`;
