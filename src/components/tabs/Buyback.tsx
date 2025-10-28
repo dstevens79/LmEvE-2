@@ -577,9 +577,6 @@ export function Buyback({ isMobileView }: BuybackProps) {
                       Send your in-game item exchange contract to this character. 
                       Make sure to include the validation key in the contract description after you accept the buyback.
                     </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Your pilot: <span className="font-semibold text-foreground">{user?.characterName || 'Unknown'}</span>
-                    </p>
                   </div>
                 </div>
               </CardContent>
