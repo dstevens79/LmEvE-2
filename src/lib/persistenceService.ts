@@ -70,6 +70,11 @@ export interface SDESettings {
   cleanupAfterUpdate: boolean;
 }
 
+export interface SyncProcessConfig {
+  enabled: boolean;
+  interval: number;
+}
+
 export interface SyncSettings {
   enabled: boolean;
   autoSync: boolean;
@@ -108,6 +113,20 @@ export interface SyncSettings {
     endTime: string;
     timezone: string;
   };
+  maxConcurrentSyncs?: number;
+  retryAttempts?: number;
+  corporation_members?: SyncProcessConfig;
+  corporation_assets?: SyncProcessConfig;
+  industry_jobs?: SyncProcessConfig;
+  mining_ledger?: SyncProcessConfig;
+  market_orders?: SyncProcessConfig;
+  killmails?: SyncProcessConfig;
+  corporation_wallets?: SyncProcessConfig;
+  structures?: SyncProcessConfig;
+  corporation_contracts?: SyncProcessConfig;
+  item_pricing?: SyncProcessConfig;
+  planetary_interaction?: SyncProcessConfig;
+  personal_esi?: SyncProcessConfig;
 }
 
 export interface NotificationSettings {
@@ -357,6 +376,20 @@ export const defaultSyncSettings: SyncSettings = {
     endTime: '08:00',
     timezone: 'UTC',
   },
+  maxConcurrentSyncs: 3,
+  retryAttempts: 3,
+  corporation_members: { enabled: true, interval: 1440 },
+  corporation_assets: { enabled: true, interval: 1440 },
+  industry_jobs: { enabled: true, interval: 1440 },
+  mining_ledger: { enabled: false, interval: 1440 },
+  market_orders: { enabled: false, interval: 1440 },
+  killmails: { enabled: false, interval: 1440 },
+  corporation_wallets: { enabled: true, interval: 1440 },
+  structures: { enabled: false, interval: 1440 },
+  corporation_contracts: { enabled: true, interval: 1440 },
+  item_pricing: { enabled: true, interval: 1440 },
+  planetary_interaction: { enabled: false, interval: 1440 },
+  personal_esi: { enabled: false, interval: 1440 },
 };
 
 export const defaultNotificationSettings: NotificationSettings = {
