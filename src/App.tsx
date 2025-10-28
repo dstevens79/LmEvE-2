@@ -317,7 +317,7 @@ function AppContent() {
     { id: 'market', label: 'Market', icon: TrendUp, component: Market },
     { id: 'wallet', label: 'Wallet', icon: CurrencyDollar, component: Wallet },
     { id: 'notifications', label: 'Notifications', icon: Bell, component: Notifications },
-    { id: 'corporations', label: 'Corporations', icon: Building, component: Corporations },
+    { id: 'corporations', label: 'ESI', icon: Key, component: Corporations },
     { id: 'theme', label: 'Theme', icon: Palette, component: Theme },
   ];
 
