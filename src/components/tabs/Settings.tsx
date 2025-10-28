@@ -90,6 +90,7 @@ import {
 import { UserManagement } from '@/components/UserManagement';
 import { SyncSetupPanel } from '@/components/settings/SyncSetupPanel';
 import { PermissionsTab } from '@/components/settings/PermissionsTab';
+import { SyncMonitoring } from '@/components/tabs/SyncMonitoring';
 
 // Status Indicator Component
 const StatusIndicator: React.FC<{
@@ -6773,6 +6774,10 @@ echo "See README.md for detailed setup instructions"
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="sync-monitoring" className="space-y-6">
+          <SyncMonitoring isMobileView={isMobileView} />
         </TabsContent>
 
         <TabsContent value="permissions" className="space-y-6">

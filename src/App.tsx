@@ -10,8 +10,6 @@ import {
   Users, 
   Package, 
   Factory, 
-  HardHat, 
-  Truck, 
   TrendUp, 
   Gear,
   SignOut,
@@ -51,8 +49,6 @@ import { Dashboard } from '@/components/tabs/Dashboard';
 import { Members } from '@/components/tabs/Members';
 import { Assets } from '@/components/tabs/Assets';
 import { Manufacturing } from '@/components/tabs/Manufacturing';
-import { Mining } from '@/components/tabs/Mining';
-import { Logistics } from '@/components/tabs/Logistics';
 import { Market } from '@/components/tabs/Market';
 import { Wallet } from '@/components/tabs/Wallet';
 import { Settings } from '@/components/tabs/Settings';
@@ -61,7 +57,6 @@ import { Corporations } from '@/components/Corporations';
 import { Theme } from '@/components/tabs/Theme';
 import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
 import { Projects } from '@/components/tabs/Projects';
-import { SyncMonitoring } from '@/components/tabs/SyncMonitoring';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useKV<TabType>('active-tab', 'dashboard');
@@ -317,14 +312,11 @@ function AppContent() {
     { id: 'members', label: 'Members', icon: Users, component: Members, badge: '42' },
     { id: 'assets', label: 'Assets', icon: Package, component: Assets },
     { id: 'manufacturing', label: 'Manufacturing', icon: Factory, component: Manufacturing, badge: '3' },
-    { id: 'mining', label: 'Mining', icon: HardHat, component: Mining },
     { id: 'planetary', label: 'Planetary Interaction', icon: Planet, component: PlanetaryInteraction, badge: '5' },
     { id: 'projects', label: 'Projects', icon: Archive, component: Projects, badge: '2' },
-    { id: 'logistics', label: 'Logistics', icon: Truck, component: Logistics },
     { id: 'market', label: 'Market', icon: TrendUp, component: Market },
     { id: 'wallet', label: 'Wallet', icon: CurrencyDollar, component: Wallet },
     { id: 'notifications', label: 'Notifications', icon: Bell, component: Notifications },
-    { id: 'sync-monitoring', label: 'Sync Monitoring', icon: ChartLine, component: SyncMonitoring },
     { id: 'corporations', label: 'Corporations', icon: Building, component: Corporations },
     { id: 'theme', label: 'Theme', icon: Palette, component: Theme },
   ];
@@ -333,6 +325,7 @@ function AppContent() {
     { id: 'general', label: 'General', icon: Globe },
     { id: 'database', label: 'Database', icon: Database },
     { id: 'sync', label: 'Data Sync', icon: Clock },
+    { id: 'sync-monitoring', label: 'Sync Monitoring', icon: ChartLine },
     { id: 'permissions', label: 'Permissions', icon: Shield },
   ];
 

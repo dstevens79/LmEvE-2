@@ -194,17 +194,11 @@ export function canAccessTab(user: LMeveUser | null, tab: string): boolean {
     case 'manufacturing':
       return hasPermission(user, 'canManageManufacturing');
       
-    case 'mining':
-      return hasPermission(user, 'canManageMining');
-      
     case 'planetary':
       return hasPermission(user, 'canManageManufacturing') || hasPermission(user, 'canManageMining'); // PI can be managed by manufacturing or mining managers
       
     case 'projects':
       return hasPermission(user, 'canManageManufacturing') || hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem'); // Projects can be managed by manufacturing managers, corp admins, or super admins
-      
-    case 'logistics':
-      return hasPermission(user, 'canManageAssets');
       
     case 'market':
       return hasPermission(user, 'canManageMarket');
@@ -213,9 +207,6 @@ export function canAccessTab(user: LMeveUser | null, tab: string): boolean {
       return hasPermission(user, 'canManageIncome') || hasPermission(user, 'canViewFinancials');
       
     case 'notifications':
-      return hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
-      
-    case 'sync-monitoring':
       return hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
       
     case 'corporations':
@@ -246,6 +237,9 @@ export function canAccessSettingsTab(user: LMeveUser | null, settingsTab: string
       return hasPermission(user, 'canManageDatabase');
       
     case 'sync':
+      return hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
+      
+    case 'sync-monitoring':
       return hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
       
     case 'permissions':
