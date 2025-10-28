@@ -386,7 +386,7 @@ function AppContent() {
     <DatabaseProvider>
       <LMeveDataProvider>
         <div className="min-h-screen bg-background text-foreground">
-        <Toaster />
+        <Toaster position="top-right" />
         
 
         

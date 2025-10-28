@@ -566,131 +566,81 @@ export function Buyback({ isMobileView }: BuybackProps) {
         </TabsList>
 
         <TabsContent value="calculator" className="mt-6 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Paste Items from EVE Online</CardTitle>
-              <CardDescription>Drag and drop or paste copied item list from EVE Online</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="pilotName">Pilot Name</Label>
-                <Input
-                  id="pilotName"
-                  value={pilotName}
-                  onChange={(e) => setPilotName(e.target.value)}
-                  placeholder="Enter pilot name for contract"
-                  disabled={calculatedItems.length > 0}
-                />
-              </div>
-
-              <div
-                onDrop={handleDrop}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                className={`
-                  border-2 border-dashed rounded-lg p-6 transition-colors
-                  ${isDragging ? 'border-accent bg-accent/10' : 'border-border'}
-                  ${calculatedItems.length > 0 ? 'opacity-50' : ''}
-                `}
-              >
-                <div className="space-y-4">
-                  <div className="flex items-center justify-center">
-                    <FileText size={48} className="text-muted-foreground opacity-50" />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Drag and drop text here or paste below
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Copy items from EVE inventory (Ctrl+C in game) and paste here
-                    </p>
-                  </div>
-                  
-                  <textarea
-                    value={pasteText}
-                    onChange={(e) => setPasteText(e.target.value)}
-                    placeholder="Tritanium  50000&#10;Pyerite  25000&#10;Mexallon  10000"
+          <div className={`grid ${calculatedItems.length > 0 ? 'lg:grid-cols-[1fr,400px]' : 'grid-cols-1'} gap-4`}>
+            <Card>
+              <CardHeader>
+                <CardTitle>Paste Items from EVE Online</CardTitle>
+                <CardDescription>Drag and drop or paste copied item list from EVE Online</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="pilotName">Pilot Name</Label>
+                  <Input
+                    id="pilotName"
+                    value={pilotName}
+                    onChange={(e) => setPilotName(e.target.value)}
+                    placeholder="Enter pilot name for contract"
                     disabled={calculatedItems.length > 0}
-                    className="w-full h-32 px-3 py-2 text-sm rounded-md border border-input bg-input/50 resize-none focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                   />
-
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handlePaste}
-                      disabled={!pasteText.trim() || calculatedItems.length > 0}
-                      className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
-                    >
-                      <TrendUp size={16} className="mr-2" />
-                      Calculate Buyback
-                    </Button>
-                    {calculatedItems.length > 0 && (
-                      <Button
-                        onClick={handleClearCalculation}
-                        variant="outline"
-                      >
-                        <X size={16} className="mr-2" />
-                        Clear
-                      </Button>
-                    )}
-                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
 
-          {calculatedItems.length > 0 && (
-            <>
-              <Card className="border-accent/50">
-                <CardHeader>
-                  <CardTitle>Buyback Summary</CardTitle>
-                  <CardDescription>
-                    {calculatedItems.length} items • Total value: {formatISK(calculationSummary.totalValue)}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Items</p>
-                      <p className="text-2xl font-bold">{calculatedItems.length}</p>
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  className={`
+                    border-2 border-dashed rounded-lg p-6 transition-colors
+                    ${isDragging ? 'border-accent bg-accent/10' : 'border-border'}
+                    ${calculatedItems.length > 0 ? 'opacity-50' : ''}
+                  `}
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center">
+                      <FileText size={48} className="text-muted-foreground opacity-50" />
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total Value</p>
-                      <p className="text-lg font-bold">{formatISK(calculationSummary.totalValue)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Your Payout</p>
-                      <p className="text-lg font-bold text-green-500">{formatISK(calculationSummary.totalPayout)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Effective Rate</p>
-                      <p className="text-lg font-bold">
-                        {calculationSummary.totalValue > 0 
-                          ? ((calculationSummary.totalPayout / calculationSummary.totalValue) * 100).toFixed(1)
-                          : 0}%
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground mb-2">
+                        Drag and drop text here or paste below
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Copy items from EVE inventory (Ctrl+C in game) and paste here
                       </p>
                     </div>
-                  </div>
+                    
+                    <textarea
+                      value={pasteText}
+                      onChange={(e) => setPasteText(e.target.value)}
+                      placeholder="Tritanium  50000&#10;Pyerite  25000&#10;Mexallon  10000"
+                      disabled={calculatedItems.length > 0}
+                      className="w-full h-32 px-3 py-2 text-sm rounded-md border border-input bg-input/50 resize-none focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                    />
 
-                  {(calculationSummary.excludedCount > 0 || calculationSummary.manualCount > 0) && (
-                    <div className="flex gap-2 text-sm">
-                      {calculationSummary.excludedCount > 0 && (
-                        <Badge variant="destructive" className="bg-red-500/20 text-red-500 border-red-500/30">
-                          {calculationSummary.excludedCount} excluded items
-                        </Badge>
-                      )}
-                      {calculationSummary.manualCount > 0 && (
-                        <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">
-                          {calculationSummary.manualCount} manual rates
-                        </Badge>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handlePaste}
+                        disabled={!pasteText.trim() || calculatedItems.length > 0}
+                        className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
+                      >
+                        <TrendUp size={16} className="mr-2" />
+                        Calculate Buyback
+                      </Button>
+                      {calculatedItems.length > 0 && (
+                        <Button
+                          onClick={handleClearCalculation}
+                          variant="outline"
+                        >
+                          <X size={16} className="mr-2" />
+                          Clear
+                        </Button>
                       )}
                     </div>
-                  )}
+                  </div>
+                </div>
 
-                  <Separator />
-
+                {calculatedItems.length > 0 && (
                   <div className="border border-border rounded-lg overflow-hidden">
                     <Table>
                       <TableHeader>
@@ -751,16 +701,71 @@ export function Buyback({ isMobileView }: BuybackProps) {
                       </TableBody>
                     </Table>
                   </div>
+                )}
+              </CardContent>
+            </Card>
 
-                  <div className="flex items-center justify-between pt-4 border-t border-border">
-                    <div className="text-sm text-muted-foreground">
-                      Click Accept to generate contract validation key
+            {calculatedItems.length > 0 && (
+              <Card className="border-accent/50 lg:sticky lg:top-4 h-fit">
+                <CardHeader>
+                  <CardTitle>Summary</CardTitle>
+                  <CardDescription>
+                    {calculatedItems.length} items total
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Items</p>
+                      <p className="text-2xl font-bold">{calculatedItems.length}</p>
                     </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Value</p>
+                      <p className="text-lg font-bold">{formatISK(calculationSummary.totalValue)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Your Payout</p>
+                      <p className="text-lg font-bold text-green-500">{formatISK(calculationSummary.totalPayout)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Effective Rate</p>
+                      <p className="text-lg font-bold">
+                        {calculationSummary.totalValue > 0 
+                          ? ((calculationSummary.totalPayout / calculationSummary.totalValue) * 100).toFixed(1)
+                          : 0}%
+                      </p>
+                    </div>
+                  </div>
+
+                  {(calculationSummary.excludedCount > 0 || calculationSummary.manualCount > 0) && (
+                    <>
+                      <Separator />
+                      <div className="space-y-2">
+                        {calculationSummary.excludedCount > 0 && (
+                          <Badge variant="destructive" className="bg-red-500/20 text-red-500 border-red-500/30 w-full justify-center">
+                            {calculationSummary.excludedCount} excluded items
+                          </Badge>
+                        )}
+                        {calculationSummary.manualCount > 0 && (
+                          <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30 w-full justify-center">
+                            {calculationSummary.manualCount} manual rates
+                          </Badge>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground text-center">
+                      Click Accept to generate contract validation key
+                    </p>
                     <Button
                       onClick={handleAcceptContract}
                       size="lg"
                       disabled={!pilotName.trim()}
-                      className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                      className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
                     >
                       <CheckCircle size={20} className="mr-2" />
                       Accept & Generate Contract
@@ -768,8 +773,8 @@ export function Buyback({ isMobileView }: BuybackProps) {
                   </div>
                 </CardContent>
               </Card>
-            </>
-          )}
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="contracts" className="mt-6 space-y-6">
