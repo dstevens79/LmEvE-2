@@ -1913,7 +1913,7 @@ echo ""`;
       };
 
       // Try to start hosting server or provide manual instructions
-      const hostPort = 3456;
+      const hostPort = 8080;  // Using 8080 - common HTTP alternative port
       const hostIP = window.location.hostname;
       
       const wgetCommand = `wget http://${hostIP}:${hostPort}/getme-latest -O getme-lmeve.sh && chmod +x getme-lmeve.sh && sudo ./getme-lmeve.sh`;

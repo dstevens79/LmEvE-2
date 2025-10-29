@@ -17,11 +17,13 @@ This directory contains a complete hosting solution for LMeve GetMe packages, al
    # Or directly with Node.js:
    node host-server.js [port]
    ```
-   Default port is 3456.
+   Default port is **8080** (standard HTTP alternative).
+   
+   **Note:** Port 80 requires sudo/admin privileges. Port 8080 is recommended as it's commonly allowed through firewalls and doesn't require elevated permissions.
 
 2. **Share the install command with users:**
    ```bash
-   wget http://your-host:3456/getme-latest -O getme-lmeve.sh
+   wget http://your-host:8080/getme-latest -O getme-lmeve.sh
    ```
 
 ### For Database Server Users:
@@ -42,8 +44,8 @@ Downloads the standard GetMe package with default configuration.
 
 **Example:**
 ```bash
-wget http://localhost:3456/getme-latest -O getme-lmeve.sh
-curl -o getme-lmeve.sh http://localhost:3456/getme-latest
+wget http://localhost:8080/getme-latest -O getme-lmeve.sh
+curl -o getme-lmeve.sh http://localhost:8080/getme-latest
 ```
 
 ### POST `/getme-custom`
@@ -53,7 +55,7 @@ Generates a custom package based on JSON configuration.
 ```bash
 curl -X POST -H "Content-Type: application/json" \
   -d '{"host":"db.example.com","username":"myuser","password":"mypass"}' \
-  http://localhost:3456/getme-custom -o getme-lmeve-custom.sh
+  http://localhost:8080/getme-custom -o getme-lmeve-custom.sh
 ```
 
 ### POST `/package-zip`
@@ -63,7 +65,7 @@ Generates a self-extracting package with all files.
 ```bash
 curl -X POST -H "Content-Type: application/json" \
   -d '{"host":"db.example.com","username":"myuser"}' \
-  http://localhost:3456/package-zip -o getme-package.sh
+  http://localhost:8080/package-zip -o getme-package.sh
 ```
 
 ### GET `/install`
@@ -104,7 +106,7 @@ Custom packages can override any of these values via POST request.
 ### Scenario 1: Standard Setup
 User is sitting at both their web machine and database server:
 1. Start hosting server on web machine: `./start-host.sh`
-2. On database server: `wget http://192.168.1.100:3456/getme-latest -O setup.sh && sudo bash setup.sh`
+2. On database server: `wget http://192.168.1.100:8080/getme-latest -O setup.sh && sudo bash setup.sh`
 
 ### Scenario 2: Custom Configuration  
 User needs specific database settings:
@@ -143,29 +145,29 @@ start-host.bat 8080
 ### User Download Commands
 ```bash
 # Simple download and run
-wget http://192.168.1.50:3456/getme-latest -O setup.sh && sudo bash setup.sh
+wget http://192.168.1.50:8080/getme-latest -O setup.sh && sudo bash setup.sh
 
 # Custom configuration
 curl -X POST -H "Content-Type: application/json" \
   -d '{"host":"mysql.company.com","username":"lmeve_prod","password":"secure123"}' \
-  http://192.168.1.50:3456/getme-custom -o setup.sh && sudo bash setup.sh
+  http://192.168.1.50:8080/getme-custom -o setup.sh && sudo bash setup.sh
 
 # Get a complete package
 curl -X POST -H "Content-Type: application/json" \
   -d '{"host":"db.internal","username":"lmeve"}' \
-  http://192.168.1.50:3456/package-zip -o lmeve-complete.sh && bash lmeve-complete.sh
+  http://192.168.1.50:8080/package-zip -o lmeve-complete.sh && bash lmeve-complete.sh
 ```
 
 ### Test the Server
 ```bash
 # Health check
-curl http://localhost:3456/health
+curl http://localhost:8080/health
 
 # Get install instructions
-curl http://localhost:3456/install
+curl http://localhost:8080/install
 
 # Download standard package
-wget http://localhost:3456/getme-latest -O test.sh
+wget http://localhost:8080/getme-latest -O test.sh
 ```
 
 ## 📂 Files in This Directory

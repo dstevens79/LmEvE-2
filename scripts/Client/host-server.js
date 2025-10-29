@@ -22,7 +22,7 @@ import { fileURLToPath } from 'url';
 import { generateGetMePackage } from './getme-generator.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const port = process.argv[2] || 3456;
+const port = process.argv[2] || 8080;  // Use 8080 (common HTTP alternative) or port 80 with sudo
 
 // Default configuration for standard package
 const DEFAULT_CONFIG = {

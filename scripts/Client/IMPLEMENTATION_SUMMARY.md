@@ -19,6 +19,7 @@
 - Supports both standard and custom configurations
 - Provides wget/curl friendly endpoints
 - Includes health checks and installation instructions
+- **Default port: 8080** (standard HTTP alternative, firewall-friendly)
 
 **Endpoints:**
 - `GET /getme-latest` - Standard package download
@@ -59,21 +60,21 @@ cd scripts/Client
 ### For Database Server Users:
 ```bash
 # One-line install command
-wget http://your-host:3456/getme-latest -O getme-lmeve.sh && chmod +x getme-lmeve.sh && sudo ./getme-lmeve.sh
+wget http://your-host:8080/getme-latest -O getme-lmeve.sh && chmod +x getme-lmeve.sh && sudo ./getme-lmeve.sh
 
 # Or with curl
-curl -o getme-lmeve.sh http://your-host:3456/getme-latest && chmod +x getme-lmeve.sh && sudo ./getme-lmeve.sh
+curl -o getme-lmeve.sh http://your-host:8080/getme-latest && chmod +x getme-lmeve.sh && sudo ./getme-lmeve.sh
 ```
 
 ## 🔧 Technical Features
 
-### Real Operations (vs Previous Fake Ones):
-- ✅ **Real MySQL connections** using `mysql` command
-- ✅ **Real database creation** with `CREATE DATABASE`
-- ✅ **Real user creation** with proper permissions
-- ✅ **Real SDE download** from Fuzzwork
-- ✅ **Real data import** into MySQL
-- ✅ **Real verification** of setup completion
+### Operations :
+- ✅ ** MySQL connections** using `mysql` command
+- ✅ ** database creation** with `CREATE DATABASE`
+- ✅ ** user creation** with proper permissions
+- ✅ ** SDE download** from Fuzzwork
+- ✅ ** data import** into MySQL
+- ✅ ** verification** of setup completion
 
 ### Configuration Support:
 - Database host/port customization
@@ -107,26 +108,12 @@ scripts/Client/
 ## 🎉 Key Benefits
 
 1. **Solves the Core Problem**: Replaces fake/simulated operations with real database setup
-2. **User-Friendly**: One-command installation for "idiot level users"
+2. **User-Friendly**: One-command installation for "lowest common denominator level users"
 3. **Flexible**: Works whether users are at one machine or both
 4. **Secure**: No complex remote operations, just file download + local execution
 5. **Complete**: Handles everything from database creation to SDE import
 6. **Verifiable**: Includes verification scripts to confirm setup worked
 
-## 🌟 Perfect for Your Use Case
-
-This solution perfectly addresses your original request where:
-- "User is sitting at both machines" ✅
-- "Can we 'host' the package for a Linux command line quick download?" ✅  
-- "Target here is to get a small package that does the remote server stuff" ✅
-- "Small and easy for an idiot level user to use" ✅
-
 The hosting approach gives users the benefits of a web interface for configuration while providing the simplicity of a single command execution on their database server.
-
-## 🔄 Next Steps
-
-1. **Test the hosting server** (requires Node.js installation)
-2. **Try the React interface** - use the new GetMe buttons in Settings > Database
-3. **Verify real operations** - the generated scripts will actually work unlike the previous simulated ones
 
 The system is complete and ready for users who need to set up LMeve databases! 🚀

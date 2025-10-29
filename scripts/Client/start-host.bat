@@ -6,7 +6,7 @@ cd /d "%~dp0"
 
 REM Default port - can be overridden
 set PORT=%1
-if "%PORT%"=="" set PORT=3456
+if "%PORT%"=="" set PORT=8080
 
 echo 🚀 Starting GetMe Package Host...
 echo 📁 Working directory: %CD%

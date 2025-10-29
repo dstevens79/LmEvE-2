@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Default port - can be overridden
-PORT="${1:-3456}"
+PORT="${1:-8080}"
 
 echo "🚀 Starting GetMe Package Host..."
 echo "📁 Working directory: $SCRIPT_DIR"
