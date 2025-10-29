@@ -3551,7 +3551,6 @@ Server Details:
                     </div>
                   </div>
                 </div>
-              </div>
 
               {/* Connection Controls Row */}
               <div className="flex gap-3 max-w-2xl">
