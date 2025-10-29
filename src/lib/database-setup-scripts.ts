@@ -13,6 +13,7 @@ export interface DatabaseSetupConfig {
   
   // LMeve user setup
   lmevePassword: string;
+  lmeveUsername?: string;
   allowedHosts: string;
   
   // Schema configuration
@@ -73,18 +74,20 @@ export function generateDatabaseSQL(config: DatabaseSetupConfig): string[] {
   
   // Create LMeve user with proper error handling
   if (config.createUser) {
+    const username = config.lmeveUsername || 'lmeve';
     // Drop user if exists (to handle password updates)
     commands.push(
-      `DROP USER IF EXISTS 'lmeve'@'${config.allowedHosts}';`,
-      `CREATE USER 'lmeve'@'${config.allowedHosts}' IDENTIFIED BY '${config.lmevePassword}';`
+      `DROP USER IF EXISTS '${username}'@'${config.allowedHosts}';`,
+      `CREATE USER '${username}'@'${config.allowedHosts}' IDENTIFIED BY '${config.lmevePassword}';`
     );
   }
   
   // Grant privileges
   if (config.grantPrivileges) {
+    const username = config.lmeveUsername || 'lmeve';
     commands.push(
-      `GRANT ALL PRIVILEGES ON lmeve.* TO 'lmeve'@'${config.allowedHosts}';`,
-      `GRANT ALL PRIVILEGES ON EveStaticData.* TO 'lmeve'@'${config.allowedHosts}';`,
+      `GRANT ALL PRIVILEGES ON lmeve.* TO '${username}'@'${config.allowedHosts}';`,
+      `GRANT ALL PRIVILEGES ON EveStaticData.* TO '${username}'@'${config.allowedHosts}';`,
       `FLUSH PRIVILEGES;`
     );
   }
