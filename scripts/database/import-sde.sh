@@ -55,22 +55,21 @@ if [ ! -f "$SDE_FILE" ]; then
     error_exit "SDE file not found: $SDE_FILE"
 fi
 
-# Test MySQL connectivity
+# Test MySQL connectivity - use array for safe password handling
 log "Testing MySQL connectivity..."
+MYSQL_CMD=(mysql -u root)
 if [ -n "$MYSQL_ROOT_PASS" ]; then
-    MYSQL_CMD="mysql -u root -p$MYSQL_ROOT_PASS"
-else
-    MYSQL_CMD="mysql -u root"
+    MYSQL_CMD+=(-p"$MYSQL_ROOT_PASS")
 fi
 
-if ! $MYSQL_CMD -e "SELECT 1;" >/dev/null 2>&1; then
+if ! "${MYSQL_CMD[@]}" -e "SELECT 1;" >/dev/null 2>&1; then
     error_exit "Cannot connect to MySQL. Please check if MySQL is running and credentials are correct."
 fi
 
 log "MySQL connection successful"
 
 # Check if database exists
-if ! $MYSQL_CMD -e "USE $SDE_DB;" >/dev/null 2>&1; then
+if ! "${MYSQL_CMD[@]}" -e "USE $SDE_DB;" >/dev/null 2>&1; then
     error_exit "Database $SDE_DB does not exist. Please run create-db.sh first."
 fi
 
@@ -120,11 +119,11 @@ fi
 
 # Clear existing SDE data
 log "Clearing existing SDE data..."
-$MYSQL_CMD -e "DROP DATABASE IF EXISTS \`$SDE_DB\`; CREATE DATABASE \`$SDE_DB\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+"${MYSQL_CMD[@]}" -e "DROP DATABASE IF EXISTS \`$SDE_DB\`; CREATE DATABASE \`$SDE_DB\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 # Grant permissions to lmeve user
 log "Setting up permissions..."
-$MYSQL_CMD <<EOF
+"${MYSQL_CMD[@]}" <<EOF
 GRANT ALL PRIVILEGES ON \`$SDE_DB\`.* TO '$LMEVE_USER'@'%';
 GRANT ALL PRIVILEGES ON \`$SDE_DB\`.* TO '$LMEVE_USER'@'localhost';
 FLUSH PRIVILEGES;
@@ -132,7 +131,7 @@ EOF
 
 # Import the SDE data
 log "Starting SDE data import (this may take several minutes)..."
-if ! $MYSQL_CMD "$SDE_DB" < "$SQL_FILE"; then
+if ! "${MYSQL_CMD[@]}" "$SDE_DB" < "$SQL_FILE"; then
     error_exit "Failed to import SDE data"
 fi
 
@@ -140,7 +139,7 @@ log "SDE data import completed successfully!"
 
 # Verify import
 log "Verifying import..."
-TABLE_COUNT=$($MYSQL_CMD -s -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$SDE_DB';")
+TABLE_COUNT=$("${MYSQL_CMD[@]}" -s -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$SDE_DB';")
 log "Imported $TABLE_COUNT tables into $SDE_DB database"
 
 if [ "$TABLE_COUNT" -eq 0 ]; then
@@ -149,7 +148,8 @@ fi
 
 # Test access with lmeve user
 log "Testing lmeve user access..."
-if ! mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -e "USE $SDE_DB; SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$SDE_DB';" >/dev/null 2>&1; then
+LMEVE_CMD=(mysql -u "$LMEVE_USER" -p"$LMEVE_PASS")
+if ! "${LMEVE_CMD[@]}" -e "USE $SDE_DB; SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$SDE_DB';" >/dev/null 2>&1; then
     error_exit "LMeve user cannot access the SDE database"
 fi
 

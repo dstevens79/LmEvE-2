@@ -3451,7 +3451,6 @@ Server Details:
                     </div>
                   )}
                 </div>
-                </div>
 
                 {/* Quick Actions Above System Status */}
                 <div className="lg:col-span-1 space-y-4">

@@ -127,7 +127,49 @@ Once installed, the LMeve web application can perform database operations by:
 
 ## Troubleshooting
 
-### Permission Denied
+### Common Issues and Solutions
+
+#### 1. lmeve User Not Created
+
+**Problem**: The `lmeve` user is not being created on the remote database during configuration.
+
+**Causes**:
+- MySQL 8+ authentication plugin mismatch
+- Password handling issues with special characters
+- Sudoers NOPASSWD not configured correctly
+- Root password not being passed properly
+
+**Solutions**:
+
+**Fixed in v2.0**: Scripts now use:
+- Array-based password handling for safety with special characters
+- `mysql_native_password` plugin for MySQL 8+ compatibility
+- Enhanced user creation with `DROP USER IF EXISTS` before creation
+- Proper NOPASSWD sudo configuration
+
+**Manual verification**:
+```bash
+# On database server, check if user exists
+sudo mysql -u root -p -e "SELECT user, host, plugin FROM mysql.user WHERE user='lmeve';"
+
+# Should show:
+# +-------+-----------+-----------------------+
+# | user  | host      | plugin                |
+# +-------+-----------+-----------------------+
+# | lmeve | %         | mysql_native_password |
+# | lmeve | localhost | mysql_native_password |
+# +-------+-----------+-----------------------+
+
+# Test user login
+mysql -u lmeve -p
+# Enter the lmeve password when prompted
+
+# If user doesn't exist, manually run:
+sudo /usr/local/lmeve/create-db.sh "root_password" "lmeve_password"
+```
+
+#### 2. Permission Denied
+
 ```bash
 # Check script permissions
 ls -la /usr/local/lmeve/
@@ -135,26 +177,79 @@ ls -la /usr/local/lmeve/
 
 # Test sudoers configuration
 sudo -u opsuser sudo -l
-# Should list the allowed scripts
+# Should list the allowed scripts with NOPASSWD
+
+# Verify sudoers syntax
+sudo visudo -c -f /etc/sudoers.d/lmeve_ops
 ```
 
-### SSH Connection Issues
+#### 3. SSH Connection Issues
+
 ```bash
 # Test SSH key
 ssh -i ~/.ssh/lmeve_ops -v opsuser@db-server
 
 # Check authorized_keys
 sudo cat /home/opsuser/.ssh/authorized_keys
+
+# Verify key permissions
+ls -la ~/.ssh/lmeve_ops
+# Should be: -rw------- (600)
 ```
 
-### MySQL Connection Problems
+#### 4. MySQL Connection Problems
+
 ```bash
 # Test MySQL access
 mysql -u root -p -e "SELECT 1;"
 
 # Check MySQL is running
 systemctl status mysql
+
+# Check MySQL 8+ auth_socket plugin
+sudo mysql -u root -e "SELECT user, plugin FROM mysql.user WHERE user='root';"
+# If plugin is 'auth_socket', you may need to use sudo mysql
 ```
+
+#### 5. Password Special Characters
+
+**Problem**: Passwords with special characters (`!`, `$`, `&`, etc.) break MySQL commands.
+
+**Solution**: The scripts now use bash arrays for safe password handling:
+```bash
+MYSQL_CMD=(mysql -u root)
+[ -n "$MYSQL_ROOT_PASS" ] && MYSQL_CMD+=(-p"$MYSQL_ROOT_PASS")
+"${MYSQL_CMD[@]}" -e "SELECT 1;"
+```
+
+This ensures passwords are properly quoted even with special characters.
+
+#### 6. Remote Execution Fails
+
+**Problem**: Script runs locally but fails over SSH.
+
+**Causes**:
+- Sudo requires password (NOPASSWD not set)
+- Environment variables not passed
+- SSH key not loaded
+
+**Verification**:
+```bash
+# Test remote execution
+ssh -i ~/.ssh/lmeve_ops opsuser@db-server "sudo /usr/local/lmeve/create-db.sh 'rootpass' 'lmevepass'"
+
+# Should NOT prompt for password
+# If it does, check /etc/sudoers.d/lmeve_ops for NOPASSWD
+```
+
+### MySQL 8+ Compatibility Notes
+
+The scripts are now fully compatible with MySQL 8.0+:
+
+1. **Authentication Plugin**: Uses `mysql_native_password` instead of default `caching_sha2_password`
+2. **User Creation**: Explicitly drops and recreates users to ensure clean state
+3. **Password Handling**: Uses bash arrays to safely handle passwords with special characters
+4. **Verification**: Checks both `mysql.user` table and connection tests
 
 ## Maintenance
 

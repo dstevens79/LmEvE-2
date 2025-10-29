@@ -35,16 +35,23 @@ fi
 log "Starting LMeve database creation..."
 log "Using database user: $LMEVE_USER"
 
-# Test MySQL connectivity as root
+# Test MySQL connectivity - use array for safe password handling
 log "Testing MySQL connectivity..."
-if ! sudo mysql -e "SELECT 1;" >/dev/null 2>&1; then
-    error_exit "Cannot connect to MySQL as root. Ensure MySQL is running."
+MYSQL_CMD=(mysql -u root)
+if [ -n "$MYSQL_ROOT_PASS" ]; then
+    MYSQL_CMD+=(-p"$MYSQL_ROOT_PASS")
 fi
+
+# Test connection
+if ! "${MYSQL_CMD[@]}" -e "SELECT 1;" >/dev/null 2>&1; then
+    error_exit "Cannot connect to MySQL. Please check if MySQL is running and credentials are correct."
+fi
+
 log "MySQL connection successful"
 
 # Create databases
 log "Creating databases..."
-sudo mysql <<EOF
+"${MYSQL_CMD[@]}" <<EOF
 CREATE DATABASE IF NOT EXISTS \`$LMEVE_DB\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS \`$SDE_DB\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 EOF
@@ -57,11 +64,18 @@ sudo mysql <<EOF
 DROP USER IF EXISTS '$LMEVE_USER'@'%';
 DROP USER IF EXISTS '$LMEVE_USER'@'localhost';
 
--- Create users (compatible with MySQL 8+)
+# Create user and grant permissions - use mysql_native_password for MySQL 8+ compatibility
+log "Creating user and setting permissions..."
+"${MYSQL_CMD[@]}" <<EOF
+-- Drop existing users if they exist to ensure clean state
+DROP USER IF EXISTS '$LMEVE_USER'@'%';
+DROP USER IF EXISTS '$LMEVE_USER'@'localhost';
+
+-- Create users with mysql_native_password for MySQL 8+ compatibility
 CREATE USER '$LMEVE_USER'@'%' IDENTIFIED WITH mysql_native_password BY '$LMEVE_PASS';
 CREATE USER '$LMEVE_USER'@'localhost' IDENTIFIED WITH mysql_native_password BY '$LMEVE_PASS';
 
--- Grant privileges on both databases
+-- Grant privileges
 GRANT ALL PRIVILEGES ON \`$LMEVE_DB\`.* TO '$LMEVE_USER'@'%';
 GRANT ALL PRIVILEGES ON \`$LMEVE_DB\`.* TO '$LMEVE_USER'@'localhost';
 GRANT ALL PRIVILEGES ON \`$SDE_DB\`.* TO '$LMEVE_USER'@'%';
@@ -79,13 +93,27 @@ if [ "$USER_CHECK" -lt 1 ]; then
 fi
 log "Found $USER_CHECK user entries for $LMEVE_USER"
 
-# Verify access with new user
-log "Verifying database connection as '$LMEVE_USER'..."
-if ! mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -e "USE $LMEVE_DB; SELECT 1;" >/dev/null 2>&1; then
-    error_exit "Cannot connect to $LMEVE_DB as $LMEVE_USER"
+# Verify user creation in mysql.user table
+log "Verifying user exists in mysql.user table..."
+USER_CHECK=$("${MYSQL_CMD[@]}" -sN -e "SELECT COUNT(*) FROM mysql.user WHERE user='$LMEVE_USER';")
+if [ "$USER_CHECK" -lt 1 ]; then
+    error_exit "User $LMEVE_USER was not created in mysql.user table"
 fi
-if ! mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -e "USE $SDE_DB; SELECT 1;" >/dev/null 2>&1; then
-    error_exit "Cannot connect to $SDE_DB as $LMEVE_USER"
+log "Found $USER_CHECK user entries for $LMEVE_USER"
+
+# Verify setup with connection test
+log "Verifying database connection as $LMEVE_USER..."
+LMEVE_CMD=(mysql -u "$LMEVE_USER" -p"$LMEVE_PASS")
+
+if ! "${LMEVE_CMD[@]}" -e "USE $LMEVE_DB; SELECT 1;" >/dev/null 2>&1; then
+    log "WARNING: User verification failed for $LMEVE_DB"
+    log "Checking user details..."
+    "${MYSQL_CMD[@]}" -e "SELECT user, host, plugin FROM mysql.user WHERE user='$LMEVE_USER';"
+    error_exit "User verification failed for $LMEVE_DB"
+fi
+
+if ! "${LMEVE_CMD[@]}" -e "USE $SDE_DB; SELECT 1;" >/dev/null 2>&1; then
+    error_exit "User verification failed for $SDE_DB"
 fi
 
 log "Database setup completed successfully!"
