@@ -4,14 +4,13 @@
 # This script creates the required databases and user for LMeve
 # Must be run with sudo privileges on the database host
 #
-# Usage: sudo ./create-db.sh [mysql_root_password] [lmeve_user_password]
+# Usage: sudo ./create-db.sh [lmeve_user_password]
 #
 
 set -euo pipefail
 
 # Configuration
-MYSQL_ROOT_PASS="${1:-}"
-LMEVE_PASS="${2:-lmpassword}"
+LMEVE_PASS="${1:-lmpassword}"
 LMEVE_USER="lmeve"
 LMEVE_DB="lmeve"
 SDE_DB="EveStaticData"
@@ -29,7 +28,7 @@ error_exit() {
 
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
-    error_exit "This script must be run as root (use sudo)"
+    error_exit "This script must be run with sudo (root privileges)"
 fi
 
 log "Starting LMeve database creation..."
@@ -54,12 +53,14 @@ log "Creating databases..."
 CREATE DATABASE IF NOT EXISTS \`$LMEVE_DB\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS \`$SDE_DB\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 EOF
+log "Databases created successfully"
 
-if [ $? -eq 0 ]; then
-    log "Databases created successfully"
-else
-    error_exit "Failed to create databases"
-fi
+# Create user and grant privileges
+log "Creating user '$LMEVE_USER' and setting permissions..."
+sudo mysql <<EOF
+-- Drop existing users to ensure clean state
+DROP USER IF EXISTS '$LMEVE_USER'@'%';
+DROP USER IF EXISTS '$LMEVE_USER'@'localhost';
 
 # Create user and grant permissions - use mysql_native_password for MySQL 8+ compatibility
 log "Creating user and setting permissions..."
@@ -80,12 +81,15 @@ GRANT ALL PRIVILEGES ON \`$SDE_DB\`.* TO '$LMEVE_USER'@'localhost';
 
 FLUSH PRIVILEGES;
 EOF
+log "User created and privileges granted successfully"
 
-if [ $? -eq 0 ]; then
-    log "User created and permissions granted successfully"
-else
-    error_exit "Failed to create user or grant permissions"
+# Verify user creation
+log "Verifying user exists in mysql.user table..."
+USER_CHECK=$(sudo mysql -sN -e "SELECT COUNT(*) FROM mysql.user WHERE user='$LMEVE_USER';")
+if [ "$USER_CHECK" -lt 1 ]; then
+    error_exit "User $LMEVE_USER was not created properly"
 fi
+log "Found $USER_CHECK user entries for $LMEVE_USER"
 
 # Verify user creation in mysql.user table
 log "Verifying user exists in mysql.user table..."
