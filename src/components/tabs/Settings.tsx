@@ -3877,7 +3877,6 @@ Server Details:
               </div>
             </CardContent>
           </Card>
-
         </TabsContent>
 
         <TabsContent value="esi" className="space-y-6">
