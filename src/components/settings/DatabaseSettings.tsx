@@ -32,7 +32,7 @@ import { DatabaseManager } from '@/lib/database';
 import { EnhancedDatabaseSetupManager, validateSetupConfig, type DatabaseSetupConfig } from '@/lib/database-setup-scripts';
 import { useSDEManager, type SDEDatabaseStats } from '@/lib/sdeService';
 import { DatabaseSchemaManager } from '@/components/DatabaseSchemaManager';
-import { lmeveSchemas } from '@/lib/database-schemas';
+import { lmeveSchemas, generateAllCreateTableSQL } from '@/lib/database-schemas';
 
 interface DatabaseSettingsProps {
   isMobileView?: boolean;
@@ -220,15 +220,51 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     setSetupStatus('running');
     setSetupProgress(0);
     addConnectionLog('🚀 Starting remote database setup...');
+    addConnectionLog('📋 Debug: Preparing setup configuration...');
     
     try {
+      // Generate schema content based on source selection
+      let schemaContent: string | undefined;
+      const useCustomSchema = databaseSettings?.schemaSource === 'custom';
+      
+      addConnectionLog(`📋 Debug: Schema source = ${databaseSettings?.schemaSource || 'undefined'}`);
+      
+      if (useCustomSchema) {
+        addConnectionLog('📋 Debug: Custom schema selected - checking for uploaded schema...');
+        // TODO: Load custom schema from uploaded file
+        addConnectionLog('⚠️ Warning: Custom schema upload not yet implemented, using default');
+        schemaContent = generateAllCreateTableSQL();
+      } else {
+        addConnectionLog('📋 Debug: Using default LMeve schema...');
+        // Use default schema from lmeveSchemas
+        try {
+          schemaContent = generateAllCreateTableSQL();
+          addConnectionLog(`✅ Debug: Schema generated successfully (${schemaContent.length} characters)`);
+          addConnectionLog(`📋 Debug: Schema preview: ${schemaContent.substring(0, 200)}...`);
+        } catch (schemaError) {
+          const schemaErrorMsg = schemaError instanceof Error ? schemaError.message : 'Unknown schema generation error';
+          addConnectionLog(`❌ Debug: Failed to generate schema: ${schemaErrorMsg}`);
+          throw new Error(`Failed to generate schema: ${schemaErrorMsg}`);
+        }
+      }
+      
+      if (!schemaContent) {
+        addConnectionLog('❌ Debug: schemaContent is undefined or empty');
+        throw new Error('Schema content is required but was not generated. Check schema source configuration.');
+      }
+      
+      addConnectionLog('✅ Debug: Schema content validated');
+      addConnectionLog(`📋 Debug: Building setup configuration object...`);
+      
       const setupConfig: DatabaseSetupConfig = {
         host: databaseSettings.host || 'localhost',
         port: parseInt(String(databaseSettings.port || 3306)),
         mysqlRootPassword: databaseSettings.sudoPassword,
         lmevePassword: databaseSettings.password,
         allowedHosts: '%',
-        schemaSource: 'default',
+        schemaSource: databaseSettings?.schemaSource || 'default',
+        schemaContent: schemaContent,
+        useCustomSchema: useCustomSchema,
         sdeConfig: {
           download: sdeSettings?.sdeSource === 'fuzzwork',
           skip: false
@@ -246,15 +282,32 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         }
       };
 
+      addConnectionLog(`✅ Debug: Setup config created with the following properties:`);
+      addConnectionLog(`  - host: ${setupConfig.host}`);
+      addConnectionLog(`  - port: ${setupConfig.port}`);
+      addConnectionLog(`  - schemaSource: ${setupConfig.schemaSource}`);
+      addConnectionLog(`  - useCustomSchema: ${setupConfig.useCustomSchema}`);
+      addConnectionLog(`  - schemaContent length: ${setupConfig.schemaContent?.length || 0} characters`);
+      addConnectionLog(`  - createDatabases: ${setupConfig.createDatabases}`);
+      addConnectionLog(`  - importSchema: ${setupConfig.importSchema}`);
+      addConnectionLog(`  - sdeConfig.download: ${setupConfig.sdeConfig.download}`);
+      addConnectionLog(`  - isRemote: ${setupConfig.isRemote}`);
+
+      addConnectionLog('🔍 Debug: Validating setup configuration...');
       const errors = validateSetupConfig(setupConfig);
       if (errors.length > 0) {
+        addConnectionLog(`❌ Debug: Configuration validation failed with ${errors.length} error(s):`);
+        errors.forEach((err, idx) => addConnectionLog(`  ${idx + 1}. ${err}`));
         throw new Error(`Configuration errors: ${errors.join(', ')}`);
       }
+      addConnectionLog('✅ Debug: Configuration validation passed');
 
+      addConnectionLog('🏗️ Debug: Creating EnhancedDatabaseSetupManager instance...');
       const manager = new EnhancedDatabaseSetupManager(setupConfig, (progress) => {
         setSetupProgress(progress.progress);
         addConnectionLog(`⏳ ${progress.stage}: ${progress.message}`);
       });
+      addConnectionLog('✅ Debug: Manager instance created successfully');
 
       addConnectionLog('🗄️ Step 1: Creating databases and users...');
       const result = await manager.setupDatabase();
@@ -268,12 +321,18 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         addConnectionLog('🎉 Database setup completed successfully');
         toast.success('Remote database setup completed');
       } else {
+        addConnectionLog(`❌ Debug: Setup failed with error: ${result.error}`);
         throw new Error(result.error || 'Setup failed');
       }
     } catch (error) {
       setSetupStatus('error');
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : '';
       addConnectionLog(`❌ Remote setup failed: ${errorMessage}`);
+      if (errorStack) {
+        addConnectionLog(`📋 Debug: Error stack trace:`);
+        errorStack.split('\n').slice(0, 5).forEach(line => addConnectionLog(`  ${line}`));
+      }
       toast.error(`Remote setup failed: ${errorMessage}`);
     }
   };
