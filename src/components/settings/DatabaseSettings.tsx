@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,6 +72,9 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   const [setupProgress, setSetupProgress] = useState(0);
   const [setupStatus, setSetupStatus] = useState<'ready' | 'running' | 'complete' | 'error'>('ready');
   
+  // Ref for auto-scrolling logs
+  const logsEndRef = useRef<HTMLDivElement>(null);
+  
   // Remote access state
   const [remoteAccess, setRemoteAccess] = useState({
     sshConnected: false,
@@ -97,6 +100,13 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   useEffect(() => {
     checkSDEStatus();
   }, []);
+
+  // Auto-scroll logs to bottom when new logs are added
+  useEffect(() => {
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [connectionLogs]);
 
   const addConnectionLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -214,8 +224,8 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
       return;
     }
 
-    if (!databaseSettings?.sudoPassword || !databaseSettings?.password) {
-      toast.error('MySQL root password and LMeve password are required');
+    if (!databaseSettings?.sudoPassword || !databaseSettings?.password || !databaseSettings?.username) {
+      toast.error('MySQL root password, LMeve password, and username are required');
       return;
     }
 
@@ -228,11 +238,12 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
       // Log the actual command that will be executed
       addConnectionLog('');
       addConnectionLog('📋 Command to be executed on remote server:');
-      addConnectionLog(`   sudo /usr/local/lmeve/create-db.sh "${databaseSettings.sudoPassword}" "${databaseSettings.password}"`);
+      addConnectionLog(`   sudo /usr/local/lmeve/create-db.sh "${databaseSettings.sudoPassword}" "${databaseSettings.password}" "${databaseSettings.username}"`);
       addConnectionLog('');
       addConnectionLog('⚙️ Parameters being passed:');
       addConnectionLog(`   - MySQL Root Password: ${databaseSettings.sudoPassword ? '✓ provided' : '✗ missing'}`);
       addConnectionLog(`   - LMeve Password: ${databaseSettings.password ? '✓ provided' : '✗ missing'}`);
+      addConnectionLog(`   - LMeve Username: ${databaseSettings.username || 'lmeve (default)'}`);
       addConnectionLog(`   - Password length: ${databaseSettings.password?.length || 0} characters`);
       addConnectionLog('');
       
@@ -273,6 +284,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         port: parseInt(String(databaseSettings.port || 3306)),
         mysqlRootPassword: databaseSettings.sudoPassword,
         lmevePassword: databaseSettings.password,
+        lmeveUsername: databaseSettings.username || 'lmeve',
         allowedHosts: '%',
         schemaSource: schemaSource,
         schemaContent: schemaContent,
@@ -297,6 +309,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
       addConnectionLog(`✅ Debug: Setup config created with the following properties:`);
       addConnectionLog(`  - host: ${setupConfig.host}`);
       addConnectionLog(`  - port: ${setupConfig.port}`);
+      addConnectionLog(`  - lmeveUsername: ${setupConfig.lmeveUsername}`);
       addConnectionLog(`  - allowedHosts: ${setupConfig.allowedHosts}`);
       addConnectionLog(`  - schemaSource: ${setupConfig.schemaSource}`);
       addConnectionLog(`  - useCustomSchema: ${setupConfig.useCustomSchema}`);
@@ -326,7 +339,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
 
       addConnectionLog('🗄️ Step 1: Creating databases and users...');
       addConnectionLog('📡 Running: sudo /usr/local/lmeve/create-db.sh');
-      addConnectionLog(`🔧 Executing: sudo /usr/local/lmeve/create-db.sh "${databaseSettings.sudoPassword ? '***' : ''}" "${databaseSettings.password ? '***' : ''}"`);
+      addConnectionLog(`🔧 Executing: sudo /usr/local/lmeve/create-db.sh "${databaseSettings.sudoPassword ? '***' : ''}" "${databaseSettings.password ? '***' : ''}" "${databaseSettings.username}"`);
       
       const result = await manager.setupDatabase();
 
@@ -732,6 +745,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                 </div>
               ))
             )}
+            <div ref={logsEndRef} />
           </div>
         </CardContent>
       </Card>
