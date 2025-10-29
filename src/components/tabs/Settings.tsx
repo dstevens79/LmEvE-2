@@ -3451,7 +3451,6 @@ Server Details:
                     </div>
                   )}
                 </div>
-                </div>
 
                 {/* Quick Actions Above System Status */}
                 <div className="lg:col-span-1 space-y-4">
@@ -3551,6 +3550,7 @@ Server Details:
                     </div>
                   </div>
                 </div>
+              </div>
 
               {/* Connection Controls Row */}
               <div className="flex gap-3 max-w-2xl">
