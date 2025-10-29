@@ -1,0 +1,15 @@
+{
+  "name": "lmeve-api-server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Backend API server for LMeve GetMe package hosting",
+  "main": "api.js",
+  "scripts": {
+    "start": "node api.js",
+    "dev": "node api.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}

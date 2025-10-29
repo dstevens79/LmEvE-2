@@ -1769,7 +1769,7 @@ echo "See README.md for detailed setup instructions"
         sdeSource: 'https://www.fuzzwork.co.uk/dump/latest/eve.db.bz2'
       };
 
-      // Generate the package (simplified approach without complex TypeScript issues)
+      // Generate the GetMe script with embedded credentials
       const timestamp = new Date().toISOString();
       const getmeScript = `#!/bin/bash
 #
@@ -1822,78 +1822,142 @@ fi
 
 # Step 2: Create Databases
 print_step "Creating Databases"
-mysql -u root -p"\$MYSQL_ROOT_PASS" -h "\$DB_HOST" -P "\$DB_PORT" << 'EOF'
-CREATE DATABASE IF NOT EXISTS lmeve;
-CREATE DATABASE IF NOT EXISTS EveStaticData;
-EOF
+mysql -u root -p"\$MYSQL_ROOT_PASS" -h "\$DB_HOST" -P "\$DB_PORT" << 'SQLEOF'
+CREATE DATABASE IF NOT EXISTS lmeve DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS EveStaticData DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+SQLEOF
 
 echo -e "\${GREEN}✅ Databases created: lmeve, EveStaticData\${NC}"
 
 # Step 3: Create User
 print_step "Creating MySQL User"
-mysql -u root -p"\$MYSQL_ROOT_PASS" -h "\$DB_HOST" -P "\$DB_PORT" << EOF
+mysql -u root -p"\$MYSQL_ROOT_PASS" -h "\$DB_HOST" -P "\$DB_PORT" << SQLEOF
 DROP USER IF EXISTS '\$LMEVE_USER'@'%';
-CREATE USER '\$LMEVE_USER'@'%' IDENTIFIED BY '\$LMEVE_PASS';
+DROP USER IF EXISTS '\$LMEVE_USER'@'localhost';
+
+CREATE USER '\$LMEVE_USER'@'%' IDENTIFIED WITH mysql_native_password BY '\$LMEVE_PASS';
+CREATE USER '\$LMEVE_USER'@'localhost' IDENTIFIED WITH mysql_native_password BY '\$LMEVE_PASS';
+
 GRANT ALL PRIVILEGES ON lmeve.* TO '\$LMEVE_USER'@'%';
+GRANT ALL PRIVILEGES ON lmeve.* TO '\$LMEVE_USER'@'localhost';
 GRANT ALL PRIVILEGES ON EveStaticData.* TO '\$LMEVE_USER'@'%';
+GRANT ALL PRIVILEGES ON EveStaticData.* TO '\$LMEVE_USER'@'localhost';
+
 FLUSH PRIVILEGES;
-EOF
+SQLEOF
 
 echo -e "\${GREEN}✅ User '\$LMEVE_USER' created with full permissions\${NC}"
 
-# Step 4: Download and Import SDE
+# Step 4: Test new user connection
+print_step "Testing User Connection"
+if mysql -u "\$LMEVE_USER" -p"\$LMEVE_PASS" -h "\$DB_HOST" -P "\$DB_PORT" -e "SELECT 1;" >/dev/null 2>&1; then
+    echo -e "\${GREEN}✅ User connection successful\${NC}"
+else
+    echo -e "\${RED}❌ User connection failed\${NC}"
+    exit 1
+fi
+
+# Step 5: Download and Import SDE
 print_step "Downloading EVE Static Data"
-if wget -O eve.db.bz2 "\$SDE_URL"; then
+TEMP_DIR=\$(mktemp -d)
+cd "\$TEMP_DIR"
+
+if wget -q --show-progress "\$SDE_URL" -O eve.db.bz2; then
     echo -e "\${GREEN}✅ SDE download completed\${NC}"
     
-    print_step "Importing EVE Static Data"
-    if bunzip2 eve.db.bz2 && mysql -u "\$LMEVE_USER" -p"\$LMEVE_PASS" -h "\$DB_HOST" -P "\$DB_PORT" EveStaticData < eve.db; then
-        echo -e "\${GREEN}✅ SDE data imported successfully\${NC}"
-        rm -f eve.db  # Clean up
+    print_step "Extracting SDE Data"
+    if bunzip2 eve.db.bz2; then
+        echo -e "\${GREEN}✅ Extraction completed\${NC}"
+        
+        print_step "Importing EVE Static Data"
+        if mysql -u "\$LMEVE_USER" -p"\$LMEVE_PASS" -h "\$DB_HOST" -P "\$DB_PORT" EveStaticData < eve.db; then
+            echo -e "\${GREEN}✅ SDE data imported successfully\${NC}"
+        else
+            echo -e "\${YELLOW}⚠️  SDE import had issues, but database is still usable\${NC}"
+        fi
     else
-        echo -e "\${YELLOW}⚠️  SDE import had issues, but database is still usable\${NC}"
+        echo -e "\${YELLOW}⚠️  SDE extraction failed\${NC}"
     fi
 else
     echo -e "\${YELLOW}⚠️  SDE download failed, continuing anyway\${NC}"
 fi
 
-# Step 5: Verification
+# Cleanup
+cd - >/dev/null
+rm -rf "\$TEMP_DIR"
+
+# Step 6: Verification
 print_step "Verifying Installation"
-echo -n "Testing database connections: "
-if mysql -u"\$LMEVE_USER" -p"\$LMEVE_PASS" -h"\$DB_HOST" -P"\$DB_PORT" -e "USE lmeve; USE EveStaticData; SELECT 1;" >/dev/null 2>&1; then
-    echo -e "\${GREEN}✅ OK\${NC}"
+if mysql -u "\$LMEVE_USER" -p "\$LMEVE_PASS" -h "\$DB_HOST" -P "\$DB_PORT" -e "USE lmeve; USE EveStaticData; SELECT 1;" >/dev/null 2>&1; then
+    echo -e "\${GREEN}✅ Database verification successful\${NC}"
 else
-    echo -e "\${RED}❌ FAILED\${NC}"
+    echo -e "\${RED}❌ Database verification failed\${NC}"
 fi
 
 # Success Summary
+LMEVE_TABLES=\$(mysql -u "\$LMEVE_USER" -p"\$LMEVE_PASS" -h "\$DB_HOST" -P "\$DB_PORT" -sN -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='lmeve';" 2>/dev/null || echo "0")
+SDE_TABLES=\$(mysql -u "\$LMEVE_USER" -p"\$LMEVE_PASS" -h "\$DB_HOST" -P "\$DB_PORT" -sN -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='EveStaticData';" 2>/dev/null || echo "0")
+
 echo ""
 echo -e "\${GREEN}🎉 LMeve Database Setup Complete!\${NC}"
 echo -e "\${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\${NC}"
 echo ""
 echo "Database connection details for LMeve:"
-echo -e "  Host: \${YELLOW}\$DB_HOST\${NC}"
-echo -e "  Port: \${YELLOW}\$DB_PORT\${NC}"
+echo -e "  Host: \${YELLOW}\$DB_HOST:\$DB_PORT\${NC}"
 echo -e "  Username: \${YELLOW}\$LMEVE_USER\${NC}"
 echo -e "  Password: \${YELLOW}[configured]\${NC}"
-echo -e "  Database: \${YELLOW}lmeve\${NC}"
+echo -e "  LMeve DB: \${YELLOW}lmeve\${NC} (\$LMEVE_TABLES tables)"
+echo -e "  SDE DB: \${YELLOW}EveStaticData\${NC} (\$SDE_TABLES tables)"
 echo ""
 echo "Use these settings in your LMeve web application configuration."
 echo ""`;
 
-      // Create and download the package
-      const blob = new Blob([getmeScript], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `getme-lmeve-${new Date().toISOString().split('T')[0]}.sh`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Save the script to the web host via API
+      const response = await fetch('/api/save-getme', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          script: getmeScript,
+          filename: 'latest.sh'
+        })
+      });
 
-      toast.success('GetMe package downloaded! Upload to your database server and run: sudo ./getme-lmeve-*.sh');
-      console.log('📦 Generated and downloaded GetMe package');
+      if (!response.ok) {
+        throw new Error('Failed to save script to server');
+      }
+
+      const result = await response.json();
+      
+      // Generate the one-line wget command
+      const webHostURL = window.location.origin;
+      const wgetCommand = `wget ${webHostURL}/getme/latest.sh && sudo bash latest.sh`;
+
+      // Copy to clipboard
+      navigator.clipboard?.writeText(wgetCommand);
+
+      // Show success message with the one-liner
+      toast.success(
+        <div className="space-y-2 max-w-2xl">
+          <div className="font-bold">GetMe Package Ready!</div>
+          <div className="text-xs mt-2">On your database server, run this ONE command:</div>
+          <div className="bg-background/50 p-2 rounded font-mono text-xs break-all">
+            {wgetCommand}
+          </div>
+          <div className="text-xs text-green-300 mt-1">
+            Command copied to clipboard!
+          </div>
+          <div className="text-xs text-gray-400 mt-2">
+            All credentials are pre-configured. Just paste and run!
+          </div>
+        </div>,
+        { duration: 30000 }
+      );
+
+      addConnectionLog('GetMe package generated and saved to web host');
+      addConnectionLog(`One-line command: ${wgetCommand}`);
+      
     } catch (error) {
       console.error('❌ Failed to generate GetMe package:', error);
       toast.error('Failed to generate GetMe package');
