@@ -45,28 +45,27 @@ if [ ! -f "$SCHEMA_FILE" ]; then
     error_exit "Schema file not found: $SCHEMA_FILE"
 fi
 
-# Test MySQL connectivity
+# Test MySQL connectivity - use array for safe password handling
 log "Testing MySQL connectivity..."
+MYSQL_CMD=(mysql -u root)
 if [ -n "$MYSQL_ROOT_PASS" ]; then
-    MYSQL_CMD="mysql -u root -p$MYSQL_ROOT_PASS"
-else
-    MYSQL_CMD="mysql -u root"
+    MYSQL_CMD+=(-p"$MYSQL_ROOT_PASS")
 fi
 
-if ! $MYSQL_CMD -e "SELECT 1;" >/dev/null 2>&1; then
+if ! "${MYSQL_CMD[@]}" -e "SELECT 1;" >/dev/null 2>&1; then
     error_exit "Cannot connect to MySQL. Please check if MySQL is running and credentials are correct."
 fi
 
 log "MySQL connection successful"
 
 # Check if database exists
-if ! $MYSQL_CMD -e "USE $LMEVE_DB;" >/dev/null 2>&1; then
+if ! "${MYSQL_CMD[@]}" -e "USE $LMEVE_DB;" >/dev/null 2>&1; then
     error_exit "Database $LMEVE_DB does not exist. Please run create-db.sh first."
 fi
 
 # Import the schema
 log "Importing LMeve schema..."
-if ! $MYSQL_CMD "$LMEVE_DB" < "$SCHEMA_FILE"; then
+if ! "${MYSQL_CMD[@]}" "$LMEVE_DB" < "$SCHEMA_FILE"; then
     error_exit "Failed to import LMeve schema"
 fi
 
@@ -74,7 +73,7 @@ log "Schema import completed successfully!"
 
 # Verify import
 log "Verifying schema import..."
-TABLE_COUNT=$($MYSQL_CMD -s -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$LMEVE_DB';")
+TABLE_COUNT=$("${MYSQL_CMD[@]}" -s -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$LMEVE_DB';")
 log "Created $TABLE_COUNT tables in $LMEVE_DB database"
 
 if [ "$TABLE_COUNT" -eq 0 ]; then
@@ -83,7 +82,8 @@ fi
 
 # Test access with lmeve user
 log "Testing lmeve user access..."
-if ! mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -e "USE $LMEVE_DB; SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$LMEVE_DB';" >/dev/null 2>&1; then
+LMEVE_CMD=(mysql -u "$LMEVE_USER" -p"$LMEVE_PASS")
+if ! "${LMEVE_CMD[@]}" -e "USE $LMEVE_DB; SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$LMEVE_DB';" >/dev/null 2>&1; then
     error_exit "LMeve user cannot access the lmeve database"
 fi
 

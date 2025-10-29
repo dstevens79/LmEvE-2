@@ -14,7 +14,12 @@
 # - No shell access or arbitrary commands allowed
 
 # Allow opsuser to run LMeve database scripts without password
-opsuser ALL=(root) NOPASSWD: /usr/local/lmeve/create-db.sh, /usr/local/lmeve/import-sde.sh, /usr/local/lmeve/import-schema.sh
+# The NOPASSWD option is crucial for remote SSH execution
+opsuser ALL=(ALL) NOPASSWD: /usr/local/lmeve/create-db.sh
+opsuser ALL=(ALL) NOPASSWD: /usr/local/lmeve/import-sde.sh
+opsuser ALL=(ALL) NOPASSWD: /usr/local/lmeve/import-schema.sh
 
 # Alternative: if using a different username, replace 'opsuser' above
-# webuser ALL=(root) NOPASSWD: /usr/local/lmeve/create-db.sh, /usr/local/lmeve/import-sde.sh, /usr/local/lmeve/import-schema.sh
+# webuser ALL=(ALL) NOPASSWD: /usr/local/lmeve/create-db.sh
+# webuser ALL=(ALL) NOPASSWD: /usr/local/lmeve/import-sde.sh
+# webuser ALL=(ALL) NOPASSWD: /usr/local/lmeve/import-schema.sh
