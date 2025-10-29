@@ -1912,67 +1912,137 @@ echo ""`;
         sdeSource: 'https://www.fuzzwork.co.uk/dump/latest/eve.db.bz2'
       };
 
-      // Try to start hosting server or provide manual instructions
-      const hostPort = 8080;  // Using 8080 - common HTTP alternative port
-      const hostIP = window.location.hostname;
+      const appUrl = window.location.origin;
+      const dbHost = config.host;
+      const appHost = window.location.hostname;
+      const scriptName = `getme-lmeve-${new Date().toISOString().split('T')[0]}.sh`;
       
-      const wgetCommand = `wget http://${hostIP}:${hostPort}/getme-latest -O getme-lmeve.sh && chmod +x getme-lmeve.sh && sudo ./getme-lmeve.sh`;
+      // Provide comprehensive transfer guide for 3-machine architecture
+      const instructionsText = `LMeve GetMe - Complete Transfer Guide
+======================================
 
-      // Show instructions for hosting
-      const instructionsText = `LMeve GetMe Package - Hosting Instructions
-=============================================
-
-OPTION 1: Quick wget download (if host server is running)
----------------------------------------------------------
-On your database server, run this command:
-
-${wgetCommand}
-
-OPTION 2: Custom configuration via curl
----------------------------------------
-curl -X POST -H "Content-Type: application/json" \\
-  -d '${JSON.stringify(config)}' \\
-  http://${hostIP}:${hostPort}/getme-custom -o getme-lmeve.sh && \\
-  chmod +x getme-lmeve.sh && sudo ./getme-lmeve.sh
-
-OPTION 3: Start the hosting server manually
--------------------------------------------
-1. Open terminal in: scripts/Client/
-2. Run: node host-server.js ${hostPort}
-3. Use the wget command above from your database server
-
-OPTION 4: Direct download (fallback)
+YOUR SETUP (3-Machine Architecture):
 ------------------------------------
-If hosting doesn't work, use the "Download GetMe Package" button instead
-and transfer the file manually to your database server.
+Windows GUI: Where you're configuring (this machine)  
+Web Host: ${appHost} (where the React app runs)
+Database Server: ${dbHost} (target for setup)
 
-Server Details:
-- Host: ${hostIP}:${hostPort}
-- Endpoints: /getme-latest, /getme-custom, /install
-- Configuration: ${JSON.stringify(config, null, 2)}`;
+METHOD 1: Direct Download on Database Server (RECOMMENDED)
+----------------------------------------------------------
+Simplest approach - no file transfers needed!
+
+1. SSH or login to your database server: ${dbHost}
+
+2. If it has a GUI (or install one):
+   sudo apt install firefox chromium-browser
+
+3. Open browser and navigate to:
+   ${appUrl}/#/settings?tab=database
+
+4. Click "Download GetMe Package" (downloads to database server)
+
+5. Run the script:
+   cd ~/Downloads
+   chmod +x ${scriptName}
+   sudo ./${scriptName}
+
+Done! No transfers required.
+
+METHOD 2: Windows to Database Server Transfer
+--------------------------------------------
+If database server doesn't have a GUI:
+
+1. On Windows, click "Download GetMe Package" button
+
+2. Transfer from Windows to database server:
+   
+   # Using SCP from Windows (PowerShell/WSL):
+   scp C:\\Users\\YourName\\Downloads\\${scriptName} user@${dbHost}:/tmp/
+   
+   # Or use WinSCP, FileZilla, etc.
+
+3. SSH to database server and run:
+   ssh user@${dbHost}
+   cd /tmp
+   chmod +x ${scriptName}
+   sudo ./${scriptName}
+
+METHOD 3: Two-Hop Transfer (Windows to Web Host to Database)
+----------------------------------------------------------
+If you need to relay through the web host:
+
+1. Download package on Windows
+
+2. Transfer to web host:
+   scp C:\\Users\\YourName\\Downloads\\${scriptName} user@${appHost}:/tmp/
+
+3. From web host to database server:
+   ssh user@${appHost}
+   scp /tmp/${scriptName} user@${dbHost}:/tmp/
+
+4. Run on database server:
+   ssh user@${dbHost}
+   cd /tmp
+   chmod +x ${scriptName}
+   sudo ./${scriptName}
+
+WHAT THE SCRIPT DOES:
+---------------------
+The ${scriptName} script will automatically:
+
+- Test MySQL connection to ${dbHost}:${config.port}
+- Create databases: lmeve, EveStaticData
+- Create user: ${config.username} with full permissions
+- Download EVE SDE data from Fuzzwork
+- Import SDE into EveStaticData database
+- Verify all operations completed successfully
+
+All credentials are pre-configured in the script.
+No manual input required - just run it!
+`;
 
       // Create and download instructions
       const blob = new Blob([instructionsText], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `getme-hosting-instructions-${new Date().toISOString().split('T')[0]}.txt`;
+      a.download = `transfer-guide-${new Date().toISOString().split('T')[0]}.txt`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      // Show the wget command in a toast for easy copying
-      navigator.clipboard?.writeText(wgetCommand).then(() => {
-        toast.success('wget command copied to clipboard!');
+      // Copy the recommended method to clipboard
+      const recommendedCommand = `cd ~/Downloads && chmod +x ${scriptName} && sudo ./${scriptName}`;
+      navigator.clipboard?.writeText(recommendedCommand).then(() => {
+        toast.success(
+          <div className="space-y-2 max-w-xl">
+            <div className="font-bold">Transfer Guide Downloaded</div>
+            <div className="text-xs mt-2 font-bold text-green-300">RECOMMENDED METHOD:</div>
+            <div className="bg-background/50 p-2 rounded text-xs">
+              1. Open browser on database server<br/>
+              2. Navigate to this app<br/>
+              3. Click "Download GetMe Package"<br/>
+              4. Run: sudo ./{scriptName}
+            </div>
+            <div className="text-xs text-yellow-300 mt-2">
+              Commands copied to clipboard!
+            </div>
+            <div className="text-xs text-gray-400 mt-1">
+              See downloaded guide for SCP/USB transfer methods
+            </div>
+          </div>,
+          { duration: 25000 }
+        );
       }).catch(() => {
-        toast.success('Hosting instructions downloaded - check the file for wget commands');
+        toast.success('Transfer guide downloaded');
       });
 
-      console.log('📡 Generated hosting instructions and wget commands');
+      addConnectionLog('Transfer guide downloaded');
+      addConnectionLog(`Recommended: Open app on database server browser`);
     } catch (error) {
-      console.error('❌ Failed to generate hosting instructions:', error);
-      toast.error('Failed to generate hosting instructions');
+      console.error('❌ Failed to generate transfer guide:', error);
+      toast.error('Failed to generate transfer guide');
     }
   };
 

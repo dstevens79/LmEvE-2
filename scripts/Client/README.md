@@ -1,33 +1,129 @@
-# LMeve GetMe Package - Client Scripts
+# LMeve GetMe Package - Browser-Based Database Setup
 
-This directory contains all the files needed to create and run the "GetMe" package for LMeve database setup.
+This directory contains the GetMe package system for automated LMeve database setup.
 
-## Files:
+## Overview
 
-### Main Scripts:
-- **`getme-lmeve.sh`** - The main setup script that does everything
-- **`generate-package.sh`** - Creates customized packages from config files
-- **`verify-setup.sh`** - Verifies that the database setup worked correctly
+The GetMe system provides a **browser-based** solution to generate and deploy database setup scripts. All configuration happens in the LMeve web interface, making it simple and user-friendly.
+
+## How It Works
+
+### From the LMeve Web App:
+
+1. **Configure Settings** - Go to Settings → Database Setup tab
+2. **Enter Database Details** - Host, port, username, password, sudo credentials
+3. **Download Package** - Click "Download GetMe Package" button
+4. **Transfer to Database Server** - See transfer guide for options
+5. **Run Script** - Execute with sudo on your database server
+
+### What Gets Created:
+
+The download button generates a **single bash script** (`getme-lmeve-YYYY-MM-DD.sh`) that:
+
+- ✅ Tests MySQL connectivity
+- ✅ Creates `lmeve` and `EveStaticData` databases
+- ✅ Creates database user with proper permissions
+- ✅ Downloads EVE SDE data from Fuzzwork
+- ✅ Imports SDE into database
+- ✅ Verifies all operations completed successfully
+
+**All credentials are pre-configured** - no manual input required!
+
+## Files in This Directory:
+
+### Active Files:
+- **`getme-lmeve.sh`** - Example/template of the generated setup script
+- **`config.example.env`** - Example configuration (for reference)
+- **`verify-setup.sh`** - Verification script to test setup
+- **`generate-package.sh`** - Command-line generator (alternative to web UI)
 
 ### Configuration:
-- **`config.example.env`** - Example configuration file
-- **`getme-generator.ts`** - TypeScript functions for the React web interface
+All configuration now happens in the **web interface** (Settings → Database Setup tab).
 
-## Quick Start (Command Line):
+## Quick Start:
 
-### Option 1: Use with Configuration File
+### Method 1: Web Interface (Recommended)
+
+```bash
+# 1. Open LMeve web app in browser
+# 2. Go to Settings → Database Setup tab
+# 3. Fill in database configuration
+# 4. Click "Download GetMe Package"
+# 5. Transfer to database server and run:
+sudo ./getme-lmeve-*.sh
+```
+
+### Method 2: Direct Download on Database Server
+
+If your database server has a GUI/browser:
+
+```bash
+# 1. On database server, open browser
+# 2. Navigate to your LMeve app URL
+# 3. Go to Settings → Database Setup
+# 4. Click "Download GetMe Package" (downloads directly!)
+# 5. Run:
+cd ~/Downloads
+sudo ./getme-lmeve-*.sh
+```
+
+### Method 3: Command Line (Advanced)
+
 ```bash
 # 1. Copy and customize the config
 cp config.example.env my-config.env
 nano my-config.env  # Edit with your settings
 
-# 2. Generate a personalized package
+# 2. Generate package
 ./generate-package.sh my-config.env
 
-# 3. Transfer the generated package to your database server
-scp lmeve-getme-*.tar.gz user@dbserver:/tmp/
+# 3. Transfer and run on database server
+```
 
-# 4. On the database server:
+## Transfer Methods:
+
+### SCP from Windows:
+```powershell
+scp C:\Users\YourName\Downloads\getme-lmeve-*.sh user@dbserver:/tmp/
+```
+
+### SCP from Linux:
+```bash
+scp ~/Downloads/getme-lmeve-*.sh user@dbserver:/tmp/
+```
+
+### Two-Hop Transfer:
+```bash
+# Windows → Web Host
+scp getme-lmeve-*.sh user@webhost:/tmp/
+
+# Web Host → Database Server
+ssh user@webhost
+scp /tmp/getme-lmeve-*.sh user@dbserver:/tmp/
+```
+
+## Verification:
+
+After running the setup script, verify with:
+
+```bash
+cd scripts/Client
+./verify-setup.sh <db-host> <username> <password>
+```
+
+## Architecture Notes:
+
+This is a **browser-based solution**. The old approach of hosting via separate Node.js server (`host-server.js`) has been removed because:
+
+- Browser apps can't open server ports
+- Port restrictions in deployment environments
+- Simpler user experience with direct download
+
+The current approach is more reliable and works across all deployment scenarios.
+
+## Support:
+
+For issues or questions, check the main LMeve documentation or the Settings tab in the web interface for detailed transfer instructions.
 cd /tmp
 tar -xzf lmeve-getme-*.tar.gz
 cd lmeve-getme-*

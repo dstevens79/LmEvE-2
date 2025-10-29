@@ -1,0 +1,47 @@
+## Summary of GetMe System Updates
+
+The GetMe Package system has been updated to work with a 3-machine architecture:
+
+1. **Windows GUI** - Where user configures the app
+2. **Linux Web Host** - Where the React app is hosted
+3. **Linux Database Server** - Target machine for database setup
+
+### How It Works Now:
+
+**"Download GetMe Package" Button:**
+- Generates a bash script with all credentials pre-configured
+- Downloads to Windows machine (or wherever browser is running)
+- Shows toast with simple command: `sudo bash getme-lmeve-YYYY-MM-DD.sh`
+- Copies command to clipboard
+- Script is completely standalone - no parameters needed
+
+**"Transfer Instructions" Button:**
+- Downloads comprehensive transfer guide
+- Explains 3 methods:
+  1. **RECOMMENDED**: Open app directly on database server browser (no transfer needed)
+  2. Windows → Database transfer (SCP/WinSCP/FileZilla)
+  3. Two-hop transfer (Windows → Web Host → Database)
+- Copies recommended command to clipboard
+- Shows quick reference in toast notification
+
+### The GetMe Script:
+- Tests MySQL connection
+- Creates `lmeve` and `EveStaticData` databases
+- Creates user with full permissions
+- Downloads EVE SDE from Fuzzwork
+- Imports SDE data
+- Verifies installation
+- **All credentials are embedded - just run it!**
+
+### Best Practice Workflow:
+1. Configure database settings in Settings tab
+2. Click "Transfer Instructions" to understand your options
+3. **EASIEST**: SSH to database server, install browser, navigate to app, click "Download GetMe Package"
+4. Run: `sudo ./getme-lmeve-*.sh`
+5. Done!
+
+Alternative: Download on Windows → Transfer via SCP → Run on database server
+
+No separate hosting server needed since ports are restricted.
+No wget commands needed since browser download is simpler.
+One command execution - completely automated.
