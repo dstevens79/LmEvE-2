@@ -1,38 +1,34 @@
-# LMeve - EVE Online Corporation Management
+# ✨ Welcome to Your Spark Template!
+You've just launched your brand-new Spark Template Codespace — everything’s fired up and ready for you to explore, build, and create with Spark!
 
-A database-first corporation management tool for EVE Online with ESI integration for authentication and personal character data.
+This template is your blank canvas. It comes with a minimal setup to help you get started quickly with Spark development.
 
-## Features
+🚀 What's Inside?
+- A clean, minimal Spark environment
+- Pre-configured for local development
+- Ready to scale with your ideas
+  
+🧠 What Can You Do?
 
-### Core Functionality
-- **Member Management** - Character tracking with portraits and role assignment
-- **Assets** - 7-division hangar browser with category filtering and search
-- **Manufacturing** - Active job tracking with blueprint management and cost analysis
-- **Market** - Order monitoring with sales tracking and profit analysis
-- **Wallet** - Multi-division support with transaction history and trend analysis
-- **Buyback System** - Contract workflow with market price syncing
-- **Planetary Interaction** - Colony tracking across corporation members
-- **Corporation Projects** - Material requirement tracking and contribution monitoring
+Right now, this is just a starting point — the perfect place to begin building and testing your Spark applications.
 
+<<<<<<< Updated upstream
 ### Authentication
 - EVE Online SSO (OAuth 2.0) for character authentication
 - Local username/password for local users
 - Role-based access control 
 - Multi-corporation support
+=======
+🧹 Just Exploring?
+No problem! If you were just checking things out and don’t need to keep this code:
+>>>>>>> Stashed changes
 
-### Data Management
-- Database-first architecture (MySQL/PostgreSQL)
-- Background sync processes populate database from ESI
-- Visual indicators showing data source and freshness
-- Connection monitoring for database health
-- Mock data for demo/testing (disabled once database configured)
+- Simply delete your Spark.
+- Everything will be cleaned up — no traces left behind.
 
-### Interface
-- Tabbed navigation with permission-based access
-- Mobile and desktop view modes
-- Dark space theme optimized for readability
-- Real-time loading states and notifications
+📄 License For Spark Template Resources 
 
+<<<<<<< Updated upstream
 ## Tech Stack
 
 React 19 • TypeScript • Tailwind CSS • shadcn/ui • Framer Motion • Recharts • GitHub Spark KV
@@ -227,3 +223,6 @@ MIT License - Copyright GitHub, Inc.
 
 ---
 YES, i actually suck at coding and this was breathed into life with [GitHub Spark](https://githubnext.com/projects/github-spark) - (at this point 3 months of spark credits to get it working)
+=======
+The Spark Template files and resources from GitHub are licensed under the terms of the MIT license, Copyright GitHub, Inc.
+>>>>>>> Stashed changes
