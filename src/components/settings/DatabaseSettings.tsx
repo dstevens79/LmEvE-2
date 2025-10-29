@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { useDatabaseSettings, useSDESettings } from '@/lib/persistenceService';
 import { DatabaseManager } from '@/lib/database';
 import { EnhancedDatabaseSetupManager, validateSetupConfig, generateStandaloneCreateDBScript, type DatabaseSetupConfig } from '@/lib/database-setup-scripts';
+import { RemoteDatabaseAPI } from '@/lib/remoteDatabaseAPI';
 import { useSDEManager, type SDEDatabaseStats } from '@/lib/sdeService';
 import { DatabaseSchemaManager } from '@/components/DatabaseSchemaManager';
 import { lmeveSchemas, generateAllCreateTableSQL } from '@/lib/database-schemas';
@@ -93,8 +94,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     sdeVersion: 'unknown' as 'current' | 'outdated' | 'unknown'
   });
 
-  const databaseManager = new DatabaseManager();
-  const setupManager = new EnhancedDatabaseSetupManager();
+  // Note: These will be instantiated with proper config when needed
 
   // Load settings on component mount
   useEffect(() => {
@@ -125,13 +125,22 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     addConnectionLog('Starting database connection test...');
     
     try {
-      const result = await databaseManager.testConnection({
+      // Create DatabaseManager with proper configuration
+      const dbConfig = {
         host: databaseSettings.host,
         port: parseInt(String(databaseSettings.port)),
         username: databaseSettings.username,
         password: databaseSettings.password,
-        database: databaseSettings.database || 'mysql'
-      });
+        database: databaseSettings.database || 'mysql',
+        ssl: false,
+        connectionPoolSize: 10,
+        queryTimeout: 30,
+        autoReconnect: true,
+        charset: 'utf8mb4'
+      };
+      
+      const databaseManager = new DatabaseManager(dbConfig);
+      const result = await databaseManager.testConnection();
 
       if (result.success) {
         setIsConnected(true);
@@ -172,23 +181,35 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     addConnectionLog('Initiating SSH connection...');
     
     try {
-      // Simulate SSH connection attempt
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const remoteAPI = new RemoteDatabaseAPI();
+      const result = await remoteAPI.testConnection({
+        host: databaseSettings.sshHost,
+        port: parseInt(String(databaseSettings.sshPort || 22)),
+        sshUser: databaseSettings.sshUsername,
+        sshKeyPath: '~/.ssh/id_rsa', // Default path
+        lmevePassword: databaseSettings.password || ''
+      });
       
-      setRemoteAccess(prev => ({ 
-        ...prev, 
-        sshConnected: true,
-        sshStatus: 'online',
-        lastSSHCheck: new Date().toISOString()
-      }));
-      setSystemStatus(prev => ({ ...prev, sshConnection: 'online' }));
-      
-      addConnectionLog(`✅ SSH connection established to ${databaseSettings?.sshHost}`);
-      addConnectionLog('⏳ Please approve the connection on the remote machine');
-      toast.success('SSH connection initiated - approve on remote machine');
+      if (result.success) {
+        setRemoteAccess(prev => ({ 
+          ...prev, 
+          sshConnected: true,
+          sshStatus: 'online',
+          lastSSHCheck: new Date().toISOString()
+        }));
+        setSystemStatus(prev => ({ ...prev, sshConnection: 'online' }));
+        
+        addConnectionLog(`✅ ${result.message}`);
+        toast.success('SSH connection test successful');
+      } else {
+        throw new Error(result.message);
+      }
     } catch (error) {
-      addConnectionLog(`❌ SSH connection failed: ${error}`);
-      toast.error('SSH connection failed');
+      setRemoteAccess(prev => ({ ...prev, sshStatus: 'offline' }));
+      setSystemStatus(prev => ({ ...prev, sshConnection: 'offline' }));
+      const errorMessage = error instanceof Error ? error.message : 'SSH connection failed';
+      addConnectionLog(`❌ SSH connection failed: ${errorMessage}`);
+      toast.error(`SSH connection failed: ${errorMessage}`);
     }
   };
 
@@ -201,20 +222,33 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     addConnectionLog('Deploying database setup scripts...');
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      const remoteAPI = new RemoteDatabaseAPI();
       
-      setRemoteAccess(prev => ({ ...prev, scriptsDeployed: true }));
-      setSystemStatus(prev => ({ ...prev, scriptsDeployed: 'online' }));
+      // Create script content
+      const scriptContent = generateStandaloneCreateDBScript();
+      const scriptBlob = new File([scriptContent], 'create-db.sh', { type: 'text/plain' });
       
-      addConnectionLog('✅ Scripts deployed to remote machine');
-      addConnectionLog('📁 Created /usr/local/lmeve/ directory');
-      addConnectionLog('📝 Deployed create-db.sh script');
-      addConnectionLog('📝 Script accepts 2 parameters: <mysql_root_password> <lmeve_password>');
-      addConnectionLog('💡 Usage: sudo /usr/local/lmeve/create-db.sh "root_pass" "lmeve_pass"');
-      toast.success('Database scripts deployed successfully');
+      // Upload script to remote server
+      const uploadResult = await remoteAPI.uploadFile(scriptBlob, 'deploy-scripts');
+      
+      if (uploadResult.success) {
+        setRemoteAccess(prev => ({ ...prev, scriptsDeployed: true }));
+        setSystemStatus(prev => ({ ...prev, scriptsDeployed: 'online' }));
+        
+        addConnectionLog('✅ Scripts deployed to remote machine');
+        addConnectionLog(`📁 Script uploaded to: ${uploadResult.path}`);
+        addConnectionLog('📝 Deployed create-db.sh script');
+        addConnectionLog('📝 Script accepts 3 parameters: <mysql_root_password> <lmeve_password> <lmeve_username>');
+        addConnectionLog('💡 Usage: sudo /usr/local/lmeve/create-db.sh "root_pass" "lmeve_pass" "lmeve_user"');
+        toast.success('Database scripts deployed successfully');
+      } else {
+        throw new Error('Script upload failed');
+      }
     } catch (error) {
-      addConnectionLog(`❌ Script deployment failed: ${error}`);
-      toast.error('Script deployment failed');
+      setSystemStatus(prev => ({ ...prev, scriptsDeployed: 'offline' }));
+      const errorMessage = error instanceof Error ? error.message : 'Script deployment failed';
+      addConnectionLog(`❌ Script deployment failed: ${errorMessage}`);
+      toast.error(`Script deployment failed: ${errorMessage}`);
     }
   };
 
@@ -770,13 +804,13 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
             <div>
               <h5 className="font-medium mb-1">✅ Solution 1: Verify Script Parameters</h5>
               <p className="text-muted-foreground text-xs mb-2">
-                The create-db.sh script requires TWO parameters to be passed correctly:
+                The create-db.sh script requires THREE parameters to be passed correctly:
               </p>
               <div className="bg-muted p-2 rounded font-mono text-xs">
-                sudo /usr/local/lmeve/create-db.sh "YOUR_MYSQL_ROOT_PASSWORD" "YOUR_LMEVE_PASSWORD"
+                sudo /usr/local/lmeve/create-db.sh "YOUR_MYSQL_ROOT_PASSWORD" "YOUR_LMEVE_PASSWORD" "YOUR_LMEVE_USERNAME"
               </div>
               <p className="text-muted-foreground text-xs mt-2">
-                Make sure both passwords are enclosed in quotes and match what you entered in the fields above.
+                Make sure all three parameters are enclosed in quotes and match what you entered in the fields above.
               </p>
             </div>
             
@@ -790,8 +824,8 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                 <div>scp create-db.sh user@yourserver:/usr/local/lmeve/</div>
                 <div className="mt-2"># Make it executable</div>
                 <div>ssh user@yourserver "chmod +x /usr/local/lmeve/create-db.sh"</div>
-                <div className="mt-2"># Run with your passwords</div>
-                <div>ssh user@yourserver "sudo /usr/local/lmeve/create-db.sh 'root_pass' 'lmeve_pass'"</div>
+                <div className="mt-2"># Run with your passwords and username</div>
+                <div>ssh user@yourserver "sudo /usr/local/lmeve/create-db.sh 'root_pass' 'lmeve_pass' 'lmeve_user'"</div>
               </div>
             </div>
             

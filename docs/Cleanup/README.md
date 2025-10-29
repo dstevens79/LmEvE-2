@@ -19,9 +19,7 @@ Right now, this is just a starting point — the perfect place to begin building
 - Role-based access control 
 - Multi-corporation support
 =======
-🧹 Just Exploring?
-No problem! If you were just checking things out and don’t need to keep this code:
->>>>>>> Stashed changes
+
 
 - Simply delete your Spark.
 - Everything will be cleaned up — no traces left behind.
@@ -29,7 +27,7 @@ No problem! If you were just checking things out and don’t need to keep this c
 📄 License For Spark Template Resources 
 
 <<<<<<< Updated upstream
-## Tech Stack
+## Tech Stack 
 
 React 19 • TypeScript • Tailwind CSS • shadcn/ui • Framer Motion • Recharts • GitHub Spark KV
 
