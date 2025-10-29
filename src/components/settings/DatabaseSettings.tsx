@@ -228,7 +228,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         mysqlRootPassword: databaseSettings.sudoPassword,
         lmevePassword: databaseSettings.password,
         allowedHosts: '%',
-        schemaSource: databaseSettings.schemaSource || 'default',
+        schemaSource: 'default',
         sdeConfig: {
           download: sdeSettings?.sdeSource === 'fuzzwork',
           skip: false
