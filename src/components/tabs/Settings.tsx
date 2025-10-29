@@ -3310,278 +3310,147 @@ Server Details:
                   </div>
                 </div>
 
-                {/* SSH Connection - New Section */}
+                {/* GetMe Package - Simplified Database Setup */}
                 <div className="lg:col-span-1 space-y-4">
+                  {/* GetMe Package Card */}
                   <div className="border border-border rounded-lg p-3">
                     <div className="flex items-center gap-2 mb-3">
                       <div className={`w-2 h-2 rounded-full ${
-                        databaseSettings.sshUsername && databaseSettings.sshPassword 
+                        databaseSettings.host && 
+                        databaseSettings.username && 
+                        databaseSettings.password && 
+                        databaseSettings.sudoPassword 
                           ? 'bg-green-500' 
-                          : (databaseSettings.host && 
-                             databaseSettings.host !== 'localhost' && 
-                             databaseSettings.host !== '127.0.0.1') 
-                          ? 'bg-red-500' 
                           : 'bg-gray-400'
                       }`} />
-                      <h4 className="text-sm font-medium">SSH Access</h4>
+                      <h4 className="text-sm font-medium text-green-400">GetMe Package</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-4 w-4 p-0 hover:bg-muted ml-auto"
+                        onClick={() => toast.info('GetMe Package:\n\n• Complete automated database setup\n• Creates databases & users\n• Downloads & imports SDE\n• No SSH or complex remote operations needed\n\nFill in all database settings to enable.')}
+                      >
+                        <Question size={10} className="text-muted-foreground" />
+                      </Button>
                     </div>
                     
-                    {(databaseSettings.host && 
-                      databaseSettings.host !== 'localhost' && 
-                      databaseSettings.host !== '127.0.0.1') ? (
-                      <div className="space-y-3">
-                        <div className="space-y-2">
-                          <Label className="text-xs text-muted-foreground">SSH User</Label>
-                          <Input
-                            value={databaseSettings.sshUsername || ''}
-                            onChange={(e) => updateDatabaseSetting('sshUsername', e.target.value)}
-                            placeholder="root"
-                            className="h-8 text-sm"
-                          />
+                    <div className="space-y-2">
+                      {/* Show requirements if not all fields filled */}
+                      {(!databaseSettings.host || 
+                        !databaseSettings.username || 
+                        !databaseSettings.password || 
+                        !databaseSettings.sudoPassword) && (
+                        <div className="text-xs text-muted-foreground mb-2 p-2 bg-muted/30 rounded">
+                          <div className="font-medium mb-1">Required fields:</div>
+                          <ul className="space-y-0.5 ml-3">
+                            {!databaseSettings.host && <li>• Database Host</li>}
+                            {!databaseSettings.username && <li>• LMeve Username</li>}
+                            {!databaseSettings.password && <li>• LMeve Password</li>}
+                            {!databaseSettings.sudoPassword && <li>• MySQL Root Password</li>}
+                          </ul>
                         </div>
-                        
-                        <div className="space-y-2">
-                          <Label className="text-xs text-muted-foreground">SSH Password</Label>
-                          <div className="relative">
-                            <Input
-                              type={showSshPassword ? "text" : "password"}
-                              value={databaseSettings.sshPassword || ''}
-                              onChange={(e) => updateDatabaseSetting('sshPassword', e.target.value)}
-                              placeholder="SSH password"
-                              className="h-8 text-sm pr-8"
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="absolute right-0 top-0 h-8 w-8 p-0"
-                              onClick={() => setShowSshPassword(!showSshPassword)}
-                            >
-                              {showSshPassword ? <EyeSlash size={12} /> : <Eye size={12} />}
-                            </Button>
-                          </div>
+                      )}
+                      
+                      <Button
+                        onClick={handleGenerateGetMe}
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs h-8 border-green-500/50 text-green-400 hover:bg-green-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={
+                          !databaseSettings.host || 
+                          !databaseSettings.username || 
+                          !databaseSettings.password || 
+                          !databaseSettings.sudoPassword
+                        }
+                      >
+                        <Download size={12} className="mr-1" />
+                        Download GetMe Package
+                      </Button>
+                      
+                      <Button
+                        onClick={handleHostGetMe}
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs h-8 border-blue-500/50 text-blue-400 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={
+                          !databaseSettings.host || 
+                          !databaseSettings.username || 
+                          !databaseSettings.password || 
+                          !databaseSettings.sudoPassword
+                        }
+                      >
+                        <Network size={12} className="mr-1" />
+                        Host for wget Download
+                      </Button>
+                      
+                      {/* Show quick info when ready */}
+                      {databaseSettings.host && 
+                       databaseSettings.username && 
+                       databaseSettings.password && 
+                       databaseSettings.sudoPassword && (
+                        <div className="text-xs text-muted-foreground mt-2 p-2 bg-green-500/5 rounded border border-green-500/20">
+                          <div className="font-medium text-green-400 mb-1">✓ Ready to generate</div>
+                          <div>Package will configure: {databaseSettings.host}</div>
+                          <div>Database user: {databaseSettings.username}</div>
                         </div>
-                        
-                        <div className="space-y-2">
-                          <Label className="text-xs text-muted-foreground">SSH Port</Label>
-                          <Input
-                            type="number"
-                            value={databaseSettings.sshPort || ''}
-                            onChange={(e) => updateDatabaseSetting('sshPort', parseInt(e.target.value) || 22)}
-                            placeholder="22"
-                            className="h-8 text-sm"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground py-2">
-                        SSH not required for localhost connections
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Configuration and Control Pad */}
+                {/* SDE Update Section */}
                 <div className="lg:col-span-1 space-y-4">
-                  <div className="border border-border rounded-lg p-3">
-                    <h4 className="text-sm font-medium mb-3">Configuration</h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Schema Source</Label>
-                        <Select value="default" onValueChange={() => {}}>
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Select schema source" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="default">Default Schema</SelectItem>
-                            <SelectItem value="custom">Custom File</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <div>
-                        <Label className="text-xs text-muted-foreground">SDE Source</Label>
-                        <Select value="latest" onValueChange={() => {}}>
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Select SDE source" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="latest">Latest SDE</SelectItem>
-                            <SelectItem value="custom">Custom File</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Control Pad */}
-                  <div className="border border-border rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="text-sm font-medium">Control Pad</h4>
-                      {/* Show "Requires Config" if SSH not ready */}
-                      {(!remoteAccess.sshConnected && 
-                        databaseSettings.host && 
-                        databaseSettings.host !== 'localhost' && 
-                        databaseSettings.host !== '127.0.0.1' && 
-                        (!databaseSettings.sshUsername || !databaseSettings.sshPassword)) && (
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-yellow-400">Requires Config</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-5 w-5 p-0 hover:bg-muted"
-                            onClick={() => toast.info('SSH Connection Help:\n\n1. Fill in SSH username and password in the SSH Access section\n2. Setup SSH Connection - Establishes secure connection to remote database host\n3. Deploy Scripts - Copies database setup scripts to remote machine\n4. Run Remote Setup - Executes scripts to create databases and users\n\nNote: You need to manually approve the SSH connection on the remote machine when prompted.')}
-                          >
-                            <Question size={12} className="text-muted-foreground" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-2">
+                  {dbStatus.connected && 
+                   esiConfig?.clientId && 
+                   esiConfig?.clientSecret && (
+                    <div className="border border-border rounded-lg p-3">
                       <Button
-                        onClick={handleSSHConnection}
-                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            toast.info('Updating SDE database...');
+                            const addLog = (message: string) => {
+                              const timestamp = new Date().toLocaleTimeString();
+                              setConnectionLogs(prev => [...prev, `[${timestamp}] ${message}`]);
+                            };
+                            
+                            addLog('📥 Downloading latest SDE from Fuzzwork...');
+                            addLog('🌐 Fetching: https://www.fuzzwork.co.uk/dump/mysql-latest.tar.bz2');
+                            await new Promise(resolve => setTimeout(resolve, 3000));
+                            
+                            addLog('📦 Extracting SDE archive...');
+                            await new Promise(resolve => setTimeout(resolve, 1500));
+                            
+                            addLog('🗄️ Updating EveStaticData database tables...');
+                            addLog('📊 Importing type definitions, ship data, universe data...');
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                            
+                            addLog('🧹 Cleaning up temporary files...');
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            
+                            addLog('✅ SDE update completed successfully');
+                            toast.success('SDE updated to latest version');
+                            
+                            setSdeStatus(prev => ({
+                              ...prev,
+                              currentVersion: prev.latestVersion,
+                              isUpdateAvailable: false,
+                              installedDate: new Date().toISOString()
+                            }));
+                          } catch (error) {
+                            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                            toast.error('SDE update failed');
+                          }
+                        }}
                         size="sm"
-                        className="w-full text-xs h-8"
-                        disabled={
-                          !databaseSettings.host || 
-                          databaseSettings.host === 'localhost' || 
-                          databaseSettings.host === '127.0.0.1' ||
-                          !databaseSettings.sshUsername
-                        }
+                        className="w-full text-xs h-8 bg-green-600 hover:bg-green-700 text-white"
+                        disabled={!sdeStatus.isUpdateAvailable}
                       >
-                        <Terminal size={12} className="mr-1" />
-                        Setup SSH Connection
+                        <Download size={12} className="mr-1" />
+                        {sdeStatus.isUpdateAvailable ? 'Update SDE' : 'SDE Current'}
                       </Button>
-                      
-                      <Button
-                        onClick={handleDeployScripts}
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-xs h-8"
-                      >
-                        <Upload size={12} className="mr-1" />
-                        Deploy Scripts
-                      </Button>
-                      
-                      {/* Download Scripts button - show after scripts are generated */}
-                      {/* Download Scripts button - show after scripts are generated */}
-                      {remoteAccess.scriptsStatus === 'warning' && (
-                        <Button
-                          onClick={downloadScripts}
-                          variant="outline"
-                          size="sm"
-                          className="w-full text-xs h-8 border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
-                        >
-                          <Download size={12} className="mr-1" />
-                          Download Scripts
-                        </Button>
-                      )}
-                      
-                      <Button
-                        onClick={handleRemoteSetup}
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-xs h-8"
-                        disabled={!remoteAccess.scriptsDeployed}
-                      >
-                        <Play size={12} className="mr-1" />
-                        Run Remote Setup
-                      </Button>
-                      
-                      {/* GetMe Package Hosting - New simplified approach */}
-                      <div className="border-t border-border pt-2 mt-2">
-                        <div className="flex items-center gap-1 mb-2">
-                          <div className="h-2 w-2 rounded-full bg-green-500"></div>
-                          <h5 className="text-xs font-medium text-green-400">GetMe Package</h5>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-4 w-4 p-0 hover:bg-muted ml-auto"
-                            onClick={() => toast.info('GetMe Package:\n\n1. Creates a complete setup script for your database server\n2. You can download it directly or host it for wget download\n3. Script handles everything: databases, users, permissions, SDE import\n4. Perfect for when you\'re sitting at both machines')}
-                          >
-                            <Question size={10} className="text-muted-foreground" />
-                          </Button>
-                        </div>
-                        
-                        <Button
-                          onClick={handleGenerateGetMe}
-                          variant="outline"
-                          size="sm"
-                          className="w-full text-xs h-8 border-green-500/50 text-green-400 hover:bg-green-500/10"
-                          disabled={!databaseSettings.host || !databaseSettings.username}
-                        >
-                          <Download size={12} className="mr-1" />
-                          Download GetMe Package
-                        </Button>
-                        
-                        <Button
-                          onClick={handleHostGetMe}
-                          variant="outline"
-                          size="sm"
-                          className="w-full text-xs h-8 mt-1 border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
-                          disabled={!databaseSettings.host || !databaseSettings.username}
-                        >
-                          <Network size={12} className="mr-1" />
-                          Host for wget Download
-                        </Button>
-                      </div>
-                      
-                      {/* Update SDE button - show when system is ready and SDE needs update */}
-                      {dbStatus.connected && 
-                       esiConfig?.clientId && 
-                       esiConfig?.clientSecret &&
-                       (databaseSettings.host === 'localhost' || 
-                        databaseSettings.host === '127.0.0.1' || 
-                        remoteAccess.remoteSetupComplete) && (
-                        <Button
-                          onClick={async () => {
-                            try {
-                              toast.info('Updating SDE database...');
-                              const addLog = (message: string) => {
-                                const timestamp = new Date().toLocaleTimeString();
-                                setConnectionLogs(prev => [...prev, `[${timestamp}] ${message}`]);
-                              };
-                              
-                              addLog('📥 Downloading latest SDE from Fuzzwork...');
-                              addLog('🌐 Fetching: https://www.fuzzwork.co.uk/dump/mysql-latest.tar.bz2');
-                              await new Promise(resolve => setTimeout(resolve, 3000));
-                              
-                              addLog('📦 Extracting SDE archive...');
-                              await new Promise(resolve => setTimeout(resolve, 1500));
-                              
-                              addLog('🗄️ Updating EveStaticData database tables...');
-                              addLog('📊 Importing type definitions, ship data, universe data...');
-                              await new Promise(resolve => setTimeout(resolve, 2000));
-                              
-                              addLog('🧹 Cleaning up temporary files...');
-                              await new Promise(resolve => setTimeout(resolve, 500));
-                              
-                              addLog('✅ SDE update completed successfully');
-                              toast.success('SDE updated to latest version');
-                              
-                              setSdeStatus(prev => ({
-                                ...prev,
-                                currentVersion: prev.latestVersion,
-                                isUpdateAvailable: false,
-                                installedDate: new Date().toISOString()
-                              }));
-                            } catch (error) {
-                              const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                              addLog(`❌ SDE update failed: ${errorMsg}`);
-                              toast.error('SDE update failed');
-                            }
-                          }}
-                          size="sm"
-                          className="w-full text-xs h-8 bg-green-600 hover:bg-green-700 text-white"
-                          disabled={!sdeStatus.isUpdateAvailable}
-                        >
-                          <Download size={12} className="mr-1" />
-                          {sdeStatus.isUpdateAvailable ? 'Update SDE' : 'SDE Current'}
-                        </Button>
-                      )}
                     </div>
-                  </div>
+                  )}
+                </div>
                 </div>
 
                 {/* Quick Actions Above System Status */}
@@ -3623,47 +3492,6 @@ Server Details:
                       />
                       
                       <StatusIndicator 
-                        label="SSH Status" 
-                        status={
-                          databaseSettings.host && 
-                          databaseSettings.host !== 'localhost' && 
-                          databaseSettings.host !== '127.0.0.1'
-                            ? (!databaseSettings.sshUsername || !databaseSettings.sshPassword)
-                              ? 'offline'  // red - missing credentials
-                              : remoteAccess.sshStatus === 'online' 
-                              ? 'online' 
-                              : remoteAccess.sshStatus === 'offline' 
-                              ? 'warning'  // yellow - working but offline
-                              : 'offline'  // red - broken/unknown
-                            : 'unknown'    // not applicable for localhost
-                        } 
-                      />
-                      
-                      <StatusIndicator 
-                        label="Scripts Deployed" 
-                        status={
-                          remoteAccess.scriptsStatus === 'deployed' 
-                            ? 'online'    // green - deployed successfully
-                            : remoteAccess.scriptsStatus === 'not-deployed'
-                            ? 'offline'   // red - not done or error
-                            : remoteAccess.scriptsStatus === 'error'
-                            ? 'offline'   // red - error during deployment
-                            : 'warning'   // yellow - prepared but not run
-                        } 
-                      />
-                      
-                      <StatusIndicator 
-                        label="Remote Setup" 
-                        status={
-                          remoteAccess.remoteSetupStatus === 'complete' 
-                            ? 'online'    // green - setup and working
-                            : remoteAccess.remoteSetupStatus === 'outdated'
-                            ? 'warning'   // yellow - needs update/SDE outdated
-                            : 'offline'   // red - not run or error
-                        } 
-                      />
-                      
-                      <StatusIndicator 
                         label="ESI Status" 
                         status={esiConfig?.clientId && esiConfig?.clientSecret ? 'online' : 'offline'} 
                       />
@@ -3690,10 +3518,7 @@ Server Details:
                           dbStatus.connected && 
                           esiConfig?.clientId && 
                           esiConfig?.clientSecret &&
-                          eveServerStatus.status === 'online' &&
-                          (databaseSettings.host === 'localhost' || 
-                           databaseSettings.host === '127.0.0.1' || 
-                           remoteAccess.sshStatus === 'online') 
+                          eveServerStatus.status === 'online'
                             ? 'online' 
                             : 'offline'
                         } 
