@@ -1662,7 +1662,7 @@ echo "See README.md for detailed setup instructions"
       addLog('✅ Databases and users created successfully');
       
       // Step 2: Import LMeve application schema
-      if (schemaSource === 'default') {
+      if (setupConfig.schemaSource === 'default' || setupConfig.schemaSource === 'managed') {
         addLog('🏗️ Step 2: Importing LMeve application schema...');
         addLog(`📡 Running: sudo /usr/local/lmeve/import-schema.sh`);
         
@@ -1681,7 +1681,7 @@ echo "See README.md for detailed setup instructions"
       }
       
       // Step 3: Import SDE data (if selected)
-      if (sdeSource === 'latest') {
+      if (setupConfig.sdeSource === 'auto') {
         addLog('📊 Step 3: Importing EVE Static Data...');
         addLog('📥 Downloading latest SDE from Fuzzwork...');
         
