@@ -71,10 +71,12 @@ export function generateDatabaseSQL(config: DatabaseSetupConfig): string[] {
     );
   }
   
-  // Create LMeve user
+  // Create LMeve user with proper error handling
   if (config.createUser) {
+    // Drop user if exists (to handle password updates)
     commands.push(
-      `CREATE USER IF NOT EXISTS 'lmeve'@'${config.allowedHosts}' IDENTIFIED BY '${config.lmevePassword}';`
+      `DROP USER IF EXISTS 'lmeve'@'${config.allowedHosts}';`,
+      `CREATE USER 'lmeve'@'${config.allowedHosts}' IDENTIFIED BY '${config.lmevePassword}';`
     );
   }
   
@@ -120,34 +122,59 @@ export function generateLocalSetupScript(config: DatabaseSetupConfig): string {
     lines.push('');
   }
   
-  // MySQL setup
+  // MySQL setup with detailed logging
   lines.push('# Database setup');
   lines.push('echo "🗄️ Setting up MySQL databases..."');
+  lines.push('echo "Testing MySQL connectivity..."');
+  lines.push(`mysql -u root -p'${config.mysqlRootPassword}' -e "SELECT 1;" || { echo "MySQL connection failed"; exit 1; }`);
+  lines.push('echo "MySQL connection successful"');
+  lines.push('');
   
   const sqlCommands = generateDatabaseSQL(config);
-  sqlCommands.forEach(cmd => {
-    lines.push(`mysql -u root -p'${config.mysqlRootPassword}' -e "${cmd}"`);
-  });
+  
+  // Execute each SQL command with detailed logging
+  lines.push('echo "Creating databases..."');
+  lines.push(`mysql -u root -p'${config.mysqlRootPassword}' -e "${sqlCommands[0]}"`);
+  lines.push(`mysql -u root -p'${config.mysqlRootPassword}' -e "${sqlCommands[1]}"`);
+  lines.push('echo "Databases created successfully"');
+  lines.push('');
+  
+  lines.push('echo "Creating user and setting permissions..."');
+  // User creation commands with explicit logging
+  for (let i = 2; i < sqlCommands.length; i++) {
+    lines.push(`mysql -u root -p'${config.mysqlRootPassword}' -e "${sqlCommands[i]}" || { echo "Failed: ${sqlCommands[i]}"; exit 1; }`);
+  }
+  lines.push('echo "User created and permissions granted successfully"');
+  lines.push('');
+  
+  // Verify user creation
+  lines.push('echo "Verifying setup..."');
+  lines.push(`mysql -u root -p'${config.mysqlRootPassword}' -e "SELECT user, host FROM mysql.user WHERE user='lmeve';" || echo "Warning: Could not verify user creation"`);
+  lines.push(`mysql -u root -p'${config.mysqlRootPassword}' -e "SHOW DATABASES LIKE 'lmeve';" || echo "Warning: Could not verify database creation"`);
+  lines.push('');
   
   // Import schema
   if (config.importSchema && config.schemaContent) {
-    lines.push('');
     lines.push('# Import LMeve schema');
     lines.push('echo "📋 Importing LMeve schema..."');
     lines.push('cat > /tmp/lmeve-schema.sql << \'EOF\'');
     lines.push(config.schemaContent);
     lines.push('EOF');
     lines.push(`mysql -u root -p'${config.mysqlRootPassword}' lmeve < /tmp/lmeve-schema.sql`);
+    lines.push('echo "Schema imported successfully"');
+    lines.push('');
   }
   
   // Import SDE
   if (config.sdeConfig.download && !config.sdeConfig.skip) {
-    lines.push('');
     lines.push('# Import SDE data');
     lines.push('echo "📊 Importing EVE SDE data..."');
     lines.push(`mysql -u root -p'${config.mysqlRootPassword}' EveStaticData < *.sql`);
+    lines.push('echo "SDE data imported successfully"');
+    lines.push('');
   }
   
+  lines.push('echo "Database setup completed successfully!"');
   lines.push('');
   lines.push('# Cleanup');
   lines.push('cd /');
@@ -358,4 +385,62 @@ export function validateSetupConfig(config: DatabaseSetupConfig): string[] {
   }
   
   return errors;
+}
+
+/**
+ * Generates a standalone create-db.sh script that can be deployed to /usr/local/lmeve/
+ * This script accepts parameters: ./create-db.sh <mysql_root_password> <lmeve_password>
+ */
+export function generateStandaloneCreateDBScript(): string {
+  const lines: string[] = [];
+  
+  lines.push('#!/bin/bash');
+  lines.push('# LMeve Database Creation Script');
+  lines.push('# Usage: ./create-db.sh <mysql_root_password> <lmeve_password>');
+  lines.push('');
+  lines.push('set -e  # Exit on any error');
+  lines.push('');
+  lines.push('# Check arguments');
+  lines.push('if [ "$#" -ne 2 ]; then');
+  lines.push('    echo "Usage: $0 <mysql_root_password> <lmeve_password>"');
+  lines.push('    exit 1');
+  lines.push('fi');
+  lines.push('');
+  lines.push('MYSQL_ROOT_PASSWORD="$1"');
+  lines.push('LMEVE_PASSWORD="$2"');
+  lines.push('');
+  lines.push('echo "Testing MySQL connectivity..."');
+  lines.push('mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SELECT 1;" > /dev/null 2>&1 || {');
+  lines.push('    echo "ERROR: MySQL connection failed. Please check your root password."');
+  lines.push('    exit 1');
+  lines.push('}');
+  lines.push('echo "MySQL connection successful"');
+  lines.push('');
+  lines.push('echo "Creating databases..."');
+  lines.push('mysql -u root -p"${MYSQL_ROOT_PASSWORD}" <<EOF');
+  lines.push('CREATE DATABASE IF NOT EXISTS lmeve CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;');
+  lines.push('CREATE DATABASE IF NOT EXISTS EveStaticData CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;');
+  lines.push('EOF');
+  lines.push('echo "Databases created successfully"');
+  lines.push('');
+  lines.push('echo "Creating user and setting permissions..."');
+  lines.push('mysql -u root -p"${MYSQL_ROOT_PASSWORD}" <<EOF');
+  lines.push('DROP USER IF EXISTS \'lmeve\'@\'%\';');
+  lines.push('CREATE USER \'lmeve\'@\'%\' IDENTIFIED BY \'${LMEVE_PASSWORD}\';');
+  lines.push('GRANT ALL PRIVILEGES ON lmeve.* TO \'lmeve\'@\'%\';');
+  lines.push('GRANT ALL PRIVILEGES ON EveStaticData.* TO \'lmeve\'@\'%\';');
+  lines.push('FLUSH PRIVILEGES;');
+  lines.push('EOF');
+  lines.push('echo "User created and permissions granted successfully"');
+  lines.push('');
+  lines.push('echo "Verifying setup..."');
+  lines.push('mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user WHERE user=\'lmeve\';"');
+  lines.push('mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES LIKE \'lmeve\';"');
+  lines.push('mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES LIKE \'EveStaticData\';"');
+  lines.push('');
+  lines.push('echo "Database setup completed successfully!"');
+  lines.push('');
+  lines.push('exit 0');
+  
+  return lines.join('\n');
 }

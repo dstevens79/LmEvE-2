@@ -29,7 +29,7 @@ import {
 import { toast } from 'sonner';
 import { useDatabaseSettings, useSDESettings } from '@/lib/persistenceService';
 import { DatabaseManager } from '@/lib/database';
-import { EnhancedDatabaseSetupManager, validateSetupConfig, type DatabaseSetupConfig } from '@/lib/database-setup-scripts';
+import { EnhancedDatabaseSetupManager, validateSetupConfig, generateStandaloneCreateDBScript, type DatabaseSetupConfig } from '@/lib/database-setup-scripts';
 import { useSDEManager, type SDEDatabaseStats } from '@/lib/sdeService';
 import { DatabaseSchemaManager } from '@/components/DatabaseSchemaManager';
 import { lmeveSchemas, generateAllCreateTableSQL } from '@/lib/database-schemas';
@@ -198,7 +198,9 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
       
       addConnectionLog('✅ Scripts deployed to remote machine');
       addConnectionLog('📁 Created /usr/local/lmeve/ directory');
-      addConnectionLog('📝 Deployed create-db.sh and import-sde.sh');
+      addConnectionLog('📝 Deployed create-db.sh script');
+      addConnectionLog('📝 Script accepts 2 parameters: <mysql_root_password> <lmeve_password>');
+      addConnectionLog('💡 Usage: sudo /usr/local/lmeve/create-db.sh "root_pass" "lmeve_pass"');
       toast.success('Database scripts deployed successfully');
     } catch (error) {
       addConnectionLog(`❌ Script deployment failed: ${error}`);
@@ -223,6 +225,17 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     addConnectionLog('📋 Debug: Preparing setup configuration...');
     
     try {
+      // Log the actual command that will be executed
+      addConnectionLog('');
+      addConnectionLog('📋 Command to be executed on remote server:');
+      addConnectionLog(`   sudo /usr/local/lmeve/create-db.sh "${databaseSettings.sudoPassword}" "${databaseSettings.password}"`);
+      addConnectionLog('');
+      addConnectionLog('⚙️ Parameters being passed:');
+      addConnectionLog(`   - MySQL Root Password: ${databaseSettings.sudoPassword ? '✓ provided' : '✗ missing'}`);
+      addConnectionLog(`   - LMeve Password: ${databaseSettings.password ? '✓ provided' : '✗ missing'}`);
+      addConnectionLog(`   - Password length: ${databaseSettings.password?.length || 0} characters`);
+      addConnectionLog('');
+      
       // Generate schema content based on source selection
       let schemaContent: string | undefined;
       const schemaSource = databaseSettings?.schemaSource || 'default';
@@ -232,12 +245,10 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
       
       if (useCustomSchema) {
         addConnectionLog('📋 Debug: Custom schema selected - checking for uploaded schema...');
-        // TODO: Load custom schema from uploaded file
         addConnectionLog('⚠️ Warning: Custom schema upload not yet implemented, using default');
         schemaContent = generateAllCreateTableSQL();
       } else {
         addConnectionLog('📋 Debug: Using default LMeve schema...');
-        // Use default schema from lmeveSchemas
         try {
           schemaContent = generateAllCreateTableSQL();
           addConnectionLog(`✅ Debug: Schema generated successfully (${schemaContent.length} characters)`);
@@ -286,10 +297,13 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
       addConnectionLog(`✅ Debug: Setup config created with the following properties:`);
       addConnectionLog(`  - host: ${setupConfig.host}`);
       addConnectionLog(`  - port: ${setupConfig.port}`);
+      addConnectionLog(`  - allowedHosts: ${setupConfig.allowedHosts}`);
       addConnectionLog(`  - schemaSource: ${setupConfig.schemaSource}`);
       addConnectionLog(`  - useCustomSchema: ${setupConfig.useCustomSchema}`);
       addConnectionLog(`  - schemaContent length: ${setupConfig.schemaContent?.length || 0} characters`);
       addConnectionLog(`  - createDatabases: ${setupConfig.createDatabases}`);
+      addConnectionLog(`  - createUser: ${setupConfig.createUser}`);
+      addConnectionLog(`  - grantPrivileges: ${setupConfig.grantPrivileges}`);
       addConnectionLog(`  - importSchema: ${setupConfig.importSchema}`);
       addConnectionLog(`  - sdeConfig.download: ${setupConfig.sdeConfig.download}`);
       addConnectionLog(`  - isRemote: ${setupConfig.isRemote}`);
@@ -311,6 +325,9 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
       addConnectionLog('✅ Debug: Manager instance created successfully');
 
       addConnectionLog('🗄️ Step 1: Creating databases and users...');
+      addConnectionLog('📡 Running: sudo /usr/local/lmeve/create-db.sh');
+      addConnectionLog(`🔧 Executing: sudo /usr/local/lmeve/create-db.sh "${databaseSettings.sudoPassword ? '***' : ''}" "${databaseSettings.password ? '***' : ''}"`);
+      
       const result = await manager.setupDatabase();
 
       if (result.success) {
@@ -635,6 +652,24 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                 </Button>
                 
                 <Button 
+                  onClick={() => {
+                    const script = generateStandaloneCreateDBScript();
+                    const blob = new Blob([script], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'create-db.sh';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    addConnectionLog('📥 Downloaded create-db.sh script');
+                    toast.success('Script downloaded - upload to /usr/local/lmeve/ on your server');
+                  }}
+                  variant="outline"
+                >
+                  Download create-db.sh
+                </Button>
+                
+                <Button 
                   onClick={handleRunRemoteSetup}
                   disabled={!remoteAccess.scriptsDeployed}
                   variant="outline"
@@ -697,6 +732,84 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                 </div>
               ))
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Troubleshooting Guide */}
+      <Card className="border-yellow-500/50 bg-yellow-500/5">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Warning size={20} className="text-yellow-500" />
+            Troubleshooting Guide - User Creation Issues
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+          <div>
+            <h4 className="font-semibold mb-2">Issue: lmeve user not created after running scripts</h4>
+            <p className="text-muted-foreground mb-3">
+              If you see "empty set" when running <code className="bg-muted px-1 py-0.5 rounded">SELECT user, host FROM mysql.user WHERE user='lmeve';</code>
+            </p>
+          </div>
+          
+          <div className="space-y-3">
+            <div>
+              <h5 className="font-medium mb-1">✅ Solution 1: Verify Script Parameters</h5>
+              <p className="text-muted-foreground text-xs mb-2">
+                The create-db.sh script requires TWO parameters to be passed correctly:
+              </p>
+              <div className="bg-muted p-2 rounded font-mono text-xs">
+                sudo /usr/local/lmeve/create-db.sh "YOUR_MYSQL_ROOT_PASSWORD" "YOUR_LMEVE_PASSWORD"
+              </div>
+              <p className="text-muted-foreground text-xs mt-2">
+                Make sure both passwords are enclosed in quotes and match what you entered in the fields above.
+              </p>
+            </div>
+            
+            <div>
+              <h5 className="font-medium mb-1">✅ Solution 2: Download and Manually Execute</h5>
+              <p className="text-muted-foreground text-xs mb-2">
+                Click "Download create-db.sh" button above, then manually upload and execute:
+              </p>
+              <div className="bg-muted p-2 rounded font-mono text-xs space-y-1">
+                <div># Upload the script to your server</div>
+                <div>scp create-db.sh user@yourserver:/usr/local/lmeve/</div>
+                <div className="mt-2"># Make it executable</div>
+                <div>ssh user@yourserver "chmod +x /usr/local/lmeve/create-db.sh"</div>
+                <div className="mt-2"># Run with your passwords</div>
+                <div>ssh user@yourserver "sudo /usr/local/lmeve/create-db.sh 'root_pass' 'lmeve_pass'"</div>
+              </div>
+            </div>
+            
+            <div>
+              <h5 className="font-medium mb-1">✅ Solution 3: Manual SQL Execution</h5>
+              <p className="text-muted-foreground text-xs mb-2">
+                If scripts fail, execute these SQL commands directly on your MySQL server:
+              </p>
+              <div className="bg-muted p-2 rounded font-mono text-xs space-y-1">
+                <div>DROP USER IF EXISTS 'lmeve'@'%';</div>
+                <div>CREATE USER 'lmeve'@'%' IDENTIFIED BY 'your_password_here';</div>
+                <div>GRANT ALL PRIVILEGES ON lmeve.* TO 'lmeve'@'%';</div>
+                <div>GRANT ALL PRIVILEGES ON EveStaticData.* TO 'lmeve'@'%';</div>
+                <div>FLUSH PRIVILEGES;</div>
+              </div>
+              <p className="text-muted-foreground text-xs mt-2">
+                Replace 'your_password_here' with the LMeve password you want to use.
+              </p>
+            </div>
+            
+            <div>
+              <h5 className="font-medium mb-1">🔍 Verification</h5>
+              <p className="text-muted-foreground text-xs mb-2">
+                After running any solution, verify the user was created:
+              </p>
+              <div className="bg-muted p-2 rounded font-mono text-xs">
+                SELECT user, host FROM mysql.user WHERE user='lmeve';
+              </div>
+              <p className="text-muted-foreground text-xs mt-2">
+                You should see: lmeve | %
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
