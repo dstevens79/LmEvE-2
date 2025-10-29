@@ -212,37 +212,69 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
       return;
     }
 
+    if (!databaseSettings?.sudoPassword || !databaseSettings?.password) {
+      toast.error('MySQL root password and LMeve password are required');
+      return;
+    }
+
     setSetupStatus('running');
     setSetupProgress(0);
-    addConnectionLog('Starting remote database setup...');
+    addConnectionLog('🚀 Starting remote database setup...');
     
     try {
-      // Simulate setup process with progress updates
-      const steps = [
-        'Creating databases (lmeve, EveStaticData)',
-        'Setting up database user permissions', 
-        'Importing schema files',
-        'Validating database structure',
-        'Finalizing configuration'
-      ];
+      const setupConfig: DatabaseSetupConfig = {
+        host: databaseSettings.host || 'localhost',
+        port: parseInt(String(databaseSettings.port || 3306)),
+        mysqlRootPassword: databaseSettings.sudoPassword,
+        lmevePassword: databaseSettings.password,
+        allowedHosts: '%',
+        schemaSource: databaseSettings.schemaSource || 'default',
+        sdeConfig: {
+          download: sdeSettings?.sdeSource === 'fuzzwork',
+          skip: false
+        },
+        createDatabases: true,
+        importSchema: true,
+        createUser: true,
+        grantPrivileges: true,
+        validateSetup: true,
+        isRemote: true,
+        sshConfig: {
+          host: databaseSettings.sshHost || databaseSettings.host || 'localhost',
+          user: databaseSettings.sshUsername || 'root',
+          keyPath: '~/.ssh/id_rsa'
+        }
+      };
 
-      for (let i = 0; i < steps.length; i++) {
-        addConnectionLog(`⏳ ${steps[i]}...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        setSetupProgress(((i + 1) / steps.length) * 100);
-        addConnectionLog(`✅ ${steps[i]} complete`);
+      const errors = validateSetupConfig(setupConfig);
+      if (errors.length > 0) {
+        throw new Error(`Configuration errors: ${errors.join(', ')}`);
       }
 
-      setRemoteAccess(prev => ({ ...prev, remoteSetupComplete: true }));
-      setSystemStatus(prev => ({ ...prev, remoteSetup: 'online' }));
-      setSetupStatus('complete');
-      
-      addConnectionLog('🎉 Database setup completed successfully');
-      toast.success('Remote database setup completed');
+      const manager = new EnhancedDatabaseSetupManager(setupConfig, (progress) => {
+        setSetupProgress(progress.progress);
+        addConnectionLog(`⏳ ${progress.stage}: ${progress.message}`);
+      });
+
+      addConnectionLog('🗄️ Step 1: Creating databases and users...');
+      const result = await manager.setupDatabase();
+
+      if (result.success) {
+        setRemoteAccess(prev => ({ ...prev, remoteSetupComplete: true }));
+        setSystemStatus(prev => ({ ...prev, remoteSetup: 'online' }));
+        setSetupStatus('complete');
+        
+        result.details?.forEach(detail => addConnectionLog(detail));
+        addConnectionLog('🎉 Database setup completed successfully');
+        toast.success('Remote database setup completed');
+      } else {
+        throw new Error(result.error || 'Setup failed');
+      }
     } catch (error) {
       setSetupStatus('error');
-      addConnectionLog(`❌ Setup failed: ${error}`);
-      toast.error('Remote setup failed');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      addConnectionLog(`❌ Remote setup failed: ${errorMessage}`);
+      toast.error(`Remote setup failed: ${errorMessage}`);
     }
   };
 

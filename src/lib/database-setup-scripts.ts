@@ -16,6 +16,7 @@ export interface DatabaseSetupConfig {
   allowedHosts: string;
   
   // Schema configuration
+  schemaSource?: string;
   schemaContent?: string;
   useCustomSchema?: boolean;
   
