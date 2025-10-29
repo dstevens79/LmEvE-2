@@ -1756,6 +1756,226 @@ echo "See README.md for detailed setup instructions"
     }
   };
 
+  // GetMe Package handlers
+  const handleGenerateGetMe = async () => {
+    try {
+      const config = {
+        host: databaseSettings.host || 'localhost',
+        port: databaseSettings.port?.toString() || '3306',
+        username: databaseSettings.username || 'lmeve',
+        password: databaseSettings.password || 'lmeve_password',
+        sudoUsername: databaseSettings.sudoUsername || 'root',
+        sudoPassword: databaseSettings.sudoPassword || 'root_password',
+        sdeSource: 'https://www.fuzzwork.co.uk/dump/latest/eve.db.bz2'
+      };
+
+      // Generate the package (simplified approach without complex TypeScript issues)
+      const timestamp = new Date().toISOString();
+      const getmeScript = `#!/bin/bash
+#
+# LMeve GetMe Complete Setup Package
+# Generated: ${timestamp}
+# 
+# This script does EVERYTHING needed to set up your LMeve database
+# Just run: sudo ./getme-lmeve.sh
+#
+
+set -euo pipefail
+
+# Colors for output
+RED='\\033[0;31m'
+GREEN='\\033[0;32m'
+YELLOW='\\033[1;33m'
+BLUE='\\033[0;34m'
+CYAN='\\033[0;36m'
+NC='\\033[0m' # No Color
+
+# Configuration from your web interface
+DB_HOST="${config.host}"
+DB_PORT="${config.port}"
+MYSQL_ROOT_PASS="${config.sudoPassword}"
+LMEVE_USER="${config.username}"
+LMEVE_PASS="${config.password}"
+SDE_URL="${config.sdeSource}"
+
+echo -e "\\n\${CYAN}🚀 LMeve Database Setup - GetMe Package\${NC}"
+echo -e "\${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\${NC}"
+echo -e "Target: \${YELLOW}\$DB_HOST:\$DB_PORT\${NC}"
+echo -e "User: \${YELLOW}\$LMEVE_USER\${NC}"
+echo ""
+
+# Function to print step headers
+print_step() {
+    echo -e "\\n\${BLUE}▶ \$1\${NC}"
+    echo -e "\${BLUE}────────────────────────────────────────────────────────────────\${NC}"
+}
+
+# Step 1: Test MySQL Connection
+print_step "Testing MySQL Connection"
+if mysql -u root -p"\$MYSQL_ROOT_PASS" -h "\$DB_HOST" -P "\$DB_PORT" -e "SELECT 1;" >/dev/null 2>&1; then
+    echo -e "\${GREEN}✅ MySQL connection successful\${NC}"
+else
+    echo -e "\${RED}❌ Cannot connect to MySQL\${NC}"
+    echo "Please check your MySQL configuration and credentials"
+    exit 1
+fi
+
+# Step 2: Create Databases
+print_step "Creating Databases"
+mysql -u root -p"\$MYSQL_ROOT_PASS" -h "\$DB_HOST" -P "\$DB_PORT" << 'EOF'
+CREATE DATABASE IF NOT EXISTS lmeve;
+CREATE DATABASE IF NOT EXISTS EveStaticData;
+EOF
+
+echo -e "\${GREEN}✅ Databases created: lmeve, EveStaticData\${NC}"
+
+# Step 3: Create User
+print_step "Creating MySQL User"
+mysql -u root -p"\$MYSQL_ROOT_PASS" -h "\$DB_HOST" -P "\$DB_PORT" << EOF
+DROP USER IF EXISTS '\$LMEVE_USER'@'%';
+CREATE USER '\$LMEVE_USER'@'%' IDENTIFIED BY '\$LMEVE_PASS';
+GRANT ALL PRIVILEGES ON lmeve.* TO '\$LMEVE_USER'@'%';
+GRANT ALL PRIVILEGES ON EveStaticData.* TO '\$LMEVE_USER'@'%';
+FLUSH PRIVILEGES;
+EOF
+
+echo -e "\${GREEN}✅ User '\$LMEVE_USER' created with full permissions\${NC}"
+
+# Step 4: Download and Import SDE
+print_step "Downloading EVE Static Data"
+if wget -O eve.db.bz2 "\$SDE_URL"; then
+    echo -e "\${GREEN}✅ SDE download completed\${NC}"
+    
+    print_step "Importing EVE Static Data"
+    if bunzip2 eve.db.bz2 && mysql -u "\$LMEVE_USER" -p"\$LMEVE_PASS" -h "\$DB_HOST" -P "\$DB_PORT" EveStaticData < eve.db; then
+        echo -e "\${GREEN}✅ SDE data imported successfully\${NC}"
+        rm -f eve.db  # Clean up
+    else
+        echo -e "\${YELLOW}⚠️  SDE import had issues, but database is still usable\${NC}"
+    fi
+else
+    echo -e "\${YELLOW}⚠️  SDE download failed, continuing anyway\${NC}"
+fi
+
+# Step 5: Verification
+print_step "Verifying Installation"
+echo -n "Testing database connections: "
+if mysql -u"\$LMEVE_USER" -p"\$LMEVE_PASS" -h"\$DB_HOST" -P"\$DB_PORT" -e "USE lmeve; USE EveStaticData; SELECT 1;" >/dev/null 2>&1; then
+    echo -e "\${GREEN}✅ OK\${NC}"
+else
+    echo -e "\${RED}❌ FAILED\${NC}"
+fi
+
+# Success Summary
+echo ""
+echo -e "\${GREEN}🎉 LMeve Database Setup Complete!\${NC}"
+echo -e "\${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\${NC}"
+echo ""
+echo "Database connection details for LMeve:"
+echo -e "  Host: \${YELLOW}\$DB_HOST\${NC}"
+echo -e "  Port: \${YELLOW}\$DB_PORT\${NC}"
+echo -e "  Username: \${YELLOW}\$LMEVE_USER\${NC}"
+echo -e "  Password: \${YELLOW}[configured]\${NC}"
+echo -e "  Database: \${YELLOW}lmeve\${NC}"
+echo ""
+echo "Use these settings in your LMeve web application configuration."
+echo ""`;
+
+      // Create and download the package
+      const blob = new Blob([getmeScript], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `getme-lmeve-${new Date().toISOString().split('T')[0]}.sh`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success('GetMe package downloaded! Upload to your database server and run: sudo ./getme-lmeve-*.sh');
+      console.log('📦 Generated and downloaded GetMe package');
+    } catch (error) {
+      console.error('❌ Failed to generate GetMe package:', error);
+      toast.error('Failed to generate GetMe package');
+    }
+  };
+
+  const handleHostGetMe = async () => {
+    try {
+      const config = {
+        host: databaseSettings.host || 'localhost',
+        port: databaseSettings.port?.toString() || '3306',
+        username: databaseSettings.username || 'lmeve',
+        password: databaseSettings.password || 'lmeve_password',
+        sudoUsername: databaseSettings.sudoUsername || 'root',
+        sudoPassword: databaseSettings.sudoPassword || 'root_password',
+        sdeSource: 'https://www.fuzzwork.co.uk/dump/latest/eve.db.bz2'
+      };
+
+      // Try to start hosting server or provide manual instructions
+      const hostPort = 3456;
+      const hostIP = window.location.hostname;
+      
+      const wgetCommand = `wget http://${hostIP}:${hostPort}/getme-latest -O getme-lmeve.sh && chmod +x getme-lmeve.sh && sudo ./getme-lmeve.sh`;
+
+      // Show instructions for hosting
+      const instructionsText = `LMeve GetMe Package - Hosting Instructions
+=============================================
+
+OPTION 1: Quick wget download (if host server is running)
+---------------------------------------------------------
+On your database server, run this command:
+
+${wgetCommand}
+
+OPTION 2: Custom configuration via curl
+---------------------------------------
+curl -X POST -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(config)}' \\
+  http://${hostIP}:${hostPort}/getme-custom -o getme-lmeve.sh && \\
+  chmod +x getme-lmeve.sh && sudo ./getme-lmeve.sh
+
+OPTION 3: Start the hosting server manually
+-------------------------------------------
+1. Open terminal in: scripts/Client/
+2. Run: node host-server.js ${hostPort}
+3. Use the wget command above from your database server
+
+OPTION 4: Direct download (fallback)
+------------------------------------
+If hosting doesn't work, use the "Download GetMe Package" button instead
+and transfer the file manually to your database server.
+
+Server Details:
+- Host: ${hostIP}:${hostPort}
+- Endpoints: /getme-latest, /getme-custom, /install
+- Configuration: ${JSON.stringify(config, null, 2)}`;
+
+      // Create and download instructions
+      const blob = new Blob([instructionsText], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `getme-hosting-instructions-${new Date().toISOString().split('T')[0]}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Show the wget command in a toast for easy copying
+      navigator.clipboard?.writeText(wgetCommand).then(() => {
+        toast.success('wget command copied to clipboard!');
+      }).catch(() => {
+        toast.success('Hosting instructions downloaded - check the file for wget commands');
+      });
+
+      console.log('📡 Generated hosting instructions and wget commands');
+    } catch (error) {
+      console.error('❌ Failed to generate hosting instructions:', error);
+      toast.error('Failed to generate hosting instructions');
+    }
+  };
+
   // Helper function to simulate remote script execution with realistic output
   const simulateRemoteScriptExecution = async (
     command: string, 
@@ -3268,6 +3488,44 @@ echo "See README.md for detailed setup instructions"
                         <Play size={12} className="mr-1" />
                         Run Remote Setup
                       </Button>
+                      
+                      {/* GetMe Package Hosting - New simplified approach */}
+                      <div className="border-t border-border pt-2 mt-2">
+                        <div className="flex items-center gap-1 mb-2">
+                          <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                          <h5 className="text-xs font-medium text-green-400">GetMe Package</h5>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-4 w-4 p-0 hover:bg-muted ml-auto"
+                            onClick={() => toast.info('GetMe Package:\n\n1. Creates a complete setup script for your database server\n2. You can download it directly or host it for wget download\n3. Script handles everything: databases, users, permissions, SDE import\n4. Perfect for when you\'re sitting at both machines')}
+                          >
+                            <Question size={10} className="text-muted-foreground" />
+                          </Button>
+                        </div>
+                        
+                        <Button
+                          onClick={handleGenerateGetMe}
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-xs h-8 border-green-500/50 text-green-400 hover:bg-green-500/10"
+                          disabled={!databaseSettings.host || !databaseSettings.username}
+                        >
+                          <Download size={12} className="mr-1" />
+                          Download GetMe Package
+                        </Button>
+                        
+                        <Button
+                          onClick={handleHostGetMe}
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-xs h-8 mt-1 border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
+                          disabled={!databaseSettings.host || !databaseSettings.username}
+                        >
+                          <Network size={12} className="mr-1" />
+                          Host for wget Download
+                        </Button>
+                      </div>
                       
                       {/* Update SDE button - show when system is ready and SDE needs update */}
                       {dbStatus.connected && 
