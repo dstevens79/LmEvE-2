@@ -4,7 +4,7 @@
 # This script imports the LMeve application schema into the lmeve database
 # Must be run with sudo privileges on the database host
 #
-# Usage: sudo ./import-schema.sh [schema_file_path] [mysql_root_password] [lmeve_user_password]
+# Usage: sudo ./import-schema.sh [schema_file_path] [mysql_root_password] [lmeve_user_password] [lmeve_username]
 #
 
 set -euo pipefail
@@ -13,7 +13,7 @@ set -euo pipefail
 SCHEMA_FILE="${1:-}"
 MYSQL_ROOT_PASS="${2:-}"
 LMEVE_PASS="${3:-lmpassword}"
-LMEVE_USER="lmeve"
+LMEVE_USER="${4:-lmeve}"
 LMEVE_DB="lmeve"
 
 # Logging function
@@ -34,7 +34,7 @@ fi
 
 # Check if schema file is provided
 if [ -z "$SCHEMA_FILE" ]; then
-    error_exit "Usage: $0 <schema_file_path> [mysql_root_password] [lmeve_user_password]"
+    error_exit "Usage: $0 <schema_file_path> [mysql_root_password] [lmeve_user_password] [lmeve_username]"
 fi
 
 log "Starting LMeve schema import..."

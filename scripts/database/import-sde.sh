@@ -4,7 +4,7 @@
 # This script imports EVE Static Data Export (SDE) SQL dump into the database
 # Must be run with sudo privileges on the database host
 #
-# Usage: sudo ./import-sde.sh [sde_file_path] [mysql_root_password] [lmeve_user_password]
+# Usage: sudo ./import-sde.sh [sde_file_path] [mysql_root_password] [lmeve_user_password] [lmeve_username]
 #
 
 set -euo pipefail
@@ -13,7 +13,7 @@ set -euo pipefail
 SDE_FILE="${1:-}"
 MYSQL_ROOT_PASS="${2:-}"
 LMEVE_PASS="${3:-lmpassword}"
-LMEVE_USER="lmeve"
+LMEVE_USER="${4:-lmeve}"
 SDE_DB="EveStaticData"
 TEMP_DIR="/tmp/lmeve_sde"
 
@@ -44,7 +44,7 @@ fi
 
 # Check if SDE file is provided
 if [ -z "$SDE_FILE" ]; then
-    error_exit "Usage: $0 <sde_file_path> [mysql_root_password] [lmeve_user_password]"
+    error_exit "Usage: $0 <sde_file_path> [mysql_root_password] [lmeve_user_password] [lmeve_username]"
 fi
 
 log "Starting SDE import process..."

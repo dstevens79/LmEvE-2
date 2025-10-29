@@ -4,14 +4,15 @@
 # This script creates the required databases and user for LMeve
 # Must be run with sudo privileges on the database host
 #
-# Usage: sudo ./create-db.sh [lmeve_user_password]
+# Usage: sudo ./create-db.sh [mysql_root_password] [lmeve_user_password] [lmeve_username]
 #
 
 set -euo pipefail
 
-# Configuration
-LMEVE_PASS="${1:-lmpassword}"
-LMEVE_USER="lmeve"
+# Configuration - now accepts username as third parameter
+MYSQL_ROOT_PASS="${1:-}"
+LMEVE_PASS="${2:-lmpassword}"
+LMEVE_USER="${3:-lmeve}"   # default to 'lmeve' if not supplied
 LMEVE_DB="lmeve"
 SDE_DB="EveStaticData"
 
@@ -32,6 +33,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 log "Starting LMeve database creation..."
+log "Using database user: $LMEVE_USER"
 
 # Test MySQL connectivity as root
 log "Testing MySQL connectivity..."
