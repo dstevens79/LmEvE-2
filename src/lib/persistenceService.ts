@@ -43,9 +43,13 @@ export interface DatabaseSettings {
   sudoPassword: string;
   sudoSsl?: boolean;
   // SSH connection settings for remote database setup
+  sshHost?: string;
   sshUsername?: string;
   sshPassword?: string;
   sshPort?: number;
+  // Schema import settings
+  schemaSource?: 'default' | 'custom' | 'file';
+  schemaFilePath?: string;
 }
 
 export interface ESISettings {
@@ -68,6 +72,8 @@ export interface SDESettings {
   downloadUrl: string;
   backupBeforeUpdate: boolean;
   cleanupAfterUpdate: boolean;
+  sdeSource?: 'fuzzwork' | 'custom' | 'file';
+  sdeFilePath?: string;
 }
 
 export interface SyncProcessConfig {
@@ -306,9 +312,12 @@ export const defaultDatabaseSettings: DatabaseSettings = {
   sudoPort: 3306,
   sudoUsername: 'root',
   sudoPassword: '',
+  sshHost: 'localhost',
   sshUsername: 'root',
   sshPassword: '',
   sshPort: 22,
+  schemaSource: 'default',
+  schemaFilePath: '',
 };
 
 export const defaultESISettings: ESISettings = {
@@ -332,10 +341,12 @@ export const defaultSDESettings: SDESettings = {
   lastUpdateCheck: '',
   lastUpdateDate: '',
   autoUpdate: false,
-  updateSchedule: '0 2 * * 0', // Weekly at 2 AM on Sunday
+  updateSchedule: '0 2 * * 0',
   downloadUrl: 'https://www.fuzzwork.co.uk/dump/mysql-latest.tar.bz2',
   backupBeforeUpdate: true,
   cleanupAfterUpdate: true,
+  sdeSource: 'fuzzwork',
+  sdeFilePath: '',
 };
 
 export const defaultSyncSettings: SyncSettings = {

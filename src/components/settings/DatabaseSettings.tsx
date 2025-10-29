@@ -225,9 +225,10 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     try {
       // Generate schema content based on source selection
       let schemaContent: string | undefined;
-      const useCustomSchema = databaseSettings?.schemaSource === 'custom';
+      const schemaSource = databaseSettings?.schemaSource || 'default';
+      const useCustomSchema = schemaSource === 'custom';
       
-      addConnectionLog(`📋 Debug: Schema source = ${databaseSettings?.schemaSource || 'undefined'}`);
+      addConnectionLog(`📋 Debug: Schema source = ${schemaSource}`);
       
       if (useCustomSchema) {
         addConnectionLog('📋 Debug: Custom schema selected - checking for uploaded schema...');
@@ -262,11 +263,11 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         mysqlRootPassword: databaseSettings.sudoPassword,
         lmevePassword: databaseSettings.password,
         allowedHosts: '%',
-        schemaSource: databaseSettings?.schemaSource || 'default',
+        schemaSource: schemaSource,
         schemaContent: schemaContent,
         useCustomSchema: useCustomSchema,
         sdeConfig: {
-          download: sdeSettings?.sdeSource === 'fuzzwork',
+          download: (sdeSettings?.sdeSource || 'fuzzwork') === 'fuzzwork',
           skip: false
         },
         createDatabases: true,
