@@ -459,16 +459,19 @@ export class DatabaseManager {
     return { valid: true };
   }
 
-  async checkLMeveTables(): Promise<{ valid: boolean; error?: string }> {
+  async checkLMeveTables(): Promise<{ valid: boolean; error?: string; setupAvailable?: boolean }> {
     console.log('🔍 Validating LMeve database table structure...');
     
     // Import the database schemas
-    const { lmeveSchemas, getTableNames } = await import('./database-schemas');
+    const { lmeveSchemas, getTableNames, generateAllCreateTableSQL } = await import('./database-schemas');
     const requiredTables = getTableNames();
 
     try {
       // Simulate checking if all required tables exist with proper structure
       await new Promise(resolve => setTimeout(resolve, 400 + Math.random() * 600));
+      
+      const missingTables: string[] = [];
+      const invalidTables: string[] = [];
       
       for (const tableName of requiredTables) {
         console.log(`  🔍 Checking table: ${tableName}`);
@@ -476,34 +479,57 @@ export class DatabaseManager {
         // Step 1: Check if table exists (strict simulation)
         const tableExists = await this.checkTableExists(tableName);
         if (!tableExists.exists) {
-          return { 
-            valid: false, 
-            error: `Required table '${tableName}' does not exist. Please run database setup/migration.`
-          };
+          missingTables.push(tableName);
+          console.log(`    ❌ Table '${tableName}' missing`);
+          continue;
         }
 
         // Step 2: Check basic table structure (simulated strict validation)
         const structureValid = await this.validateTableStructure(tableName);
         if (!structureValid.valid) {
-          return {
-            valid: false,
-            error: `Table '${tableName}' structure is invalid: ${structureValid.error}`
-          };
+          invalidTables.push(tableName);
+          console.log(`    ⚠️ Table '${tableName}' structure invalid: ${structureValid.error}`);
         }
+      }
+
+      // If we have missing or invalid tables, provide setup guidance
+      if (missingTables.length > 0 || invalidTables.length > 0) {
+        const totalIssues = missingTables.length + invalidTables.length;
+        let errorMessage = `Database schema incomplete: `;
+        
+        if (missingTables.length > 0) {
+          errorMessage += `${missingTables.length} table(s) missing`;
+        }
+        if (invalidTables.length > 0) {
+          if (missingTables.length > 0) errorMessage += ', ';
+          errorMessage += `${invalidTables.length} table(s) have invalid structure`;
+        }
+        
+        errorMessage += `. LMeve requires ${requiredTables.length} tables. `;
+        errorMessage += `Please use the Database Setup Manager in Settings → Database to initialize your database with the LMeve schema.`;
+        
+        console.log(`❌ Schema validation failed: ${errorMessage}`);
+        return { 
+          valid: false, 
+          error: errorMessage,
+          setupAvailable: true
+        };
       }
 
       // Step 3: Additional strict validation scenarios
       if (this.config.database === 'lmeve_test' && this.config.host !== 'localhost') {
         return { 
           valid: false, 
-          error: 'Test database can only be accessed from localhost for security' 
+          error: 'Test database can only be accessed from localhost for security',
+          setupAvailable: false
         };
       }
       
       if (this.config.username === 'root' && this.config.database.includes('prod')) {
         return { 
           valid: false, 
-          error: 'Root user should not be used with production databases. Create a dedicated lmeve user.' 
+          error: 'Root user should not be used with production databases. Create a dedicated lmeve user.',
+          setupAvailable: false
         };
       }
 
@@ -512,41 +538,71 @@ export class DatabaseManager {
       if (!configCheck.valid) {
         return {
           valid: false,
-          error: `Database configuration issue: ${configCheck.error}`
+          error: `Database configuration issue: ${configCheck.error}`,
+          setupAvailable: false
         };
       }
 
       console.log(`✅ All ${requiredTables.length} LMeve database tables validated successfully`);
-      return { valid: true };
+      return { valid: true, setupAvailable: false };
     } catch (error) {
       return { 
         valid: false, 
-        error: `Database table validation failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        error: `Database table validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        setupAvailable: true
       };
     }
   }
 
   // Check if a specific table exists (simulated)
+  // This simulates a database that needs the LMeve schema initialized
   private async checkTableExists(tableName: string): Promise<{ exists: boolean; error?: string }> {
     await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 100));
     
     // Simulate SHOW TABLES check
-    // In a real implementation, this would be: SHOW TABLES LIKE 'tableName'
-    const tableExistsProbability = Math.random();
+    // For a realistic simulation: New databases will have NO tables initially
+    // This represents a fresh database that needs schema initialization
     
-    // For core tables, higher chance they exist if we got this far
-    const coreTables = ['users', 'corporations', 'members', 'system_settings'];
-    const isCore = coreTables.includes(tableName);
-    const threshold = isCore ? 0.8 : 0.7;
+    // Check if we have a marker indicating this database was initialized
+    // In a real scenario, presence of 'users' table indicates initialization
+    if (!this.tablesExistCache) {
+      this.tablesExistCache = new Set();
+    }
     
-    if (tableExistsProbability > threshold) {
+    // If ANY tables exist, assume all core tables exist (initialized database)
+    // If NO tables exist, assume empty database (needs initialization)
+    const isInitialized = this.tablesExistCache.size > 0;
+    
+    // First table check determines if database is initialized
+    if (this.tablesExistCache.size === 0 && tableName === 'users') {
+      // This is the first check - determine database state
+      // 90% chance database is NOT initialized (empty/new)
+      const databaseHasTables = Math.random() < 0.1;
+      
+      if (databaseHasTables) {
+        // Database exists with tables - mark as initialized
+        console.log(`    ℹ️ Database appears to be initialized`);
+        this.tablesExistCache.add('_initialized');
+      } else {
+        // Database is empty - needs schema
+        console.log(`    ℹ️ Database appears to be empty - schema initialization required`);
+      }
+    }
+    
+    const exists = this.tablesExistCache.has('_initialized');
+    
+    if (exists) {
       console.log(`    ✅ Table '${tableName}' exists`);
+      this.tablesExistCache.add(tableName);
       return { exists: true };
     } else {
       console.log(`    ❌ Table '${tableName}' missing`);
       return { exists: false, error: `Table '${tableName}' does not exist` };
     }
   }
+  
+  // Cache for simulating persistent table state
+  private tablesExistCache: Set<string> | null = null;
 
   // Validate table structure (simulated)
   private async validateTableStructure(tableName: string): Promise<{ valid: boolean; error?: string }> {
@@ -744,6 +800,47 @@ export class DatabaseManager {
 
   updateConfig(newConfig: Partial<DatabaseConfig>): void {
     this.config = { ...this.config, ...newConfig };
+  }
+
+  async initializeSchema(): Promise<{ success: boolean; error?: string; tablesCreated?: number }> {
+    try {
+      console.log('🔨 Initializing LMeve database schema...');
+      
+      // Import the schema generation functions
+      const { generateAllCreateTableSQL, lmeveSchemas } = await import('./database-schemas');
+      
+      // Generate all CREATE TABLE statements
+      const schemaSQL = generateAllCreateTableSQL();
+      
+      console.log(`📋 Generated schema SQL for ${lmeveSchemas.length} tables`);
+      console.log(`💾 Executing schema creation (this may take a moment)...`);
+      
+      // In a real implementation, this would execute the SQL
+      // For simulation, we'll mark the database as initialized
+      await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
+      
+      // Mark all tables as existing
+      if (!this.tablesExistCache) {
+        this.tablesExistCache = new Set();
+      }
+      this.tablesExistCache.add('_initialized');
+      lmeveSchemas.forEach(schema => {
+        this.tablesExistCache!.add(schema.tableName);
+      });
+      
+      console.log(`✅ Successfully created ${lmeveSchemas.length} tables`);
+      
+      return {
+        success: true,
+        tablesCreated: lmeveSchemas.length
+      };
+    } catch (error) {
+      console.error('❌ Schema initialization failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to initialize schema'
+      };
+    }
   }
 }
 
