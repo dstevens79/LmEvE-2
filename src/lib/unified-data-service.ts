@@ -116,7 +116,7 @@ class MockDataGenerator {
   static generateAssets(): Asset[] {
     return [
       {
-        id: 1,
+        id: '1',
         itemId: 587,
         typeId: 587,
         typeName: 'Rifter',
@@ -125,10 +125,11 @@ class MockDataGenerator {
         locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
         locationFlag: 'Hangar',
         isSingleton: false,
-        value: 250000 * 5
+        estimatedValue: 250000 * 5,
+        lastUpdate: new Date().toISOString()
       },
       {
-        id: 2,
+        id: '2',
         itemId: 34,
         typeId: 34,
         typeName: 'Tritanium',
@@ -137,10 +138,11 @@ class MockDataGenerator {
         locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
         locationFlag: 'Hangar',
         isSingleton: false,
-        value: 5.5 * 1000000
+        estimatedValue: 5.5 * 1000000,
+        lastUpdate: new Date().toISOString()
       },
       {
-        id: 3,
+        id: '3',
         itemId: 638,
         typeId: 638,
         typeName: 'Raven',
@@ -149,10 +151,11 @@ class MockDataGenerator {
         locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
         locationFlag: 'Hangar',
         isSingleton: false,
-        value: 120000000 * 2
+        estimatedValue: 120000000 * 2,
+        lastUpdate: new Date().toISOString()
       },
       {
-        id: 4,
+        id: '4',
         itemId: 11399,
         typeId: 11399,
         typeName: 'Compressed Veldspar',
@@ -161,7 +164,8 @@ class MockDataGenerator {
         locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
         locationFlag: 'Hangar',
         isSingleton: false,
-        value: 120 * 50000
+        estimatedValue: 120 * 50000,
+        lastUpdate: new Date().toISOString()
       }
     ];
   }
@@ -172,7 +176,7 @@ class MockDataGenerator {
   static generateManufacturingJobs(): ManufacturingJob[] {
     return [
       {
-        id: 1,
+        id: '1',
         jobId: 500001,
         activityId: 1,
         blueprintId: 1001,
@@ -187,10 +191,19 @@ class MockDataGenerator {
         facilityId: 60003760,
         status: 'active',
         cost: 15000000,
-        progress: 0.67
+        facility: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+        materialEfficiency: 10,
+        timeEfficiency: 20,
+        productQuantity: 1,
+        blueprintName: 'Raven Blueprint',
+        priority: 'high',
+        duration: 72 * 60 * 60,
+        materials: [
+          { typeId: 34, typeName: 'Tritanium', quantity: 5000000, totalValue: 26000000 }
+        ]
       },
       {
-        id: 2,
+        id: '2',
         jobId: 500002,
         activityId: 1,
         blueprintId: 1002,
@@ -205,10 +218,19 @@ class MockDataGenerator {
         facilityId: 60003760,
         status: 'active',
         cost: 2500000,
-        progress: 0.85
+        facility: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+        materialEfficiency: 8,
+        timeEfficiency: 16,
+        productQuantity: 10,
+        blueprintName: 'Rifter Blueprint',
+        priority: 'normal',
+        duration: 12 * 60 * 60,
+        materials: [
+          { typeId: 34, typeName: 'Tritanium', quantity: 250000, totalValue: 1375000 }
+        ]
       },
       {
-        id: 3,
+        id: '3',
         jobId: 500003,
         activityId: 1,
         blueprintId: 1003,
@@ -223,7 +245,16 @@ class MockDataGenerator {
         facilityId: 60003760,
         status: 'delivered',
         cost: 500000,
-        progress: 1.0
+        facility: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+        materialEfficiency: 0,
+        timeEfficiency: 0,
+        productQuantity: 100,
+        blueprintName: 'Compressed Scordite Blueprint',
+        priority: 'normal',
+        duration: 96 * 60 * 60,
+        materials: [
+          { typeId: 34, typeName: 'Tritanium', quantity: 1000000, totalValue: 5500000 }
+        ]
       }
     ];
   }
@@ -329,10 +360,8 @@ class MockDataGenerator {
         buyPrice: 5.45,
         sellPrice: 5.52,
         averagePrice: 5.48,
-        avgPrice: 5.48,
         volume: 15000000000,
-        lastUpdate: new Date().toISOString(),
-        timestamp: new Date().toISOString()
+        lastUpdate: new Date().toISOString()
       },
       {
         typeId: 587,
@@ -342,10 +371,8 @@ class MockDataGenerator {
         buyPrice: 248000,
         sellPrice: 275000,
         averagePrice: 261000,
-        avgPrice: 261000,
         volume: 12500,
-        lastUpdate: new Date().toISOString(),
-        timestamp: new Date().toISOString()
+        lastUpdate: new Date().toISOString()
       },
       {
         typeId: 638,
@@ -355,10 +382,8 @@ class MockDataGenerator {
         buyPrice: 138000000,
         sellPrice: 145000000,
         averagePrice: 141500000,
-        avgPrice: 141500000,
         volume: 850,
-        lastUpdate: new Date().toISOString(),
-        timestamp: new Date().toISOString()
+        lastUpdate: new Date().toISOString()
       }
     ];
   }
@@ -837,7 +862,7 @@ export class UnifiedDataService {
     try {
       if (this.dbManager && this.setupStatus.databaseConnected) {
         const result = await this.dbManager.query<ManufacturingJob>(
-          LMeveQueries.getIndustryJobs(corporationId)
+          LMeveQueries.getIndustryJobs(undefined)
         );
 
         if (result.success && result.data && result.data.length > 0) {
@@ -1166,7 +1191,7 @@ export class UnifiedDataService {
           totalMembers: members.data.length,
           activeMembers: members.data.filter(m => m.isActive).length,
           totalAssets: assets.data.length,
-          totalAssetValue: assets.data.reduce((sum, a) => sum + (a.value || 0), 0),
+          totalAssetValue: assets.data.reduce((sum, a) => sum + (a.estimatedValue || 0), 0),
           activeJobs: jobs.data.filter(j => j.status === 'active').length,
           completedJobs: jobs.data.filter(j => j.status === 'delivered').length,
           totalIncome: wallet.data.filter(t => !t.isBuy).reduce((sum, t) => sum + t.amount, 0),
@@ -1178,7 +1203,9 @@ export class UnifiedDataService {
           timestamp: new Date().toISOString()
         };
 
-        stats.netProfit = stats.totalIncome - stats.totalExpenses;
+  const totalIncome = stats.totalIncome || 0;
+  const totalExpenses = stats.totalExpenses || 0;
+  stats.netProfit = totalIncome - totalExpenses;
 
         return {
           data: stats,

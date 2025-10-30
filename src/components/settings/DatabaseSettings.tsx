@@ -7,9 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Progress } from '@/components/ui/progress';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Database,
   CheckCircle,
@@ -39,12 +36,12 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   const [databaseSettings, setDatabaseSettings] = useDatabaseSettings();
   const [sdeSettings, setSDESettings] = useSDESettings();
 
-  const { 
-    stats, 
-    isUpdating, 
-    checkForUpdates, 
-    downloadAndInstallSDE,
-    isCurrentVersion 
+  const {
+    sdeStatus,
+    checkForUpdates,
+    downloadSDE,
+    updateDatabase,
+    getDatabaseStats
   } = useSDEManager();
 
   // Update helper functions
@@ -66,11 +63,16 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   const [isConnected, setIsConnected] = useState(false);
   const [connectionLogs, setConnectionLogs] = useState<string[]>([]);
   const [testingConnection, setTestingConnection] = useState(false);
-  const [setupProgress, setSetupProgress] = useState(0);
-  const [setupStatus, setSetupStatus] = useState<'ready' | 'running' | 'complete' | 'error'>('ready');
+  // Removed legacy setup progress/status state
   
   // Ref for auto-scrolling logs
   const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // Network info state
+  const [serverLocalIps, setServerLocalIps] = useState<string[]>([]);
+  const [serverPublicIp, setServerPublicIp] = useState<string | null>(null);
+  const [serverHostname, setServerHostname] = useState<string | null>(null);
+  const [clientIp, setClientIp] = useState<string | null>(null);
 
   // System status indicators
   const [systemStatus, setSystemStatus] = useState({
@@ -83,7 +85,35 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   // Load settings on component mount
   useEffect(() => {
     checkSDEStatus();
+    // Fetch server/client host information
+    (async () => {
+      try {
+        const resp = await fetch('/api/host-info.php', { method: 'POST' });
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.ok) {
+            setServerLocalIps(Array.isArray(json.server?.localAddrs) ? json.server.localAddrs : []);
+            setServerPublicIp(json.server?.publicIp || null);
+            setServerHostname(json.server?.hostname || null);
+            setClientIp(json.client?.ip || null);
+          }
+        }
+      } catch (e) {
+        // non-fatal
+      }
+    })();
   }, []);
+
+  // Reflect SDE status into System Status indicator
+  useEffect(() => {
+    if (!sdeStatus) return;
+    setSystemStatus(prev => ({
+      ...prev,
+      sdeVersion: sdeStatus.isInstalled
+        ? (sdeStatus.isUpdateAvailable ? 'outdated' : 'current')
+        : 'unknown'
+    }));
+  }, [sdeStatus]);
 
   // Auto-scroll logs to bottom when new logs are added
   useEffect(() => {
@@ -218,10 +248,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   const checkSDEStatus = async () => {
     try {
       await checkForUpdates();
-      setSystemStatus(prev => ({ 
-        ...prev, 
-        sdeVersion: isCurrentVersion ? 'current' : 'outdated'
-      }));
+      // sdeStatus will update via hook; local system status syncs in effect
     } catch (error) {
       console.error('SDE status check failed:', error);
     }
@@ -230,7 +257,8 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   const handleUpdateSDE = async () => {
     try {
       addConnectionLog('Starting SDE update...');
-      await downloadAndInstallSDE();
+      await downloadSDE();
+      await updateDatabase();
       addConnectionLog('✅ SDE update completed');
       toast.success('SDE updated successfully');
       await checkSDEStatus();
@@ -379,6 +407,25 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
               <Separator />
               
               {/* Removed Database Schema section as requested */}
+
+              {/* Network Info */}
+              <div className="space-y-2">
+                <Label>Network Info</Label>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  {serverHostname && (
+                    <div><span className="font-medium text-foreground">Server:</span> {serverHostname}</div>
+                  )}
+                  {serverLocalIps.length > 0 && (
+                    <div><span className="font-medium text-foreground">Internal IPs:</span> {serverLocalIps.join(', ')}</div>
+                  )}
+                  <div>
+                    <span className="font-medium text-foreground">External IP:</span> {serverPublicIp || 'Unknown'}
+                  </div>
+                  {clientIp && (
+                    <div><span className="font-medium text-foreground">Your IP:</span> {clientIp}</div>
+                  )}
+                </div>
+              </div>
               
               <div className="space-y-2">
                 <Label>SDE Source</Label>
@@ -404,7 +451,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                   </Button>
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {stats?.lastModified ? new Date(stats.lastModified).toLocaleDateString() : 'Unknown'}
+                  {sdeStatus?.latestVersion || 'Unknown'}{sdeStatus?.lastChecked ? ` (checked ${new Date(sdeStatus.lastChecked).toLocaleDateString()})` : ''}
                 </div>
               </div>
             </CardContent>
@@ -441,10 +488,10 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                 
                 <Button 
                   onClick={handleUpdateSDE}
-                  disabled={isUpdating || systemStatus.sdeVersion === 'current'}
+                  disabled={sdeStatus?.isUpdating || sdeStatus?.isDownloading || systemStatus.sdeVersion === 'current'}
                   variant="outline"
                 >
-                  {isUpdating ? 'Updating SDE...' : 'Update SDE'}
+                  {sdeStatus?.isUpdating || sdeStatus?.isDownloading ? 'Updating SDE...' : 'Update SDE'}
                 </Button>
               </div>
 
@@ -462,21 +509,6 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
           </Card>
         </div>
       </div>
-
-      {/* Setup Progress */}
-      {setupStatus === 'running' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Database Setup Progress</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Progress value={setupProgress} className="w-full" />
-            <p className="text-sm text-muted-foreground mt-2">
-              Setting up database... {Math.round(setupProgress)}% complete
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Connection Logs */}
       <Card>
@@ -499,83 +531,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         </CardContent>
       </Card>
 
-      {/* Troubleshooting Guide */}
-      <Card className="border-yellow-500/50 bg-yellow-500/5">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Warning size={20} className="text-yellow-500" />
-            Troubleshooting Guide - User Creation Issues
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-          <div>
-            <h4 className="font-semibold mb-2">Issue: lmeve user not created after running scripts</h4>
-            <p className="text-muted-foreground mb-3">
-              If you see "empty set" when running <code className="bg-muted px-1 py-0.5 rounded">SELECT user, host FROM mysql.user WHERE user='lmeve';</code>
-            </p>
-          </div>
-          
-          <div className="space-y-3">
-            <div>
-              <h5 className="font-medium mb-1">✅ Solution 1: Verify Script Parameters</h5>
-              <p className="text-muted-foreground text-xs mb-2">
-                The create-db.sh script requires THREE parameters to be passed correctly:
-              </p>
-              <div className="bg-muted p-2 rounded font-mono text-xs">
-                sudo /usr/local/lmeve/create-db.sh "YOUR_MYSQL_ROOT_PASSWORD" "YOUR_LMEVE_PASSWORD" "YOUR_LMEVE_USERNAME"
-              </div>
-              <p className="text-muted-foreground text-xs mt-2">
-                Make sure all three parameters are enclosed in quotes and match what you entered in the fields above.
-              </p>
-            </div>
-            
-            <div>
-              <h5 className="font-medium mb-1">✅ Solution 2: Download and Manually Execute</h5>
-              <p className="text-muted-foreground text-xs mb-2">
-                Click "Download create-db.sh" button above, then manually upload and execute:
-              </p>
-              <div className="bg-muted p-2 rounded font-mono text-xs space-y-1">
-                <div># Upload the script to your server</div>
-                <div>scp create-db.sh user@yourserver:/usr/local/lmeve/</div>
-                <div className="mt-2"># Make it executable</div>
-                <div>ssh user@yourserver "chmod +x /usr/local/lmeve/create-db.sh"</div>
-                <div className="mt-2"># Run with your passwords and username</div>
-                <div>ssh user@yourserver "sudo /usr/local/lmeve/create-db.sh 'root_pass' 'lmeve_pass' 'lmeve_user'"</div>
-              </div>
-            </div>
-            
-            <div>
-              <h5 className="font-medium mb-1">✅ Solution 3: Manual SQL Execution</h5>
-              <p className="text-muted-foreground text-xs mb-2">
-                If scripts fail, execute these SQL commands directly on your MySQL server:
-              </p>
-              <div className="bg-muted p-2 rounded font-mono text-xs space-y-1">
-                <div>DROP USER IF EXISTS 'lmeve'@'%';</div>
-                <div>CREATE USER 'lmeve'@'%' IDENTIFIED BY 'your_password_here';</div>
-                <div>GRANT ALL PRIVILEGES ON lmeve.* TO 'lmeve'@'%';</div>
-                <div>GRANT ALL PRIVILEGES ON EveStaticData.* TO 'lmeve'@'%';</div>
-                <div>FLUSH PRIVILEGES;</div>
-              </div>
-              <p className="text-muted-foreground text-xs mt-2">
-                Replace 'your_password_here' with the LMeve password you want to use.
-              </p>
-            </div>
-            
-            <div>
-              <h5 className="font-medium mb-1">🔍 Verification</h5>
-              <p className="text-muted-foreground text-xs mb-2">
-                After running any solution, verify the user was created:
-              </p>
-              <div className="bg-muted p-2 rounded font-mono text-xs">
-                SELECT user, host FROM mysql.user WHERE user='lmeve';
-              </div>
-              <p className="text-muted-foreground text-xs mt-2">
-                You should see: lmeve | %
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Removed legacy database setup and troubleshooting sections as requested */}
     </div>
   );
 }
