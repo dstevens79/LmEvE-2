@@ -155,8 +155,8 @@ print_step "Database Server Selection"
 echo -e "${YELLOW}Choose your database server:${NC}"
 echo -e "  1) MySQL (Oracle's MySQL Server)"
 echo -e "  2) MariaDB (Community fork, fully compatible)"
-read -p "Choice [2]: " DB_CHOICE
-DB_CHOICE=${DB_CHOICE:-2}
+read -p "Choice [1]: " DB_CHOICE
+DB_CHOICE=${DB_CHOICE:-1}
 
 DB_TYPE=""
 DB_SERVICE=""
@@ -176,10 +176,18 @@ fi
 if [[ "$MYSQL_INSTALLED" = true ]] || [[ "$MARIADB_INSTALLED" = true ]]; then
     echo -e "${YELLOW}⚠️  A database server is already installed:${NC}"
     mysql --version
-    read -p "Skip database installation and use existing? [Y/n]: " USE_EXISTING
-    USE_EXISTING=${USE_EXISTING:-Y}
+    read -p "Remove existing and install fresh? [y/N]: " REMOVE_EXISTING
+    REMOVE_EXISTING=${REMOVE_EXISTING:-N}
     
-    if [[ "$USE_EXISTING" =~ ^[Yy]$ ]]; then
+    if [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]]; then
+        echo -e "${CYAN}Removing existing database server...${NC}"
+        systemctl stop mysql 2>/dev/null || systemctl stop mariadb 2>/dev/null || true
+        apt purge -y mysql-server mysql-client mysql-common mariadb-server mariadb-client 2>/dev/null || true
+        apt autoremove -y
+        rm -rf /etc/mysql /var/lib/mysql
+        echo -e "${GREEN}✅ Existing database server removed${NC}"
+        # Continue with installation below
+    else
         echo -e "${GREEN}✅ Using existing database server${NC}"
         if [[ "$MYSQL_INSTALLED" = true ]]; then
             DB_TYPE="MySQL"
@@ -188,11 +196,11 @@ if [[ "$MYSQL_INSTALLED" = true ]] || [[ "$MARIADB_INSTALLED" = true ]]; then
             DB_TYPE="MariaDB"
             DB_SERVICE="mariadb"
         fi
-    else
-        echo -e "${YELLOW}Please manually remove the existing database before continuing${NC}"
-        exit 1
     fi
-else
+fi
+
+# Only install if we don't have DB_TYPE set (meaning no existing DB or user chose to remove it)
+if [[ -z "$DB_TYPE" ]]; then
     case $DB_CHOICE in
         1)
             DB_TYPE="MySQL"
@@ -261,38 +269,47 @@ fi
 
 # Step 5: Webmin Installation (Optional)
 print_step "Webmin Installation (Optional)"
-echo -e "${YELLOW}Install Webmin for web-based server management?${NC}"
-echo -e "${CYAN}Webmin provides a GUI for managing MySQL/MariaDB, users, and system settings${NC}"
-read -p "Install Webmin? [y/N]: " INSTALL_WEBMIN
-INSTALL_WEBMIN=${INSTALL_WEBMIN:-N}
 
-if [[ "$INSTALL_WEBMIN" =~ ^[Yy]$ ]]; then
-    echo -e "${CYAN}Installing Webmin...${NC}"
-    
-    # Add Webmin repository
-    if [[ ! -f /etc/apt/sources.list.d/webmin.list ]]; then
-        echo "deb http://download.webmin.com/download/repository sarge contrib" > /etc/apt/sources.list.d/webmin.list
-        
-        # Add GPG key
-        wget -qO - http://www.webmin.com/jcameron-key.asc | apt-key add -
-        
-        apt update
-    fi
-    
-    # Install Webmin
-    apt install -y webmin
-    
-    # Allow Webmin through firewall if UFW is active
-    if ufw status | grep -q "Status: active"; then
-        ufw allow 10000/tcp
-        echo -e "${GREEN}✅ Webmin port (10000) allowed through firewall${NC}"
-    fi
-    
-    echo -e "${GREEN}✅ Webmin installed${NC}"
+# Check if Webmin is already installed
+WEBMIN_INSTALLED=false
+if command_exists webmin || dpkg -l | grep -q "^ii  webmin "; then
+    WEBMIN_INSTALLED=true
+    echo -e "${GREEN}✅ Webmin is already installed${NC}"
     echo -e "${CYAN}Access Webmin at: https://$(hostname -I | awk '{print $1}'):10000${NC}"
-    echo -e "${CYAN}Login with your system root credentials${NC}"
 else
-    echo -e "${YELLOW}Skipping Webmin installation${NC}"
+    echo -e "${YELLOW}Install Webmin for web-based server management?${NC}"
+    echo -e "${CYAN}Webmin provides a GUI for managing MySQL/MariaDB, users, and system settings${NC}"
+    read -p "Install Webmin? [Y/n]: " INSTALL_WEBMIN
+    INSTALL_WEBMIN=${INSTALL_WEBMIN:-Y}
+
+    if [[ "$INSTALL_WEBMIN" =~ ^[Yy]$ ]]; then
+        echo -e "${CYAN}Installing Webmin...${NC}"
+        
+        # Add Webmin repository
+        if [[ ! -f /etc/apt/sources.list.d/webmin.list ]]; then
+            echo "deb http://download.webmin.com/download/repository sarge contrib" > /etc/apt/sources.list.d/webmin.list
+            
+            # Add GPG key
+            wget -qO - http://www.webmin.com/jcameron-key.asc | apt-key add -
+            
+            apt update
+        fi
+        
+        # Install Webmin
+        apt install -y webmin
+        
+        # Allow Webmin through firewall if UFW is active
+        if ufw status | grep -q "Status: active"; then
+            ufw allow 10000/tcp
+            echo -e "${GREEN}✅ Webmin port (10000) allowed through firewall${NC}"
+        fi
+        
+        echo -e "${GREEN}✅ Webmin installed${NC}"
+        echo -e "${CYAN}Access Webmin at: https://$(hostname -I | awk '{print $1}'):10000${NC}"
+        echo -e "${CYAN}Login with your system root credentials${NC}"
+    else
+        echo -e "${YELLOW}Skipping Webmin installation${NC}"
+    fi
 fi
 
 # Prompt for database configuration

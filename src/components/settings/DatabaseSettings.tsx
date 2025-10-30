@@ -256,9 +256,9 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                 <Label htmlFor="dbName">Database Name</Label>
                 <Input
                   id="dbName"
-                  value={databaseSettings?.database || 'lmeve'}
+                  value={databaseSettings?.database || 'lmeve2'}
                   onChange={(e) => updateDatabaseSettings({ database: e.target.value })}
-                  placeholder="lmeve"
+                  placeholder="lmeve2"
                 />
               </div>
             </CardContent>

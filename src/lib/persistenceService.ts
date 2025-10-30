@@ -300,7 +300,7 @@ export const defaultGeneralSettings: GeneralSettings = {
 export const defaultDatabaseSettings: DatabaseSettings = {
   host: 'localhost',
   port: 3306,
-  database: 'lmeve',
+  database: 'lmeve2',
   username: 'lmeve',
   password: '',
   ssl: false,
