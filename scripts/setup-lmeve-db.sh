@@ -844,20 +844,29 @@ if [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]]; then
             
             # Import all SQL files
             IMPORT_SUCCESS=true
+            IMPORT_COUNT=0
+            FAILED_FILES=""
+            
             for sqlfile in *.sql; do
                 if [[ -f "$sqlfile" ]]; then
                     echo -e "${CYAN}Importing $sqlfile...${NC}"
-                    if ! mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} < "$sqlfile" 2>/dev/null; then
+                    if mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} < "$sqlfile" 2>&1 | grep -v "Warning"; then
+                        IMPORT_COUNT=$((IMPORT_COUNT + 1))
+                    else
                         echo -e "${YELLOW}⚠️  Warning: Failed to import $sqlfile${NC}"
+                        FAILED_FILES="${FAILED_FILES}\n  - $sqlfile"
                         IMPORT_SUCCESS=false
                     fi
                 fi
             done
             
+            echo ""
             if [[ "$IMPORT_SUCCESS" = true ]]; then
-                echo -e "${GREEN}✅ SDE data imported successfully${NC}"
+                echo -e "${GREEN}✅ SDE data imported successfully (${IMPORT_COUNT} files)${NC}"
             else
-                echo -e "${YELLOW}⚠️  Some SDE tables may not have imported correctly${NC}"
+                echo -e "${YELLOW}⚠️  Some SDE files failed to import:${NC}"
+                echo -e "${YELLOW}${FAILED_FILES}${NC}"
+                echo -e "${CYAN}Note: The database is still usable. You can reimport SDE data later.${NC}"
             fi
         else
             echo -e "${RED}❌ SDE extraction failed${NC}"
@@ -905,7 +914,7 @@ if [[ -n "$DB_TYPE" ]]; then
 fi
 echo -e "  Host: ${YELLOW}$DB_HOST:$DB_PORT${NC}"
 echo -e "  Username: ${YELLOW}$LMEVE_USER${NC}"
-echo -e "  Password: ${YELLOW}[configured]${NC}"
+echo -e "  Password: ${YELLOW}$LMEVE_PASS${NC}"
 echo -e "  LMeve DB: ${YELLOW}${LMEVE_DB}${NC} ($LMEVE_TABLES tables)"
 echo -e "  SDE DB: ${YELLOW}${SDE_DB}${NC} ($SDE_TABLES tables)"
 if [[ "$INSTALL_WEBMIN" =~ ^[Yy]$ ]]; then
@@ -919,6 +928,10 @@ echo -e "  2. Configure your LMeve instance to connect to this database"
 if [[ "$INSTALL_WEBMIN" =~ ^[Yy]$ ]]; then
     echo -e "  3. Manage your database via Webmin at port 10000"
 fi
+echo ""
+echo -e "${BLUE}Connection Test:${NC}"
+echo -e "  Run this command to test the connection:"
+echo -e "  ${CYAN}mysql -h $DB_HOST -P $DB_PORT -u $LMEVE_USER -p'$LMEVE_PASS' -e \"USE ${LMEVE_DB}; SHOW TABLES;\"${NC}"
 echo ""
 echo -e "${GREEN}Database server is ready for LMeve!${NC}"
 echo ""
