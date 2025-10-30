@@ -114,9 +114,15 @@ fi
 
 # Step 3: Firewall Configuration
 print_step "Firewall Configuration (UFW)"
-echo -e "${YELLOW}Configure firewall settings?${NC}"
+
+# Get port early for firewall config
+echo -e "${YELLOW}Database Port Configuration:${NC}"
+read -p "MySQL/MariaDB Port [3306]: " DB_PORT
+DB_PORT=${DB_PORT:-3306}
+
+echo -e "\n${YELLOW}Configure firewall settings?${NC}"
 echo -e "  1) Disable UFW (not recommended)"
-echo -e "  2) Configure UFW for database server (MySQL/MariaDB port)"
+echo -e "  2) Configure UFW for database server (port ${DB_PORT})"
 echo -e "  3) Skip firewall configuration"
 read -p "Choice [2]: " UFW_CHOICE
 UFW_CHOICE=${UFW_CHOICE:-2}
@@ -131,13 +137,13 @@ case $UFW_CHOICE in
         echo -e "${CYAN}Configuring UFW...${NC}"
         # Allow SSH (critical!)
         ufw allow OpenSSH
-        # Allow MySQL/MariaDB
-        ufw allow 3306/tcp
+        # Allow MySQL/MariaDB on selected port
+        ufw allow ${DB_PORT}/tcp
         # Enable UFW if not already enabled
         echo "y" | ufw enable
         ufw status
         echo -e "${GREEN}✅ Firewall configured${NC}"
-        echo -e "${CYAN}Allowed: SSH (22), MySQL/MariaDB (3306)${NC}"
+        echo -e "${CYAN}Allowed: SSH (22), MySQL/MariaDB (${DB_PORT})${NC}"
         ;;
     3)
         echo -e "${YELLOW}Skipping firewall configuration${NC}"
@@ -223,6 +229,36 @@ else
     echo -e "${GREEN}✅ $DB_TYPE secured${NC}"
 fi
 
+# Configure custom port if not default
+if [ "$DB_PORT" != "3306" ]; then
+    print_step "Configuring Custom Database Port"
+    echo -e "${CYAN}Configuring $DB_TYPE to listen on port ${DB_PORT}...${NC}"
+    
+    # Determine config file location
+    if [[ "$DB_TYPE" == "MySQL" ]]; then
+        MYSQL_CNF="/etc/mysql/mysql.conf.d/mysqld.cnf"
+    else
+        MYSQL_CNF="/etc/mysql/mariadb.conf.d/50-server.cnf"
+    fi
+    
+    # Backup config
+    cp "$MYSQL_CNF" "${MYSQL_CNF}.backup"
+    
+    # Update port in config
+    if grep -q "^port" "$MYSQL_CNF"; then
+        sed -i "s/^port.*/port = ${DB_PORT}/" "$MYSQL_CNF"
+    else
+        # Add port line after [mysqld] section
+        sed -i "/^\[mysqld\]/a port = ${DB_PORT}" "$MYSQL_CNF"
+    fi
+    
+    # Restart database service
+    systemctl restart ${DB_SERVICE}
+    
+    echo -e "${GREEN}✅ $DB_TYPE configured for port ${DB_PORT}${NC}"
+    echo -e "${YELLOW}Note: Clients must connect using port ${DB_PORT}${NC}"
+fi
+
 # Step 5: Webmin Installation (Optional)
 print_step "Webmin Installation (Optional)"
 echo -e "${YELLOW}Install Webmin for web-based server management?${NC}"
@@ -267,9 +303,8 @@ echo -e "${YELLOW}Now let's configure your LMeve databases${NC}\n"
 read -p "Database Host [localhost]: " DB_HOST
 DB_HOST=${DB_HOST:-localhost}
 
-# Database port
-read -p "Database Port [3306]: " DB_PORT
-DB_PORT=${DB_PORT:-3306}
+# Port was already configured earlier
+echo -e "${CYAN}Using Database Port: ${DB_PORT}${NC}"
 
 # MySQL root password
 echo -e "\n${YELLOW}MySQL root credentials (for creating databases):${NC}"
@@ -292,6 +327,14 @@ if [[ "$LMEVE_PASS" != "$LMEVE_PASS_CONFIRM" ]]; then
     exit 1
 fi
 
+# Database names
+echo -e "\n${YELLOW}Database Names:${NC}"
+read -p "Main database name [lmeve2]: " LMEVE_DB
+LMEVE_DB=${LMEVE_DB:-lmeve2}
+
+read -p "SDE database name [EveStaticData]: " SDE_DB
+SDE_DB=${SDE_DB:-EveStaticData}
+
 # SDE download option
 echo -e "\n${YELLOW}EVE Static Data Export (SDE):${NC}"
 read -p "Download and import SDE? [Y/n]: " DOWNLOAD_SDE
@@ -302,6 +345,8 @@ echo -e "\n${CYAN}════════════════════�
 echo -e "${CYAN}Configuration Summary:${NC}"
 echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
 echo -e "  Database Host: ${YELLOW}$DB_HOST:$DB_PORT${NC}"
+echo -e "  Main Database: ${YELLOW}$LMEVE_DB${NC}"
+echo -e "  SDE Database: ${YELLOW}$SDE_DB${NC}"
 echo -e "  LMeve Username: ${YELLOW}$LMEVE_USER${NC}"
 echo -e "  LMeve Password: ${YELLOW}[hidden]${NC}"
 echo -e "  Download SDE: ${YELLOW}${DOWNLOAD_SDE}${NC}"
@@ -327,13 +372,13 @@ fi
 
 # Step 2: Create Databases
 print_step "Creating Databases"
-mysql -u root -p"$MYSQL_ROOT_PASS" -h "$DB_HOST" -P "$DB_PORT" << 'SQLEOF'
-CREATE DATABASE IF NOT EXISTS lmeve DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE IF NOT EXISTS EveStaticData DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+mysql -u root -p"$MYSQL_ROOT_PASS" -h "$DB_HOST" -P "$DB_PORT" << SQLEOF
+CREATE DATABASE IF NOT EXISTS ${LMEVE_DB} DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS ${SDE_DB} DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 SQLEOF
 
-if [[ $? -eq 0 ]]; then
-    echo -e "${GREEN}✅ Databases created: lmeve, EveStaticData${NC}"
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Databases created: ${LMEVE_DB}, ${SDE_DB}${NC}"
 else
     echo -e "${RED}❌ Failed to create databases${NC}"
     exit 1
@@ -348,10 +393,10 @@ DROP USER IF EXISTS '$LMEVE_USER'@'localhost';
 CREATE USER '$LMEVE_USER'@'%' IDENTIFIED WITH mysql_native_password BY '$LMEVE_PASS';
 CREATE USER '$LMEVE_USER'@'localhost' IDENTIFIED WITH mysql_native_password BY '$LMEVE_PASS';
 
-GRANT ALL PRIVILEGES ON lmeve.* TO '$LMEVE_USER'@'%';
-GRANT ALL PRIVILEGES ON lmeve.* TO '$LMEVE_USER'@'localhost';
-GRANT ALL PRIVILEGES ON EveStaticData.* TO '$LMEVE_USER'@'%';
-GRANT ALL PRIVILEGES ON EveStaticData.* TO '$LMEVE_USER'@'localhost';
+GRANT ALL PRIVILEGES ON ${LMEVE_DB}.* TO '$LMEVE_USER'@'%';
+GRANT ALL PRIVILEGES ON ${LMEVE_DB}.* TO '$LMEVE_USER'@'localhost';
+GRANT ALL PRIVILEGES ON ${SDE_DB}.* TO '$LMEVE_USER'@'%';
+GRANT ALL PRIVILEGES ON ${SDE_DB}.* TO '$LMEVE_USER'@'localhost';
 
 FLUSH PRIVILEGES;
 SQLEOF
@@ -393,7 +438,7 @@ if [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]]; then
             print_step "Importing EVE Static Data"
             echo -e "${CYAN}This may take several minutes...${NC}\n"
             
-            if mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" EveStaticData < eve.db 2>/dev/null; then
+            if mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} < eve.db 2>/dev/null; then
                 echo -e "${GREEN}✅ SDE data imported successfully${NC}"
             else
                 echo -e "${YELLOW}⚠️  SDE import had issues, but database is still usable${NC}"
@@ -416,15 +461,15 @@ fi
 
 # Step 6: Verification
 print_step "Verifying Installation"
-if mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" -e "USE lmeve; USE EveStaticData; SELECT 1;" >/dev/null 2>&1; then
+if mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" -e "USE ${LMEVE_DB}; USE ${SDE_DB}; SELECT 1;" >/dev/null 2>&1; then
     echo -e "${GREEN}✅ Database verification successful${NC}"
 else
     echo -e "${RED}❌ Database verification failed${NC}"
 fi
 
 # Get table counts
-LMEVE_TABLES=$(mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" -sN -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='lmeve';" 2>/dev/null || echo "0")
-SDE_TABLES=$(mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" -sN -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='EveStaticData';" 2>/dev/null || echo "0")
+LMEVE_TABLES=$(mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" -sN -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${LMEVE_DB}';" 2>/dev/null || echo "0")
+SDE_TABLES=$(mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" -sN -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${SDE_DB}';" 2>/dev/null || echo "0")
 
 # Success Summary
 echo ""
@@ -444,8 +489,8 @@ fi
 echo -e "  Host: ${YELLOW}$DB_HOST:$DB_PORT${NC}"
 echo -e "  Username: ${YELLOW}$LMEVE_USER${NC}"
 echo -e "  Password: ${YELLOW}[configured]${NC}"
-echo -e "  LMeve DB: ${YELLOW}lmeve${NC} ($LMEVE_TABLES tables)"
-echo -e "  SDE DB: ${YELLOW}EveStaticData${NC} ($SDE_TABLES tables)"
+echo -e "  LMeve DB: ${YELLOW}${LMEVE_DB}${NC} ($LMEVE_TABLES tables)"
+echo -e "  SDE DB: ${YELLOW}${SDE_DB}${NC} ($SDE_TABLES tables)"
 if [[ "$INSTALL_WEBMIN" =~ ^[Yy]$ ]]; then
     echo -e "  Webmin: ${YELLOW}https://$(hostname -I | awk '{print $1}'):10000${NC}"
 fi

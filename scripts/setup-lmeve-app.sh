@@ -108,6 +108,15 @@ else
     USE_IP=false
 fi
 
+# Port selection
+echo -e "\n${BLUE}Port Configuration${NC}"
+read -p "HTTP Port [80]: " HTTP_PORT
+HTTP_PORT=${HTTP_PORT:-80}
+
+if [ "$HTTP_PORT" != "80" ]; then
+    echo -e "${YELLOW}Note: You'll access the site at http://${SERVER_NAME}:${HTTP_PORT}${NC}"
+fi
+
 read -p "Server admin email [admin@lmeve2.local]: " ADMIN_EMAIL
 ADMIN_EMAIL=${ADMIN_EMAIL:-admin@lmeve2.local}
 
@@ -128,6 +137,9 @@ npm run build
 echo -e "${GREEN}✓ Build complete${NC}"
 
 echo -e "\n${GREEN}8. Deploying Application${NC}"
+# Change back to safe directory before deleting build dir
+cd /tmp
+
 # Remove old deployment if exists
 if [ -d "$FINAL_DIR" ]; then
     echo "Removing old deployment..."
@@ -157,7 +169,7 @@ if [ "$USE_IP" = true ]; then
     VHOST_FILE="/etc/apache2/sites-available/lmeve2.conf"
     
     cat > "$VHOST_FILE" << EOF
-<VirtualHost *:80>
+<VirtualHost *:${HTTP_PORT}>
     ServerAdmin ${ADMIN_EMAIL}
     
     DocumentRoot ${FINAL_DIR}
@@ -193,7 +205,7 @@ else
     VHOST_FILE="/etc/apache2/sites-available/${SERVER_NAME}.conf"
     
     cat > "$VHOST_FILE" << EOF
-<VirtualHost *:80>
+<VirtualHost *:${HTTP_PORT}>
     ServerName ${SERVER_NAME}
     ServerAdmin ${ADMIN_EMAIL}
     
@@ -230,6 +242,15 @@ fi
 # Disable default site if enabled
 a2dissite 000-default.conf 2>/dev/null || true
 
+# Configure custom port if needed
+if [ "$HTTP_PORT" != "80" ]; then
+    # Add Listen directive if not already present
+    if ! grep -q "^Listen ${HTTP_PORT}" /etc/apache2/ports.conf; then
+        echo "Listen ${HTTP_PORT}" >> /etc/apache2/ports.conf
+        echo -e "${GREEN}✓ Added Listen ${HTTP_PORT} to ports.conf${NC}"
+    fi
+fi
+
 # Set permissions
 chown -R www-data:www-data "$FINAL_DIR"
 chmod -R 755 "$FINAL_DIR"
@@ -264,7 +285,7 @@ if [[ "$firewall_confirm" =~ ^[Yy]$ ]]; then
     
     # Allow SSH first (important!)
     ufw allow ssh
-    ufw allow 80/tcp
+    ufw allow ${HTTP_PORT}/tcp
     ufw allow 443/tcp
     
     # Enable if not already active
@@ -284,11 +305,19 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 echo -e "${BLUE}Installation Details:${NC}"
 echo -e "  Application: ${GREEN}${FINAL_DIR}${NC}"
-echo -e "  URL: ${GREEN}http://${SERVER_NAME}${NC}"
+if [ "$HTTP_PORT" == "80" ]; then
+    echo -e "  URL: ${GREEN}http://${SERVER_NAME}${NC}"
+else
+    echo -e "  URL: ${GREEN}http://${SERVER_NAME}:${HTTP_PORT}${NC}"
+fi
 echo -e "  Apache Config: ${GREEN}${VHOST_FILE}${NC}"
 echo ""
 echo -e "${BLUE}Next Steps:${NC}"
-echo "  1. Open your browser to http://${SERVER_NAME}"
+if [ "$HTTP_PORT" == "80" ]; then
+    echo "  1. Open your browser to http://${SERVER_NAME}"
+else
+    echo "  1. Open your browser to http://${SERVER_NAME}:${HTTP_PORT}"
+fi
 echo "  2. Go to Settings tab"
 echo "  3. Configure database connection"
 echo "  4. Add your ESI developer application credentials"
@@ -297,7 +326,11 @@ echo ""
 echo -e "${YELLOW}Important:${NC}"
 echo "  • Database must be set up first (use setup-lmeve-db.sh)"
 echo "  • Create ESI app at: https://developers.eveonline.com"
-echo "  • Callback URL: http://${SERVER_NAME}/auth/callback"
+if [ "$HTTP_PORT" == "80" ]; then
+    echo "  • Callback URL: http://${SERVER_NAME}/auth/callback"
+else
+    echo "  • Callback URL: http://${SERVER_NAME}:${HTTP_PORT}/auth/callback"
+fi
 echo ""
 echo -e "${BLUE}Logs:${NC}"
 if [ "$USE_IP" = true ]; then
