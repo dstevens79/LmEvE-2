@@ -14,11 +14,17 @@ export default defineConfig({
     {
       name: 'lmeve-api',
       configureServer(server: any) {
+        console.log('🚀 LMeve API middleware registered');
+        
         // Register API middleware for MySQL connections
         server.middlewares.use(async (req: any, res: any, next: any) => {
+          console.log(`📥 Request: ${req.method} ${req.url}`);
+          
           if (!req.url?.startsWith('/api/')) {
             return next();
           }
+
+          console.log(`🎯 API route matched: ${req.url}`);
 
           // Lazy import mysql2 only when needed
           const mysql = await import('mysql2/promise');

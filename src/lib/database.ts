@@ -125,8 +125,8 @@ export class DatabaseManager {
         throw new Error(configValidation.error);
       }
 
-      // Step 2: Call integrated API (runs within Vite dev server)
-      const response = await fetch('/api/database/test-connection', {
+      // Step 2: Call integrated API (PHP under Apache in production)
+      const response = await fetch('/api/test-connection.php', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -144,17 +144,24 @@ export class DatabaseManager {
         throw new Error(`API error: ${response.status} ${response.statusText}`);
       }
 
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error('API returned non-JSON response (likely HTML). Is PHP enabled and /api/test-connection.php deployed?');
+      }
+
       const result = await response.json();
 
-      if (!result.success) {
+      const ok = (typeof result.ok === 'boolean') ? result.ok : !!result.success;
+      if (!ok) {
         throw new Error(result.error || 'Connection test failed');
       }
 
       console.log(`✅ Database connection validated successfully`);
       
       return { 
-        success: true, 
-        latency: result.latency, 
+        success: true,
+        latency: typeof result.latency !== 'undefined' ? result.latency : result.latencyMs,
         validated: true,
         userExists: result.userExists 
       };
@@ -1167,7 +1174,7 @@ export class DatabaseSetupManager {
         port: 3306,
         database: 'mysql', // Connect to mysql system database for validation
         username: 'root',
-        password: config.mysqlRootPassword,
+  password: config.mysqlRootPassword || '',
         ssl: false,
         connectionPoolSize: 1,
         queryTimeout: 10,
@@ -1302,7 +1309,7 @@ export class DatabaseSetupManager {
         port: 3306,
         database: 'mysql',
         username: 'root',
-        password: config.mysqlRootPassword,
+        password: config.mysqlRootPassword || '',
         ssl: false,
         connectionPoolSize: 1,
         queryTimeout: 30,
@@ -1320,8 +1327,8 @@ export class DatabaseSetupManager {
         };
       }
 
-      // Execute each command
-      const results = [];
+  // Execute each command
+  const results: QueryResult[] = [];
       for (let i = 0; i < commands.length; i++) {
         const command = commands[i];
         console.log(`🔧 Executing MySQL command ${i + 1}/${commands.length}:`, command.substring(0, 100) + '...');

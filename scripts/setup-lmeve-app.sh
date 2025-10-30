@@ -71,6 +71,18 @@ else
     echo -e "${GREEN}✓ Apache already installed${NC}"
 fi
 
+echo -e "\n${GREEN}3b. Installing PHP for API endpoints${NC}"
+if ! command -v php &> /dev/null; then
+    apt-get install -y php libapache2-mod-php php-mysql
+    systemctl restart apache2
+    echo -e "${GREEN}✓ PHP and MySQL extensions installed${NC}"
+else
+    # Ensure MySQL extension and Apache PHP module are present
+    apt-get install -y libapache2-mod-php php-mysql
+    systemctl restart apache2
+    echo -e "${GREEN}✓ PHP already installed; ensured Apache PHP module and MySQL extension${NC}"
+fi
+
 echo -e "\n${GREEN}4. Installing Git${NC}"
 if ! command -v git &> /dev/null; then
     apt-get install -y git
