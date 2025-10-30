@@ -5,7 +5,7 @@ import { useAuth } from './auth-provider';
 import { DatabaseManager } from './database';
 import { UnifiedDataService } from './unified-data-service';
 import { eveApi } from './eveApi';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { useDatabaseSettings } from './persistenceService';
 import type { 
   Member, 

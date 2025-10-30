@@ -30,7 +30,7 @@ import {
 } from '@phosphor-icons/react';
 import { ManufacturingTask, Blueprint, MaterialRequirement, Member } from '@/lib/types';
 import { useAuth } from '@/lib/auth-provider';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { PointsRate } from '@/components/manufacturing/PointsManagement';
 import { toast } from 'sonner';
 

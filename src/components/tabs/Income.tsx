@@ -22,7 +22,7 @@ import {
   Gear,
   FloppyDisk
 } from '@phosphor-icons/react';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { toast } from 'sonner';
 import { useIncomeSettings } from '@/lib/persistenceService';
 

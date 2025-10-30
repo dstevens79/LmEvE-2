@@ -54,7 +54,7 @@ import {
   CaretUp,
   CaretDown
 } from '@phosphor-icons/react';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { useAuth } from '@/lib/auth-provider';
 import { CorpSettings } from '@/lib/types';
 import { toast } from 'sonner';

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { toast } from 'sonner';
 import { LMeveUser, UserRole, CorporationConfig } from './types';
 import { createUserWithRole, isSessionValid, refreshUserSession } from './roles';

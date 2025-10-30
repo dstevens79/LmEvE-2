@@ -1,4 +1,4 @@
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 
 export interface ThemeSettings {
   name: string;

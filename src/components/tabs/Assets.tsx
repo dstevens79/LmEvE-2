@@ -29,7 +29,7 @@ import {
 } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/auth-provider';
 import { TabComponentProps, ManufacturingTask } from '@/lib/types';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { ItemInfoPopup } from '@/components/popups/ItemInfoPopup';
 import { BlueprintInfoPopup } from '@/components/popups/BlueprintInfoPopup';
 import { useLMeveData } from '@/lib/LMeveDataContext';
@@ -896,9 +896,9 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
           itemName={selectedItem.typeName}
           onClose={() => setSelectedItem(null)}
           onAssignJob={() => {
-            spark.kv.set('active-tab', 'manufacturing');
-            spark.kv.set('manufacturing-view', 'assign-task');
-            spark.kv.set('assign-task-item', selectedItem);
+            try { localStorage.setItem('active-tab', JSON.stringify('manufacturing')); } catch {}
+            try { localStorage.setItem('manufacturing-view', JSON.stringify('assign-task')); } catch {}
+            try { localStorage.setItem('assign-task-item', JSON.stringify(selectedItem)); } catch {}
             setSelectedItem(null);
           }}
         />
@@ -910,9 +910,9 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
           blueprint={selectedBlueprint}
           onClose={() => setSelectedBlueprint(null)}
           onAssignJob={(blueprint) => {
-            spark.kv.set('active-tab', 'manufacturing');
-            spark.kv.set('manufacturing-view', 'assign-task');
-            spark.kv.set('assign-task-blueprint', blueprint);
+            try { localStorage.setItem('active-tab', JSON.stringify('manufacturing')); } catch {}
+            try { localStorage.setItem('manufacturing-view', JSON.stringify('assign-task')); } catch {}
+            try { localStorage.setItem('assign-task-blueprint', JSON.stringify(blueprint)); } catch {}
             setSelectedBlueprint(null);
           }}
         />

@@ -20,7 +20,7 @@ import {
   CheckCircle,
   Factory
 } from '@phosphor-icons/react';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { useAuth } from '@/lib/auth-provider';
 import { Member } from '@/lib/types';
 import { toast } from 'sonner';

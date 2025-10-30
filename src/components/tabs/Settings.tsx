@@ -60,7 +60,6 @@ import {
   Settings as SettingsIcon,
   RefreshCw
 } from '@phosphor-icons/react';
-import { useKV } from '@github/spark/hooks';
 import { useAuth } from '@/lib/auth-provider';
 import { CorpSettings } from '@/lib/types';
 import { toast } from 'sonner';
@@ -80,6 +79,7 @@ import {
   useApplicationData,
   useManualUsers,
   useCorporationData,
+  useLocalKV,
   backupSettings,
   exportAllSettings,
   importAllSettings,
@@ -183,26 +183,36 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
   const [corporationData, setCorporationData] = useCorporationData();
 
   // Remote access and SSH state
-  const [remoteAccess, setRemoteAccess] = useKV('remote-access-state', {
+  const [remoteAccess, setRemoteAccess] = useLocalKV<{
+    sshConnected: boolean;
+    sshStatus: 'unknown' | 'offline' | 'online' | 'warning' | 'not-deployed' | 'deployed' | 'error';
+    scriptsDeployed: boolean;
+    scriptsStatus: 'unknown' | 'warning' | 'online' | 'offline' | 'not-deployed' | 'deployed' | 'error';
+    remoteSetupComplete: boolean;
+    remoteSetupStatus: 'unknown' | 'not-run' | 'outdated' | 'complete' | 'online' | 'offline' | 'warning';
+    lastSSHCheck: string | null;
+    lastScriptCheck: string | null;
+    lastSetupCheck: string | null;
+  }>('remote-access-state', {
     sshConnected: false,
     sshStatus: 'unknown', // 'unknown', 'offline', 'online'
     scriptsDeployed: false,
     scriptsStatus: 'unknown', // 'unknown', 'not-deployed', 'deployed', 'error'
     remoteSetupComplete: false,
     remoteSetupStatus: 'unknown', // 'unknown', 'not-run', 'outdated', 'complete'
-    lastSSHCheck: null,
-    lastScriptCheck: null,
-    lastSetupCheck: null
+    lastSSHCheck: null as string | null,
+    lastScriptCheck: null as string | null,
+    lastSetupCheck: null as string | null
   });
 
   // EVE Online server and corporation ESI status
-  const [eveServerStatus, setEveServerStatus] = useKV('eve-server-status', {
+  const [eveServerStatus, setEveServerStatus] = useLocalKV('eve-server-status', {
     status: 'unknown', // 'online', 'offline', 'unknown'
     players: 0,
     lastCheck: null as string | null
   });
 
-  const [corporationESIStatus, setCorporationESIStatus] = useKV('corporation-esi-status', {
+  const [corporationESIStatus, setCorporationESIStatus] = useLocalKV('corporation-esi-status', {
     hasActiveCorporation: false,
     corporationCount: 0,
     hasCEODirectorAuth: false,
@@ -242,14 +252,14 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     }
   };
 
-  const [esiConfigLocal, setESIConfigLocal] = useKV<any>('esi-config-legacy', {
+  const [esiConfigLocal, setESIConfigLocal] = useLocalKV<any>('esi-config-legacy', {
     clientId: '',
     secretKey: '',
     baseUrl: 'https://login.eveonline.com',
     userAgent: 'LMeve Corporation Management Tool'
   });
 
-  const [oauthState, setOAuthState] = useKV<ESIOAuthState>('esi-oauth', {
+  const [oauthState, setOAuthState] = useLocalKV<ESIOAuthState>('esi-oauth', {
     isAuthenticated: false
   });
 
@@ -345,7 +355,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     lastError: null as string | null
   });
   const [tableInfo, setTableInfo] = useState<any[]>([]);
-  const [showDatabaseTables, setShowDatabaseTables] = useKV<boolean>('database-tables-expanded', false);
+  const [showDatabaseTables, setShowDatabaseTables] = useLocalKV<boolean>('database-tables-expanded', false);
   // Removed showDatabaseSchema state (schema UI removed)
   
   // Admin configuration state

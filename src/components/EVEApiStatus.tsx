@@ -14,7 +14,7 @@ import {
   Factory,
   Package
 } from '@phosphor-icons/react';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { useEVEData } from '@/hooks/useEVEData';
 import { eveApi } from '@/lib/eveApi';
 

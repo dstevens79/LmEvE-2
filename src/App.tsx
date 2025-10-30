@@ -36,7 +36,7 @@ import {
   Key,
   Receipt
 } from '@phosphor-icons/react';
-import { useKV } from '@github/spark/hooks';
+import { useLocalKV } from '@/lib/persistenceService';
 import { TabType } from '@/lib/types';
 import { DatabaseProvider } from '@/lib/DatabaseContext';
 import { LMeveDataProvider } from '@/lib/LMeveDataContext';
@@ -61,10 +61,10 @@ import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
 import { Buyback } from '@/components/tabs/Buyback';
 
 function AppContent() {
-  const [activeTab, setActiveTab] = useKV<TabType>('active-tab', 'dashboard');
-  const [activeSettingsTab, setActiveSettingsTab] = useKV<string>('active-settings-tab', 'general');
-  const [settingsExpanded, setSettingsExpanded] = useKV<boolean>('settings-expanded', false);
-  const [isMobileView, setIsMobileView] = useKV<boolean>('mobile-view', false);
+  const [activeTab, setActiveTab] = useLocalKV<TabType>('active-tab', 'dashboard');
+  const [activeSettingsTab, setActiveSettingsTab] = useLocalKV<string>('active-settings-tab', 'general');
+  const [settingsExpanded, setSettingsExpanded] = useLocalKV<boolean>('settings-expanded', false);
+  const [isMobileView, setIsMobileView] = useLocalKV<boolean>('mobile-view', false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const { 
     user, 

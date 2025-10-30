@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Clock, Star, Trash } from '@phosphor-icons/react';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { RequestHistory, EveApiEndpoint } from '@/lib/types';
 import { API_CATEGORIES } from '@/lib/api-data';
 

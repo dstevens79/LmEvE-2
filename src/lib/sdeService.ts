@@ -1,5 +1,5 @@
 // EVE Online Static Data Export (SDE) Management Service
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 
 export interface SDEInfo {
   version: string;

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { useAuth } from '@/lib/auth-provider';
 import { useProjectsESI } from '@/lib/projects-esi-service';
 import {

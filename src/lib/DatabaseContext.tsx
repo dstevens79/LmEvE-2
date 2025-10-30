@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { DatabaseManager, DatabaseConfig, DatabaseStatus, defaultDatabaseConfig } from '@/lib/database';
-import { useKV } from '@github/spark/hooks';
+import { useLocalKV } from '@/lib/persistenceService';
 
 interface DatabaseContextType {
   manager: DatabaseManager | null;
@@ -21,7 +21,7 @@ interface DatabaseProviderProps {
 }
 
 export function DatabaseProvider({ children }: DatabaseProviderProps) {
-  const [dbConfig, setDbConfig] = useKV('database-config', defaultDatabaseConfig);
+  const [dbConfig, setDbConfig] = useLocalKV<DatabaseConfig>('database-config', defaultDatabaseConfig);
   const [manager, setManager] = useState<DatabaseManager | null>(null);
   const [status, setStatus] = useState<DatabaseStatus>({
     connected: false,

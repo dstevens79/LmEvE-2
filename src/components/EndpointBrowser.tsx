@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { MagnifyingGlass, ArrowSquareOut, Star } from '@phosphor-icons/react';
 import { API_CATEGORIES } from '@/lib/api-data';
 import { EveApiEndpoint } from '@/lib/types';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 
 interface EndpointBrowserProps {
   onSelectEndpoint: (endpoint: EveApiEndpoint) => void;

@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LoginPrompt } from '@/components/LoginPrompt';
-import { useKV } from '@github/spark/hooks';
+import { useLocalKV } from '@/lib/persistenceService';
 import { useAuth } from '@/lib/auth-provider';
 import { useLMeveData } from '@/lib/LMeveDataContext';
 import { 
@@ -54,15 +54,15 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
     refreshManufacturing
   } = useLMeveData();
   
-  const [blueprints, setBlueprints] = useKV<Blueprint[]>('blueprints-library', []);
-  const [productionPlans, setProductionPlans] = useKV<ProductionPlan[]>('production-plans', []);
-  const [payModifiers, setPayModifiers] = useKV('manufacturing-pay-modifiers', {
+  const [blueprints, setBlueprints] = useLocalKV<Blueprint[]>('blueprints-library', []);
+  const [productionPlans, setProductionPlans] = useLocalKV<ProductionPlan[]>('production-plans', []);
+  const [payModifiers, setPayModifiers] = useLocalKV('manufacturing-pay-modifiers', {
     rush: 1.25,
     specialDelivery: 1.15,
     excessWork: 1.1
   });
 
-  const [payRatesPerHour, setPayRatesPerHour] = useKV('manufacturing-pay-rates', {
+  const [payRatesPerHour, setPayRatesPerHour] = useLocalKV('manufacturing-pay-rates', {
     manufacturing: 50000,
     copying: 25000,
     reactions: 75000,
@@ -90,8 +90,8 @@ export function Manufacturing({ onLoginClick, isMobileView }: ManufacturingProps
     if (!selectedStation) return;
     
     try {
-      await spark.kv.set('assets-selected-station', selectedStation.id);
-      await spark.kv.set('active-tab', 'assets');
+      localStorage.setItem('assets-selected-station', JSON.stringify(selectedStation.id));
+      localStorage.setItem('active-tab', JSON.stringify('assets'));
       
       setSelectedStation(null);
       

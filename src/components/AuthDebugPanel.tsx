@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useCorporationAuth, AuthenticatedUser } from '@/lib/corp-auth';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { UserCheck, ArrowClockwise, Trash } from '@phosphor-icons/react';
 
 export function AuthDebugPanel() {

@@ -23,7 +23,7 @@ import { Member } from '@/lib/types';
 import { useLMeveData } from '@/lib/LMeveDataContext';
 import { useAuth } from '@/lib/auth-provider';
 import { UserManagement } from '@/components/UserManagement';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 
 interface MembersProps {
   onLoginClick?: () => void;
