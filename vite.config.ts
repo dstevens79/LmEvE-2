@@ -12,17 +12,18 @@ const projectRoot = process.env.PROJECT_ROOT || import.meta.dirname
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
+    {
+      name: 'lmeve-api',
+      configureServer(server: any) {
+        // Register API middleware BEFORE Vite's internal middlewares
+        server.middlewares.use(createApiMiddleware());
+      }
+    },
     react(),
     tailwindcss(),
     // DO NOT REMOVE
     createIconImportProxy() as PluginOption,
     sparkPlugin() as PluginOption,
-    {
-      name: 'lmeve-api',
-      configureServer(server) {
-        server.middlewares.use(createApiMiddleware());
-      }
-    }
   ],
   resolve: {
     alias: {
