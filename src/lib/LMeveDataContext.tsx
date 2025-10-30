@@ -6,6 +6,7 @@ import { DatabaseManager } from './database';
 import { UnifiedDataService } from './unified-data-service';
 import { eveApi } from './eveApi';
 import { useKV } from '@github/spark/hooks';
+import { useDatabaseSettings } from './persistenceService';
 import type { 
   Member, 
   Asset, 
@@ -109,7 +110,7 @@ const LMeveDataContext = createContext<LMeveDataContextType | null>(null);
 
 export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isTokenExpired, esiConfig } = useAuth();
-  const [dbSettings] = useKV('database-settings', null);
+  const [databaseSettings] = useDatabaseSettings();
   
   // Services
   const [dbManager, setDbManager] = useState<DatabaseManager | null>(null);
@@ -173,8 +174,19 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
     
     // Create or update database manager
     let manager: DatabaseManager | null = null;
-    if (dbSettings?.host) {
-      manager = new DatabaseManager(dbSettings);
+    if (databaseSettings?.host) {
+      manager = new DatabaseManager({
+        host: databaseSettings.host,
+        port: Number(databaseSettings.port) || 3306,
+        database: databaseSettings.database,
+        username: databaseSettings.username,
+        password: databaseSettings.password,
+        ssl: !!databaseSettings.ssl,
+        connectionPoolSize: databaseSettings.connectionPoolSize,
+        queryTimeout: Number(databaseSettings.queryTimeout) || 30,
+        autoReconnect: !!databaseSettings.autoReconnect,
+        charset: databaseSettings.charset || 'utf8mb4',
+      });
       setDbManager(manager);
       console.log('✅ Database manager initialized');
     } else {
@@ -191,13 +203,13 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
     setSetupStatus(status);
     console.log('📊 Setup status:', status);
     
-  }, [dbSettings]);
+  }, [databaseSettings]);
 
   // Monitor database connection and ESI config changes
   useEffect(() => {
     if (!unifiedService) return;
     
-    const isDatabaseConnected = !!dbManager && !!dbSettings?.host;
+  const isDatabaseConnected = !!dbManager && !!databaseSettings?.host;
     const isESIConfigured = !!esiConfig?.clientId;
     
     // Check if all LEDs are green
@@ -219,7 +231,7 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
     // Sync local state
     setSetupStatus(unifiedService.getSetupStatus());
     
-  }, [dbManager, dbSettings, esiConfig, unifiedService]);
+  }, [dbManager, databaseSettings, esiConfig, unifiedService]);
 
   // Function to manually update setup status (for Settings panel)
   const updateSetupStatus = (status: Partial<{

@@ -698,19 +698,103 @@ export class UnifiedDataService {
    */
   async getAssets(corporationId?: number): Promise<DataResult<Asset[]>> {
     try {
-      // Try database first
+      // Try real PHP API first if database is configured
       if (this.dbManager && this.setupStatus.databaseConnected) {
-        const result = await this.dbManager.query<Asset>(
-          LMeveQueries.getAssets(corporationId)
-        );
+        const cfg = this.dbManager.getConfig();
+        const body: any = {
+          host: cfg.host,
+          port: cfg.port,
+          username: cfg.username,
+          password: cfg.password,
+          database: cfg.database,
+          ownerId: corporationId || 0,
+          limit: 1000,
+        };
 
-        if (result.success && result.data && result.data.length > 0) {
-          console.log(`✅ Assets from database: ${result.data.length} assets`);
-          return {
-            data: result.data,
-            source: 'database',
-            timestamp: new Date().toISOString()
-          };
+        const resp = await fetch('/api/lmeve/get-assets.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (resp.ok) {
+          const contentType = resp.headers.get('content-type') || '';
+          if (!contentType.includes('application/json')) {
+            const text = await resp.text();
+            throw new Error(`Assets API returned non-JSON response`);
+          }
+          const json = await resp.json();
+          if (json.ok && Array.isArray(json.rows)) {
+            const rows = json.rows as Array<{
+              item_id: number;
+              type_id: number;
+              location_id?: number;
+              location_type?: string;
+              location_flag?: string;
+              quantity: number;
+              is_singleton?: number;
+              is_blueprint_copy?: number;
+              owner_id?: number;
+              corporation_id?: number;
+            }>;
+
+            // Resolve type names via SDE
+            const uniqueTypeIds = Array.from(new Set(rows.map(r => r.type_id).filter(Boolean)));
+            let typeNameMap = new Map<number, string>();
+            if (uniqueTypeIds.length > 0) {
+              try {
+                const sdeResp = await fetch('/api/sde/get-type-names.php', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    host: cfg.host,
+                    port: cfg.port,
+                    username: cfg.username,
+                    password: cfg.password,
+                    sdeDatabase: 'EveStaticData',
+                    typeIds: uniqueTypeIds,
+                  }),
+                });
+                if (sdeResp.ok) {
+                  const sdeJson = await sdeResp.json();
+                  if (sdeJson.ok && Array.isArray(sdeJson.rows)) {
+                    sdeJson.rows.forEach((row: any) => {
+                      if (row.typeID && row.typeName) typeNameMap.set(Number(row.typeID), String(row.typeName));
+                    });
+                  }
+                }
+              } catch (e) {
+                console.warn('SDE type name lookup failed, continuing without names');
+              }
+            }
+
+            const assets: Asset[] = rows.map(r => ({
+              id: String(r.item_id),
+              itemId: r.item_id,
+              typeId: r.type_id,
+              typeName: typeNameMap.get(r.type_id) || `Type ${r.type_id}`,
+              quantity: r.quantity,
+              locationId: r.location_id,
+              locationFlag: r.location_flag || undefined,
+              locationType: (r.location_type as any) || undefined,
+              isSingleton: r.is_singleton ? r.is_singleton === 1 : false,
+              isBlueprintCopy: r.is_blueprint_copy ? r.is_blueprint_copy === 1 : undefined,
+              ownerId: r.owner_id,
+              estimatedValue: 0,
+              lastUpdate: new Date().toISOString(),
+            }));
+
+            console.log(`✅ Assets from API/database: ${assets.length} assets`);
+            return {
+              data: assets,
+              source: 'database',
+              timestamp: new Date().toISOString(),
+            };
+          } else if (json.error) {
+            throw new Error(json.error);
+          }
+        } else {
+          throw new Error(`Assets API error: ${resp.status} ${resp.statusText}`);
         }
       }
 
@@ -720,30 +804,28 @@ export class UnifiedDataService {
         return {
           data: MockDataGenerator.generateAssets(),
           source: 'mock',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
       }
 
       return {
         data: [],
         source: 'database',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     } catch (error) {
       console.error('Failed to get assets:', error);
-      
       if (this.shouldUseMockData()) {
         return {
           data: MockDataGenerator.generateAssets(),
           source: 'mock',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
       }
-
       return {
         data: [],
         source: 'database',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   }

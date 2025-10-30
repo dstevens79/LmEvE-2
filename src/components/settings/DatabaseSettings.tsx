@@ -156,6 +156,57 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     }
   };
 
+  const handleConnect = async () => {
+    if (!databaseSettings?.host || !databaseSettings?.port || 
+        !databaseSettings?.username || !databaseSettings?.password) {
+      toast.error('Please fill in all database connection fields');
+      return;
+    }
+
+    setTestingConnection(true);
+    addConnectionLog('Starting database connect...');
+    try {
+      const dbConfig = {
+        host: databaseSettings.host,
+        port: parseInt(String(databaseSettings.port)),
+        username: databaseSettings.username,
+        password: databaseSettings.password,
+        database: databaseSettings.database || 'mysql',
+        ssl: false,
+        connectionPoolSize: 10,
+        queryTimeout: 30,
+        autoReconnect: true,
+        charset: 'utf8mb4'
+      };
+
+      const databaseManager = new DatabaseManager(dbConfig);
+      const result = await databaseManager.testConnection();
+
+      if (result.success && result.validated) {
+        setIsConnected(true);
+        setSystemStatus(prev => ({ ...prev, databaseConnection: 'online' }));
+        addConnectionLog('✅ Connected and locked settings');
+        toast.success('Connected. Settings locked.');
+      } else {
+        addConnectionLog(`❌ Connect failed: ${result.error || 'Validation failed'}`);
+        toast.error(`Connect failed: ${result.error || 'Validation failed'}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      addConnectionLog(`❌ Connect error: ${errorMessage}`);
+      toast.error(`Connect error: ${errorMessage}`);
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const handleDisconnect = () => {
+    setIsConnected(false);
+    setSystemStatus(prev => ({ ...prev, databaseConnection: 'offline' }));
+    addConnectionLog('🔌 Disconnected. Settings unlocked');
+    toast.info('Disconnected. You can edit settings again.');
+  };
+
   const handleSaveSettings = async () => {
     try {
       toast.success('Database settings saved successfully');
@@ -239,6 +290,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                     value={databaseSettings?.host || ''}
                     onChange={(e) => updateDatabaseSettings({ host: e.target.value })}
                     placeholder="localhost or IP address"
+                    disabled={isConnected}
                   />
                 </div>
                 <div className="space-y-2">
@@ -248,6 +300,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                     value={databaseSettings?.port || '3306'}
                     onChange={(e) => updateDatabaseSettings({ port: e.target.value })}
                     placeholder="3306"
+                    disabled={isConnected}
                   />
                 </div>
               </div>
@@ -259,6 +312,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                   value={databaseSettings?.database || 'lmeve2'}
                   onChange={(e) => updateDatabaseSettings({ database: e.target.value })}
                   placeholder="lmeve2"
+                  disabled={isConnected}
                 />
               </div>
             </CardContent>
@@ -294,12 +348,14 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                       placeholder="lmeve"
                       value={databaseSettings?.username || ''}
                       onChange={(e) => updateDatabaseSettings({ username: e.target.value })}
+                      disabled={isConnected}
                     />
                     <Input
                       type="password"
                       placeholder="application password"
                       value={databaseSettings?.password || ''}
                       onChange={(e) => updateDatabaseSettings({ password: e.target.value })}
+                      disabled={isConnected}
                     />
                   </div>
                 </div>
@@ -322,21 +378,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
               
               <Separator />
               
-              <div className="space-y-2">
-                <Label>Schema Source</Label>
-                <Select 
-                  value={databaseSettings?.schemaSource || 'default'} 
-                  onValueChange={(value) => updateDatabaseSettings({ schemaSource: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Use Default Schema</SelectItem>
-                    <SelectItem value="custom">Custom Schema File</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Removed Database Schema section as requested */}
               
               <div className="space-y-2">
                 <Label>SDE Source</Label>
@@ -381,6 +423,21 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                 >
                   {testingConnection ? 'Testing...' : 'Test Connection'}
                 </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={handleConnect}
+                    disabled={testingConnection || isConnected}
+                  >
+                    {isConnected ? 'Connected' : 'Connect'}
+                  </Button>
+                  <Button 
+                    onClick={handleDisconnect}
+                    disabled={testingConnection || !isConnected}
+                    variant="outline"
+                  >
+                    Disconnect
+                  </Button>
+                </div>
                 
                 <Button 
                   onClick={handleUpdateSDE}
