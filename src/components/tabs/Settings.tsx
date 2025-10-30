@@ -12,8 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DatabaseSchemaManager } from '@/components/DatabaseSchemaManager';
-import { lmeveSchemas } from '@/lib/database-schemas';
+// Removed DatabaseSchemaManager and schema dropdown per UX cleanup
 import { esiRouteManager, useESIRoutes } from '@/lib/esi-routes';
 import { 
   Gear, 
@@ -347,10 +346,36 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
   });
   const [tableInfo, setTableInfo] = useState<any[]>([]);
   const [showDatabaseTables, setShowDatabaseTables] = useKV<boolean>('database-tables-expanded', false);
-  const [showDatabaseSchema, setShowDatabaseSchema] = useKV<boolean>('database-schema-expanded', false);
+  // Removed showDatabaseSchema state (schema UI removed)
   
   // Admin configuration state
   const [tempAdminConfig, setTempAdminConfig] = useState(adminConfig);
+  // Network info state for server/client visibility
+  const [serverLocalIps, setServerLocalIps] = useState<string[]>([]);
+  const [serverPublicIp, setServerPublicIp] = useState<string | null>(null);
+  const [serverHostname, setServerHostname] = useState<string | null>(null);
+  const [clientIp, setClientIp] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Fetch server/client host information for display
+    (async () => {
+      try {
+        const resp = await fetch('/api/host-info.php', { method: 'POST' });
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.ok) {
+            setServerLocalIps(Array.isArray(json.server?.localAddrs) ? json.server.localAddrs : []);
+            setServerPublicIp(json.server?.publicIp || null);
+            setServerHostname(json.server?.hostname || null);
+            setClientIp(json.client?.ip || null);
+          }
+        }
+      } catch (_) {
+        // best-effort only
+      }
+    })();
+  }, []);
+
   
 
 
@@ -3286,6 +3311,40 @@ echo "See README.md for detailed setup instructions"
                       </div>
                     </div>
                   </div>
+
+                  {/* Network Info Panel */}
+                  <div className="border border-border rounded-lg p-3 mt-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Network size={16} />
+                      <h4 className="text-sm font-medium">Network Info</h4>
+                    </div>
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      {serverHostname && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Server:</span>
+                          <span className="text-foreground">{serverHostname}</span>
+                        </div>
+                      )}
+                      {serverLocalIps.length > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Internal IPs:</span>
+                          <span className="text-foreground truncate max-w-[10rem] text-right" title={serverLocalIps.join(', ')}>
+                            {serverLocalIps.join(', ')}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">External IP:</span>
+                        <span className="text-foreground">{serverPublicIp || 'Unknown'}</span>
+                      </div>
+                      {clientIp && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Your IP:</span>
+                          <span className="text-foreground">{clientIp}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -3402,122 +3461,7 @@ echo "See README.md for detailed setup instructions"
                 </div>
               </div>
 
-              {/* Complete Database Setup Section */}
-              <div className={`border rounded-lg p-4 ${
-                getDatabaseSetupReadiness().isReady 
-                  ? setupProgress?.isRunning 
-                    ? "border-green-500/50 bg-green-500/10" 
-                    : "border-green-500/20 bg-green-500/5"
-                  : "border-yellow-500/50 bg-yellow-500/10"
-              }`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-                      getDatabaseSetupReadiness().isReady 
-                        ? setupProgress?.isRunning 
-                          ? "bg-green-500/30" 
-                          : "bg-green-500/20"
-                        : "bg-yellow-500/20"
-                    }`}>
-                      <Wrench size={16} className={
-                        getDatabaseSetupReadiness().isReady 
-                          ? "text-green-400" 
-                          : "text-yellow-400"
-                      } />
-                    </div>
-                    <div>
-                      <h3 className={`font-semibold ${
-                        getDatabaseSetupReadiness().isReady 
-                          ? "text-green-300" 
-                          : "text-yellow-300"
-                      }`}>Complete Database Setup</h3>
-                      <div className="text-sm text-muted-foreground">
-                        {setupProgress?.isRunning ? (
-                          <div className="flex items-center gap-2">
-                            <ArrowClockwise size={14} className="animate-spin" />
-                            <span>{setupProgress.currentStep}</span>
-                          </div>
-                        ) : getDatabaseSetupReadiness().isReady ? (
-                          "Ready to configure EVE ESI data, databases, and users with proper privileges."
-                        ) : (
-                          <div className="space-y-1">
-                            {getDatabaseSetupReadiness().missingRequirements.map((req, index) => (
-                              <div key={index} className="flex items-start gap-1">
-                                <X size={12} className="text-red-400 mt-0.5 shrink-0" />
-                                <span>{req}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <Button 
-                    variant="default"
-                    size="sm"
-                    className={
-                      getDatabaseSetupReadiness().isReady 
-                        ? "bg-green-600 hover:bg-green-700 text-white shrink-0"
-                        : "bg-red-600 hover:bg-red-700 text-white shrink-0 cursor-not-allowed"
-                    }
-                    disabled={!getDatabaseSetupReadiness().isReady || setupProgress?.isRunning}
-                    onClick={handleRunDatabaseSetup}
-                  >
-                    {setupProgress?.isRunning ? (
-                      <>
-                        <ArrowClockwise size={16} className="mr-2 animate-spin" />
-                        Setting Up...
-                      </>
-                    ) : getDatabaseSetupReadiness().isReady ? (
-                      <>
-                        <Play size={16} className="mr-2" />
-                        Begin
-                      </>
-                    ) : (
-                      "Not Ready"
-                    )}
-                  </Button>
-                </div>
-                
-                {setupProgress?.isRunning && (
-                  <div className="mt-4 space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span>{setupProgress.currentStep}</span>
-                      <span className="text-accent font-mono">
-                        {setupProgress.progress}%
-                      </span>
-                    </div>
-                    <Progress value={setupProgress.progress} className="h-2 bg-muted" />
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>Step {setupProgress.currentStepNumber} of {setupProgress.totalSteps}</span>
-                      {setupProgress.errors.length > 0 && (
-                        <Badge variant="destructive" className="text-xs">
-                          {setupProgress.errors.length} error{setupProgress.errors.length !== 1 ? 's' : ''}
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    {/* Real-time step log */}
-                    {setupProgress.stepLogs.length > 0 && (
-                      <div className="bg-background/50 border border-border rounded p-3 max-h-32 overflow-y-auto">
-                        <div className="space-y-1 font-mono text-xs">
-                          {setupProgress.stepLogs.slice(-10).map((log, index) => (
-                            <div key={index} className={`${
-                              log.includes('✅') ? 'text-green-400' :
-                              log.includes('❌') ? 'text-red-400' :
-                              log.includes('⚠️') ? 'text-yellow-400' :
-                              'text-foreground'
-                            }`}>
-                              {log}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              {/* Removed: Complete Database Setup Section (yellow area) */}
 
               {/* Database Tables - Collapsible Section */}
               {dbStatus.connected && tableInfo.length > 0 && (
@@ -3584,33 +3528,7 @@ echo "See README.md for detailed setup instructions"
                 </div>
               )}
 
-              {/* Database Schema Manager - Collapsible */}
-              <div className="border-t border-border pt-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="p-0 h-auto hover:bg-transparent"
-                    onClick={() => setShowDatabaseSchema(!showDatabaseSchema)}
-                  >
-                    <div className="flex items-center gap-2">
-                      {showDatabaseSchema ? (
-                        <CaretDown size={16} className="text-muted-foreground" />
-                      ) : (
-                        <CaretRight size={16} className="text-muted-foreground" />
-                      )}
-                      <h4 className="font-medium">Database Schema Manager</h4>
-                      <Badge variant="outline" className="text-xs">
-                        {lmeveSchemas.length} tables
-                      </Badge>
-                    </div>
-                  </Button>
-                </div>
-                
-                {showDatabaseSchema && (
-                  <DatabaseSchemaManager />
-                )}
-              </div>
+              {/* Removed: Database Schema Manager */}
             </CardContent>
           </Card>
         </TabsContent>
