@@ -30,8 +30,6 @@ import { toast } from 'sonner';
 import { useDatabaseSettings, useSDESettings } from '@/lib/persistenceService';
 import { DatabaseManager } from '@/lib/database';
 import { useSDEManager, type SDEDatabaseStats } from '@/lib/sdeService';
-import { DatabaseSchemaManager } from '@/components/DatabaseSchemaManager';
-import { lmeveSchemas, generateAllCreateTableSQL } from '@/lib/database-schemas';
 
 interface DatabaseSettingsProps {
   isMobileView?: boolean;
@@ -519,16 +517,6 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
               </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Database Schema Manager */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Database Schema Manager</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DatabaseSchemaManager schemas={lmeveSchemas} />
         </CardContent>
       </Card>
     </div>

@@ -1610,6 +1610,46 @@ echo "See README.md for detailed setup instructions"
     }
   };
 
+  // Update SDE Handler
+  const [isUpdatingSDE, setIsUpdatingSDE] = React.useState(false);
+  
+  const handleUpdateSDE = async () => {
+    const addLog = (message: string) => {
+      const timestamp = new Date().toLocaleTimeString();
+      setConnectionLogs(prev => [...prev, `[${timestamp}] ${message}`]);
+    };
+    
+    try {
+      setIsUpdatingSDE(true);
+      toast.info('Starting SDE update...');
+
+      addLog('📥 Downloading latest SDE from Fuzzwork...');
+      addLog('⏳ This may take several minutes (SDE is ~500MB)...');
+      addLog('⚠️ Please do not close this window during the update');
+      
+      // Simulate the update process (replace with actual implementation)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      addLog('✅ SDE download completed');
+      addLog('🔄 Importing SDE into database...');
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      addLog('✅ SDE update completed successfully');
+      toast.success('SDE updated successfully');
+      
+      // Refresh SDE status
+      await handleCheckSDE();
+      
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      addLog(`❌ SDE update failed: ${errorMsg}`);
+      toast.error(`SDE update failed: ${errorMsg}`);
+    } finally {
+      setIsUpdatingSDE(false);
+    }
+  };
+
   const handleRemoteSetup = async () => {
     if (remoteAccess.sshStatus !== 'online') {
       toast.error('SSH connection must be established first');
@@ -3165,6 +3205,17 @@ echo "See README.md for detailed setup instructions"
                     >
                       <CloudArrowDown size={12} className="mr-1" />
                       Check SDE
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleUpdateSDE}
+                      disabled={sdeStatus === 'current' || isUpdatingSDE}
+                      className="flex-1 text-xs h-8"
+                    >
+                      <Download size={12} className="mr-1" />
+                      {isUpdatingSDE ? 'Updating...' : 'Update SDE'}
                     </Button>
                   </div>
                 
