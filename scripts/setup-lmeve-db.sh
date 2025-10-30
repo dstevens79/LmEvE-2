@@ -418,23 +418,37 @@ fi
 
 # Step 3: Create User
 print_step "Creating MySQL User"
+
+# Get server's IP address for self-connections
+SERVER_IP=$(hostname -I | awk '{print $1}')
+echo -e "${CYAN}Server IP detected: ${SERVER_IP}${NC}"
+echo -e "${CYAN}Creating user for: %, localhost, and ${SERVER_IP}${NC}"
+
 mysql -u root -p"$MYSQL_ROOT_PASS" -h "$DB_HOST" -P "$DB_PORT" << SQLEOF
 DROP USER IF EXISTS '${LMEVE_USER}'@'%';
 DROP USER IF EXISTS '${LMEVE_USER}'@'localhost';
+DROP USER IF EXISTS '${LMEVE_USER}'@'${SERVER_IP}';
 
 CREATE USER '${LMEVE_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${LMEVE_PASS}';
 CREATE USER '${LMEVE_USER}'@'localhost' IDENTIFIED WITH mysql_native_password BY '${LMEVE_PASS}';
+CREATE USER '${LMEVE_USER}'@'${SERVER_IP}' IDENTIFIED WITH mysql_native_password BY '${LMEVE_PASS}';
 
 GRANT ALL PRIVILEGES ON ${LMEVE_DB}.* TO '${LMEVE_USER}'@'%';
 GRANT ALL PRIVILEGES ON ${LMEVE_DB}.* TO '${LMEVE_USER}'@'localhost';
+GRANT ALL PRIVILEGES ON ${LMEVE_DB}.* TO '${LMEVE_USER}'@'${SERVER_IP}';
+
 GRANT ALL PRIVILEGES ON ${SDE_DB}.* TO '${LMEVE_USER}'@'%';
 GRANT ALL PRIVILEGES ON ${SDE_DB}.* TO '${LMEVE_USER}'@'localhost';
+GRANT ALL PRIVILEGES ON ${SDE_DB}.* TO '${LMEVE_USER}'@'${SERVER_IP}';
 
 FLUSH PRIVILEGES;
 SQLEOF
 
 if [[ $? -eq 0 ]]; then
-    echo -e "${GREEN}✅ User '$LMEVE_USER' created with full permissions${NC}"
+    echo -e "${GREEN}✅ User '$LMEVE_USER' created for:${NC}"
+    echo -e "   ${GREEN}• Any host (%)${NC}"
+    echo -e "   ${GREEN}• Localhost${NC}"
+    echo -e "   ${GREEN}• Server IP (${SERVER_IP})${NC}"
 else
     echo -e "${RED}❌ Failed to create user${NC}"
     exit 1

@@ -115,11 +115,8 @@ export class DatabaseManager {
     this.status.connected = false;
   }
 
-  async testConnection(): Promise<{ success: boolean; latency?: number; error?: string; validated?: boolean }> {
-    const startTime = Date.now();
-    
+  async testConnection(): Promise<{ success: boolean; latency?: number; error?: string; validated?: boolean; userExists?: boolean }> {
     try {
-      // STRICT VALIDATION - ONLY real MySQL connections should pass
       console.log(`🔍 Testing database connection: ${this.config.username}@${this.config.host}:${this.config.port}/${this.config.database}`);
       
       // Step 1: Basic configuration validation
@@ -128,39 +125,44 @@ export class DatabaseManager {
         throw new Error(configValidation.error);
       }
 
-      // Step 2: Perform real network connectivity check - REAL implementation
-      await this.performNetworkConnectivityCheck();
+      // Step 2: Call integrated API (runs within Vite dev server)
+      const response = await fetch('/api/database/test-connection', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          host: this.config.host,
+          port: this.config.port,
+          username: this.config.username,
+          password: this.config.password,
+          database: this.config.database
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Connection test failed');
+      }
+
+      console.log(`✅ Database connection validated successfully`);
       
-      // Step 3: Simulate MySQL authentication - REQUIRES VALID CREDENTIALS
-      const authCheck = await this.simulateAuthenticationCheck();
-      if (!authCheck.valid) {
-        throw new Error(authCheck.error);
-      }
-
-      // Step 4: Simulate database existence and structure validation - STRICT
-      const dbValidation = await this.validateDatabaseStructure();
-      if (!dbValidation.valid) {
-        throw new Error(dbValidation.error);
-      }
-
-      // Step 5: Simulate privilege validation - STRICT
-      const privilegeCheck = await this.validatePrivileges();
-      if (!privilegeCheck.valid) {
-        throw new Error(privilegeCheck.error);
-      }
-
-      // Step 6: Actually validate complete MySQL database setup - CRITICAL CHECK
-      const lmeveValidation = await this.checkLMeveTables();
-      if (!lmeveValidation.valid) {
-        throw new Error(lmeveValidation.error);
-      }
-
-      const latency = Date.now() - startTime;
-      console.log(`✅ Database connection validated successfully after ${latency}ms`);
-      return { success: true, latency, validated: true };
+      return { 
+        success: true, 
+        latency: result.latency, 
+        validated: true,
+        userExists: result.userExists 
+      };
+      
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Connection test failed';
       console.log(`❌ Database connection failed: ${errorMessage}`);
+      
       return { 
         success: false, 
         error: errorMessage,

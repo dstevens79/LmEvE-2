@@ -5,6 +5,7 @@ import { defineConfig, PluginOption } from "vite";
 import sparkPlugin from "@github/spark/spark-vite-plugin";
 import createIconImportProxy from "@github/spark/vitePhosphorIconProxyPlugin";
 import { resolve } from 'path'
+import { createApiMiddleware } from './server/api-middleware'
 
 const projectRoot = process.env.PROJECT_ROOT || import.meta.dirname
 
@@ -16,22 +17,16 @@ export default defineConfig({
     // DO NOT REMOVE
     createIconImportProxy() as PluginOption,
     sparkPlugin() as PluginOption,
+    {
+      name: 'lmeve-api',
+      configureServer(server) {
+        server.middlewares.use(createApiMiddleware());
+      }
+    }
   ],
   resolve: {
     alias: {
       '@': resolve(projectRoot, 'src')
-    }
-  },
-  server: {
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true
-      },
-      '/getme': {
-        target: 'http://localhost:3001',
-        changeOrigin: true
-      }
     }
   }
 });
