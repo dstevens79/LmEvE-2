@@ -29,8 +29,6 @@ import {
 import { toast } from 'sonner';
 import { useDatabaseSettings, useSDESettings } from '@/lib/persistenceService';
 import { DatabaseManager } from '@/lib/database';
-import { EnhancedDatabaseSetupManager, validateSetupConfig, generateStandaloneCreateDBScript, type DatabaseSetupConfig } from '@/lib/database-setup-scripts';
-import { RemoteDatabaseAPI } from '@/lib/remoteDatabaseAPI';
 import { useSDEManager, type SDEDatabaseStats } from '@/lib/sdeService';
 import { DatabaseSchemaManager } from '@/components/DatabaseSchemaManager';
 import { lmeveSchemas, generateAllCreateTableSQL } from '@/lib/database-schemas';
@@ -75,22 +73,10 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   
   // Ref for auto-scrolling logs
   const logsEndRef = useRef<HTMLDivElement>(null);
-  
-  // Remote access state
-  const [remoteAccess, setRemoteAccess] = useState({
-    sshConnected: false,
-    scriptsDeployed: false,
-    remoteSetupComplete: false,
-    sshStatus: 'offline' as 'online' | 'offline' | 'unknown',
-    lastSSHCheck: null as string | null
-  });
 
   // System status indicators
   const [systemStatus, setSystemStatus] = useState({
     databaseConnection: 'unknown' as 'online' | 'offline' | 'unknown',
-    sshConnection: 'unknown' as 'online' | 'offline' | 'unknown',
-    scriptsDeployed: 'unknown' as 'online' | 'offline' | 'unknown',
-    remoteSetup: 'unknown' as 'online' | 'offline' | 'unknown',
     sdeVersion: 'unknown' as 'current' | 'outdated' | 'unknown'
   });
 
@@ -169,236 +155,6 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
       toast.error(`Connection error: ${errorMessage}`);
     } finally {
       setTestingConnection(false);
-    }
-  };
-
-  const handleSetupSSHConnection = async () => {
-    if (!databaseSettings?.sshHost || !databaseSettings?.sshUsername) {
-      toast.error('Please fill in SSH connection details');
-      return;
-    }
-
-    addConnectionLog('Initiating SSH connection...');
-    
-    try {
-      const remoteAPI = new RemoteDatabaseAPI();
-      const result = await remoteAPI.testConnection({
-        host: databaseSettings.sshHost,
-        port: parseInt(String(databaseSettings.sshPort || 22)),
-        sshUser: databaseSettings.sshUsername,
-        sshKeyPath: '~/.ssh/id_rsa', // Default path
-        lmevePassword: databaseSettings.password || ''
-      });
-      
-      if (result.success) {
-        setRemoteAccess(prev => ({ 
-          ...prev, 
-          sshConnected: true,
-          sshStatus: 'online',
-          lastSSHCheck: new Date().toISOString()
-        }));
-        setSystemStatus(prev => ({ ...prev, sshConnection: 'online' }));
-        
-        addConnectionLog(`✅ ${result.message}`);
-        toast.success('SSH connection test successful');
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (error) {
-      setRemoteAccess(prev => ({ ...prev, sshStatus: 'offline' }));
-      setSystemStatus(prev => ({ ...prev, sshConnection: 'offline' }));
-      const errorMessage = error instanceof Error ? error.message : 'SSH connection failed';
-      addConnectionLog(`❌ SSH connection failed: ${errorMessage}`);
-      toast.error(`SSH connection failed: ${errorMessage}`);
-    }
-  };
-
-  const handleDeployScripts = async () => {
-    if (!remoteAccess.sshConnected) {
-      toast.error('SSH connection required before deploying scripts');
-      return;
-    }
-
-    addConnectionLog('Deploying database setup scripts...');
-    
-    try {
-      const remoteAPI = new RemoteDatabaseAPI();
-      
-      // Create script content
-      const scriptContent = generateStandaloneCreateDBScript();
-      const scriptBlob = new File([scriptContent], 'create-db.sh', { type: 'text/plain' });
-      
-      // Upload script to remote server
-      const uploadResult = await remoteAPI.uploadFile(scriptBlob, 'deploy-scripts');
-      
-      if (uploadResult.success) {
-        setRemoteAccess(prev => ({ ...prev, scriptsDeployed: true }));
-        setSystemStatus(prev => ({ ...prev, scriptsDeployed: 'online' }));
-        
-        addConnectionLog('✅ Scripts deployed to remote machine');
-        addConnectionLog(`📁 Script uploaded to: ${uploadResult.path}`);
-        addConnectionLog('📝 Deployed create-db.sh script');
-        addConnectionLog('📝 Script accepts 3 parameters: <mysql_root_password> <lmeve_password> <lmeve_username>');
-        addConnectionLog('💡 Usage: sudo /usr/local/lmeve/create-db.sh "root_pass" "lmeve_pass" "lmeve_user"');
-        toast.success('Database scripts deployed successfully');
-      } else {
-        throw new Error('Script upload failed');
-      }
-    } catch (error) {
-      setSystemStatus(prev => ({ ...prev, scriptsDeployed: 'offline' }));
-      const errorMessage = error instanceof Error ? error.message : 'Script deployment failed';
-      addConnectionLog(`❌ Script deployment failed: ${errorMessage}`);
-      toast.error(`Script deployment failed: ${errorMessage}`);
-    }
-  };
-
-  const handleRunRemoteSetup = async () => {
-    if (!remoteAccess.scriptsDeployed) {
-      toast.error('Scripts must be deployed before running remote setup');
-      return;
-    }
-
-    if (!databaseSettings?.sudoPassword || !databaseSettings?.password || !databaseSettings?.username) {
-      toast.error('MySQL root password, LMeve password, and username are required');
-      return;
-    }
-
-    setSetupStatus('running');
-    setSetupProgress(0);
-    addConnectionLog('🚀 Starting remote database setup...');
-    addConnectionLog('📋 Debug: Preparing setup configuration...');
-    
-    try {
-      // Log the actual command that will be executed
-      addConnectionLog('');
-      addConnectionLog('📋 Command to be executed on remote server:');
-      addConnectionLog(`   sudo /usr/local/lmeve/create-db.sh "${databaseSettings.sudoPassword}" "${databaseSettings.password}" "${databaseSettings.username}"`);
-      addConnectionLog('');
-      addConnectionLog('⚙️ Parameters being passed:');
-      addConnectionLog(`   - MySQL Root Password: ${databaseSettings.sudoPassword ? '✓ provided' : '✗ missing'}`);
-      addConnectionLog(`   - LMeve Password: ${databaseSettings.password ? '✓ provided' : '✗ missing'}`);
-      addConnectionLog(`   - LMeve Username: ${databaseSettings.username || 'lmeve (default)'}`);
-      addConnectionLog(`   - Password length: ${databaseSettings.password?.length || 0} characters`);
-      addConnectionLog('');
-      
-      // Generate schema content based on source selection
-      let schemaContent: string | undefined;
-      const schemaSource = databaseSettings?.schemaSource || 'default';
-      const useCustomSchema = schemaSource === 'custom';
-      
-      addConnectionLog(`📋 Debug: Schema source = ${schemaSource}`);
-      
-      if (useCustomSchema) {
-        addConnectionLog('📋 Debug: Custom schema selected - checking for uploaded schema...');
-        addConnectionLog('⚠️ Warning: Custom schema upload not yet implemented, using default');
-        schemaContent = generateAllCreateTableSQL();
-      } else {
-        addConnectionLog('📋 Debug: Using default LMeve schema...');
-        try {
-          schemaContent = generateAllCreateTableSQL();
-          addConnectionLog(`✅ Debug: Schema generated successfully (${schemaContent.length} characters)`);
-          addConnectionLog(`📋 Debug: Schema preview: ${schemaContent.substring(0, 200)}...`);
-        } catch (schemaError) {
-          const schemaErrorMsg = schemaError instanceof Error ? schemaError.message : 'Unknown schema generation error';
-          addConnectionLog(`❌ Debug: Failed to generate schema: ${schemaErrorMsg}`);
-          throw new Error(`Failed to generate schema: ${schemaErrorMsg}`);
-        }
-      }
-      
-      if (!schemaContent) {
-        addConnectionLog('❌ Debug: schemaContent is undefined or empty');
-        throw new Error('Schema content is required but was not generated. Check schema source configuration.');
-      }
-      
-      addConnectionLog('✅ Debug: Schema content validated');
-      addConnectionLog(`📋 Debug: Building setup configuration object...`);
-      
-      const setupConfig: DatabaseSetupConfig = {
-        host: databaseSettings.host || 'localhost',
-        port: parseInt(String(databaseSettings.port || 3306)),
-        mysqlRootPassword: databaseSettings.sudoPassword,
-        lmevePassword: databaseSettings.password,
-        lmeveUsername: databaseSettings.username || 'lmeve',
-        allowedHosts: '%',
-        schemaSource: schemaSource,
-        schemaContent: schemaContent,
-        useCustomSchema: useCustomSchema,
-        sdeConfig: {
-          download: (sdeSettings?.sdeSource || 'fuzzwork') === 'fuzzwork',
-          skip: false
-        },
-        createDatabases: true,
-        importSchema: true,
-        createUser: true,
-        grantPrivileges: true,
-        validateSetup: true,
-        isRemote: true,
-        sshConfig: {
-          host: databaseSettings.sshHost || databaseSettings.host || 'localhost',
-          user: databaseSettings.sshUsername || 'root',
-          keyPath: '~/.ssh/id_rsa'
-        }
-      };
-
-      addConnectionLog(`✅ Debug: Setup config created with the following properties:`);
-      addConnectionLog(`  - host: ${setupConfig.host}`);
-      addConnectionLog(`  - port: ${setupConfig.port}`);
-      addConnectionLog(`  - lmeveUsername: ${setupConfig.lmeveUsername}`);
-      addConnectionLog(`  - allowedHosts: ${setupConfig.allowedHosts}`);
-      addConnectionLog(`  - schemaSource: ${setupConfig.schemaSource}`);
-      addConnectionLog(`  - useCustomSchema: ${setupConfig.useCustomSchema}`);
-      addConnectionLog(`  - schemaContent length: ${setupConfig.schemaContent?.length || 0} characters`);
-      addConnectionLog(`  - createDatabases: ${setupConfig.createDatabases}`);
-      addConnectionLog(`  - createUser: ${setupConfig.createUser}`);
-      addConnectionLog(`  - grantPrivileges: ${setupConfig.grantPrivileges}`);
-      addConnectionLog(`  - importSchema: ${setupConfig.importSchema}`);
-      addConnectionLog(`  - sdeConfig.download: ${setupConfig.sdeConfig.download}`);
-      addConnectionLog(`  - isRemote: ${setupConfig.isRemote}`);
-
-      addConnectionLog('🔍 Debug: Validating setup configuration...');
-      const errors = validateSetupConfig(setupConfig);
-      if (errors.length > 0) {
-        addConnectionLog(`❌ Debug: Configuration validation failed with ${errors.length} error(s):`);
-        errors.forEach((err, idx) => addConnectionLog(`  ${idx + 1}. ${err}`));
-        throw new Error(`Configuration errors: ${errors.join(', ')}`);
-      }
-      addConnectionLog('✅ Debug: Configuration validation passed');
-
-      addConnectionLog('🏗️ Debug: Creating EnhancedDatabaseSetupManager instance...');
-      const manager = new EnhancedDatabaseSetupManager(setupConfig, (progress) => {
-        setSetupProgress(progress.progress);
-        addConnectionLog(`⏳ ${progress.stage}: ${progress.message}`);
-      });
-      addConnectionLog('✅ Debug: Manager instance created successfully');
-
-      addConnectionLog('🗄️ Step 1: Creating databases and users...');
-      addConnectionLog('📡 Running: sudo /usr/local/lmeve/create-db.sh');
-      addConnectionLog(`🔧 Executing: sudo /usr/local/lmeve/create-db.sh "${databaseSettings.sudoPassword ? '***' : ''}" "${databaseSettings.password ? '***' : ''}" "${databaseSettings.username}"`);
-      
-      const result = await manager.setupDatabase();
-
-      if (result.success) {
-        setRemoteAccess(prev => ({ ...prev, remoteSetupComplete: true }));
-        setSystemStatus(prev => ({ ...prev, remoteSetup: 'online' }));
-        setSetupStatus('complete');
-        
-        result.details?.forEach(detail => addConnectionLog(detail));
-        addConnectionLog('🎉 Database setup completed successfully');
-        toast.success('Remote database setup completed');
-      } else {
-        addConnectionLog(`❌ Debug: Setup failed with error: ${result.error}`);
-        throw new Error(result.error || 'Setup failed');
-      }
-    } catch (error) {
-      setSetupStatus('error');
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const errorStack = error instanceof Error ? error.stack : '';
-      addConnectionLog(`❌ Remote setup failed: ${errorMessage}`);
-      if (errorStack) {
-        addConnectionLog(`📋 Debug: Error stack trace:`);
-        errorStack.split('\n').slice(0, 5).forEach(line => addConnectionLog(`  ${line}`));
-      }
-      toast.error(`Remote setup failed: ${errorMessage}`);
     }
   };
 
@@ -552,57 +308,6 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
               </div>
             </CardContent>
           </Card>
-
-          {/* SSH Configuration for remote databases */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">SSH Configuration</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="sshHost">SSH Host</Label>
-                  <Input
-                    id="sshHost"
-                    value={databaseSettings?.sshHost || ''}
-                    onChange={(e) => updateDatabaseSettings({ sshHost: e.target.value })}
-                    placeholder="Same as database host"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sshPort">SSH Port</Label>
-                  <Input
-                    id="sshPort"
-                    value={databaseSettings?.sshPort || '22'}
-                    onChange={(e) => updateDatabaseSettings({ sshPort: e.target.value })}
-                    placeholder="22"
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="sshUsername">SSH Username</Label>
-                  <Input
-                    id="sshUsername"
-                    value={databaseSettings?.sshUsername || ''}
-                    onChange={(e) => updateDatabaseSettings({ sshUsername: e.target.value })}
-                    placeholder="opsuser"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sshPassword">SSH Password</Label>
-                  <Input
-                    id="sshPassword"
-                    type="password"
-                    value={databaseSettings?.sshPassword || ''}
-                    onChange={(e) => updateDatabaseSettings({ sshPassword: e.target.value })}
-                    placeholder="ssh password"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* System Status & Control Panel */}
@@ -614,9 +319,6 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <StatusIndicator label="Database" status={systemStatus.databaseConnection} />
-                <StatusIndicator label="SSH Connection" status={systemStatus.sshConnection} />
-                <StatusIndicator label="Scripts Deployed" status={systemStatus.scriptsDeployed} />
-                <StatusIndicator label="Remote Setup" status={systemStatus.remoteSetup} />
                 <StatusIndicator label="SDE Version" status={systemStatus.sdeVersion} />
               </div>
               
@@ -680,48 +382,6 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                   variant="outline"
                 >
                   {testingConnection ? 'Testing...' : 'Test Connection'}
-                </Button>
-                
-                <Button 
-                  onClick={handleSetupSSHConnection}
-                  disabled={!databaseSettings.sshHost}
-                  variant="outline"
-                >
-                  Setup SSH Connection
-                </Button>
-                
-                <Button 
-                  onClick={handleDeployScripts}
-                  disabled={!remoteAccess.sshConnected}
-                  variant="outline"
-                >
-                  Deploy Scripts
-                </Button>
-                
-                <Button 
-                  onClick={() => {
-                    const script = generateStandaloneCreateDBScript();
-                    const blob = new Blob([script], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'create-db.sh';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    addConnectionLog('📥 Downloaded create-db.sh script');
-                    toast.success('Script downloaded - upload to /usr/local/lmeve/ on your server');
-                  }}
-                  variant="outline"
-                >
-                  Download create-db.sh
-                </Button>
-                
-                <Button 
-                  onClick={handleRunRemoteSetup}
-                  disabled={!remoteAccess.scriptsDeployed}
-                  variant="outline"
-                >
-                  Run Remote Setup
                 </Button>
                 
                 <Button 
