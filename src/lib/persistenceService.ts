@@ -6,6 +6,38 @@
  */
 
 import { useKV } from '@github/spark/hooks';
+import React from 'react';
+
+// Lightweight fallback to localStorage when Spark KV isn't available or isn't persisting
+function useLocalStorageKV<T>(key: string, defaultValue: T): [T, (value: T | ((prev: T) => T)) => void] {
+  const initializer = () => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw != null) return JSON.parse(raw) as T;
+    } catch {}
+    return defaultValue;
+  };
+  const [value, setValue] = React.useState<T>(initializer);
+  const setAndPersist = (next: T | ((prev: T) => T)) => {
+    setValue(prev => {
+      const resolved = typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
+      try { localStorage.setItem(key, JSON.stringify(resolved)); } catch {}
+      return resolved;
+    });
+  };
+  return [value, setAndPersist];
+}
+
+function useKVSafe<T>(key: string, defaultValue: T): [T, (value: T | ((prev: T) => T)) => void] {
+  try {
+    // Prefer Spark KV when present; it may provide cross-tab sync and other benefits
+    if (typeof window !== 'undefined' && (window as any)?.spark?.kv) {
+      return useKV<T>(key, defaultValue);
+    }
+  } catch {}
+  // Fallback to localStorage-backed KV
+  return useLocalStorageKV<T>(key, defaultValue);
+}
 
 export interface GeneralSettings {
   applicationName: string;
@@ -520,7 +552,8 @@ export const defaultApplicationData: ApplicationData = {
 
 // Hook exports for React components
 export const useGeneralSettings = () => useKV<GeneralSettings>('lmeve-settings-general', defaultGeneralSettings);
-export const useDatabaseSettings = () => useKV<DatabaseSettings>('lmeve-settings-database', defaultDatabaseSettings);
+// Use a safe KV that falls back to localStorage to ensure persistence across navigation
+export const useDatabaseSettings = () => useKVSafe<DatabaseSettings>('lmeve-settings-database', defaultDatabaseSettings);
 export const useESISettings = () => useKV<ESISettings>('lmeve-settings-esi', defaultESISettings);
 export const useSDESettings = () => useKV<SDESettings>('lmeve-settings-sde', defaultSDESettings);
 export const useSyncSettings = () => useKV<SyncSettings>('lmeve-settings-sync', defaultSyncSettings);
