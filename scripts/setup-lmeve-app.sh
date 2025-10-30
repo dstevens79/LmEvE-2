@@ -128,18 +128,15 @@ npm run build
 echo -e "${GREEN}✓ Build complete${NC}"
 
 echo -e "\n${GREEN}8. Deploying Application${NC}"
-# Create final directory if it doesn't exist
-mkdir -p "$FINAL_DIR"
-
 # Remove old deployment if exists
-if [ -d "$FINAL_DIR" ] && [ "$(ls -A $FINAL_DIR)" ]; then
+if [ -d "$FINAL_DIR" ]; then
     echo "Removing old deployment..."
-    rm -rf "${FINAL_DIR:?}"/*
+    rm -rf "$FINAL_DIR"
 fi
 
-# Copy only the dist folder contents
-echo "Copying build to ${FINAL_DIR}..."
-cp -r "$BUILD_DIR/dist/"* "$FINAL_DIR/"
+# Move the dist folder and rename it
+echo "Moving dist to ${FINAL_DIR}..."
+mv "$BUILD_DIR/dist" "$FINAL_DIR"
 echo -e "${GREEN}✓ Application deployed${NC}"
 
 echo -e "\n${GREEN}9. Cleaning Up Build Files${NC}"
