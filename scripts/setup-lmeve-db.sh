@@ -282,8 +282,10 @@ print_step "Webmin Installation (Optional)"
 
 # Check if Webmin is already installed
 WEBMIN_INSTALLED=false
+INSTALL_WEBMIN=N
 if command_exists webmin || dpkg -l | grep -q "^ii  webmin "; then
     WEBMIN_INSTALLED=true
+    INSTALL_WEBMIN=Y  # Set to Y so summary shows it
     echo -e "${GREEN}✅ Webmin is already installed${NC}"
     echo -e "${CYAN}Access Webmin at: https://$(hostname -I | awk '{print $1}'):10000${NC}"
 else
@@ -444,37 +446,425 @@ else
     exit 1
 fi
 
+# Step 4.5: Create LMeve Database Schema
+print_step "Creating LMeve Database Schema"
+echo -e "${CYAN}Setting up core tables in ${LMEVE_DB}...${NC}"
+
+mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${LMEVE_DB} << 'SCHEMA_EOF'
+-- Users table
+CREATE TABLE IF NOT EXISTS `users` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `username` VARCHAR(255) UNIQUE,
+  `password` VARCHAR(255),
+  `character_id` BIGINT UNIQUE,
+  `character_name` VARCHAR(255),
+  `corporation_id` BIGINT,
+  `corporation_name` VARCHAR(255),
+  `alliance_id` BIGINT,
+  `alliance_name` VARCHAR(255),
+  `auth_method` ENUM('manual', 'esi') NOT NULL DEFAULT 'manual',
+  `role` ENUM('super_admin', 'corp_admin', 'corp_director', 'corp_manager', 'corp_member', 'guest') NOT NULL DEFAULT 'corp_member',
+  `access_token` TEXT,
+  `refresh_token` TEXT,
+  `token_expiry` DATETIME,
+  `scopes` TEXT,
+  `last_login` DATETIME,
+  `session_expiry` DATETIME,
+  `is_active` BOOLEAN NOT NULL DEFAULT TRUE,
+  `created_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_character_id` (`character_id`),
+  INDEX `idx_corporation_id` (`corporation_id`),
+  INDEX `idx_auth_method` (`auth_method`),
+  INDEX `idx_role` (`role`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Corporations table
+CREATE TABLE IF NOT EXISTS `corporations` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `corporation_id` BIGINT NOT NULL UNIQUE,
+  `corporation_name` VARCHAR(255) NOT NULL,
+  `ticker` VARCHAR(10) NOT NULL,
+  `alliance_id` BIGINT,
+  `alliance_name` VARCHAR(255),
+  `member_count` INT NOT NULL DEFAULT 0,
+  `tax_rate` DECIMAL(5,2) NOT NULL DEFAULT 0.0,
+  `ceo_id` BIGINT,
+  `ceo_name` VARCHAR(255),
+  `description` TEXT,
+  `url` VARCHAR(500),
+  `founded` DATETIME,
+  `home_station_id` BIGINT,
+  `home_station_name` VARCHAR(255),
+  `wallet_balance` DECIMAL(20,2) DEFAULT 0.0,
+  `esi_client_id` VARCHAR(255),
+  `esi_client_secret` VARCHAR(255),
+  `registered_scopes` TEXT,
+  `is_active` BOOLEAN NOT NULL DEFAULT TRUE,
+  `registration_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `last_token_refresh` DATETIME,
+  `last_update` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_alliance_id` (`alliance_id`),
+  INDEX `idx_ticker` (`ticker`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Members table
+CREATE TABLE IF NOT EXISTS `members` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `character_id` BIGINT NOT NULL,
+  `character_name` VARCHAR(255) NOT NULL,
+  `corporation_id` BIGINT NOT NULL,
+  `corporation_name` VARCHAR(255),
+  `alliance_id` BIGINT,
+  `alliance_name` VARCHAR(255),
+  `roles` JSON,
+  `titles` JSON,
+  `last_login` DATETIME,
+  `location_id` BIGINT,
+  `location_name` VARCHAR(255),
+  `ship_type_id` INT,
+  `ship_type_name` VARCHAR(255),
+  `is_online` BOOLEAN NOT NULL DEFAULT FALSE,
+  `is_active` BOOLEAN NOT NULL DEFAULT TRUE,
+  `access_level` ENUM('member', 'director', 'ceo') NOT NULL DEFAULT 'member',
+  `joined_date` DATETIME,
+  `created_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `idx_character_id` (`character_id`),
+  INDEX `idx_corporation_id` (`corporation_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Projects table
+CREATE TABLE IF NOT EXISTS `projects` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `project_name` VARCHAR(255) NOT NULL,
+  `project_type` ENUM('manufacturing', 'invention', 'reaction', 'research') NOT NULL DEFAULT 'manufacturing',
+  `status` ENUM('planning', 'active', 'paused', 'completed', 'cancelled') NOT NULL DEFAULT 'planning',
+  `priority` INT NOT NULL DEFAULT 0,
+  `owner_id` INT,
+  `owner_name` VARCHAR(255),
+  `location_id` BIGINT,
+  `location_name` VARCHAR(255),
+  `notes` TEXT,
+  `created_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `start_date` DATETIME,
+  `completion_date` DATETIME,
+  INDEX `idx_status` (`status`),
+  INDEX `idx_owner_id` (`owner_id`),
+  INDEX `idx_project_type` (`project_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Settings table
+CREATE TABLE IF NOT EXISTS `settings` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `key` VARCHAR(255) NOT NULL UNIQUE,
+  `value` TEXT,
+  `category` VARCHAR(100),
+  `description` TEXT,
+  `is_encrypted` BOOLEAN NOT NULL DEFAULT FALSE,
+  `created_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_category` (`category`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Assets table
+CREATE TABLE IF NOT EXISTS `assets` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `item_id` BIGINT NOT NULL UNIQUE,
+  `type_id` INT NOT NULL,
+  `location_id` BIGINT NOT NULL,
+  `location_type` VARCHAR(50),
+  `location_flag` VARCHAR(50),
+  `quantity` BIGINT NOT NULL DEFAULT 0,
+  `is_singleton` BOOLEAN NOT NULL DEFAULT FALSE,
+  `is_blueprint_copy` BOOLEAN,
+  `owner_id` BIGINT,
+  `corporation_id` BIGINT,
+  `last_updated` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_type_id` (`type_id`),
+  INDEX `idx_location_id` (`location_id`),
+  INDEX `idx_owner_id` (`owner_id`),
+  INDEX `idx_corporation_id` (`corporation_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Industry Jobs table
+CREATE TABLE IF NOT EXISTS `industry_jobs` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `job_id` BIGINT NOT NULL UNIQUE,
+  `corporation_id` BIGINT NOT NULL,
+  `installer_id` BIGINT NOT NULL,
+  `facility_id` BIGINT NOT NULL,
+  `activity_id` INT NOT NULL,
+  `blueprint_type_id` INT NOT NULL,
+  `product_type_id` INT,
+  `runs` INT NOT NULL,
+  `status` VARCHAR(50) NOT NULL,
+  `duration` INT NOT NULL,
+  `start_date` DATETIME NOT NULL,
+  `end_date` DATETIME NOT NULL,
+  `completed_date` DATETIME,
+  `last_updated` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_corporation_id` (`corporation_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_blueprint_type_id` (`blueprint_type_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Wallet Transactions table
+CREATE TABLE IF NOT EXISTS `wallet_transactions` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `transaction_id` BIGINT NOT NULL UNIQUE,
+  `corporation_id` BIGINT NOT NULL,
+  `division_id` INT,
+  `client_id` BIGINT NOT NULL,
+  `date` DATETIME NOT NULL,
+  `is_buy` BOOLEAN NOT NULL,
+  `is_personal` BOOLEAN NOT NULL DEFAULT FALSE,
+  `journal_ref_id` BIGINT,
+  `location_id` BIGINT NOT NULL,
+  `quantity` BIGINT NOT NULL,
+  `type_id` INT NOT NULL,
+  `unit_price` DECIMAL(20,2) NOT NULL,
+  `last_updated` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_corporation_id` (`corporation_id`),
+  INDEX `idx_date` (`date`),
+  INDEX `idx_type_id` (`type_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Wallet Divisions table
+CREATE TABLE IF NOT EXISTS `wallet_divisions` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `corporation_id` BIGINT NOT NULL,
+  `division_id` INT NOT NULL,
+  `division_name` VARCHAR(255),
+  `balance` DECIMAL(20,2) NOT NULL DEFAULT 0.0,
+  `last_updated` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `idx_corp_division` (`corporation_id`, `division_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Market Orders table
+CREATE TABLE IF NOT EXISTS `market_orders` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `order_id` BIGINT NOT NULL UNIQUE,
+  `corporation_id` BIGINT NOT NULL,
+  `type_id` INT NOT NULL,
+  `region_id` BIGINT,
+  `location_id` BIGINT NOT NULL,
+  `volume_total` BIGINT NOT NULL,
+  `volume_remain` BIGINT NOT NULL,
+  `min_volume` INT,
+  `price` DECIMAL(20,2) NOT NULL,
+  `is_buy_order` BOOLEAN NOT NULL,
+  `duration` INT NOT NULL,
+  `issued` DATETIME NOT NULL,
+  `state` VARCHAR(50),
+  `last_updated` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_corporation_id` (`corporation_id`),
+  INDEX `idx_type_id` (`type_id`),
+  INDEX `idx_issued` (`issued`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Market Prices table
+CREATE TABLE IF NOT EXISTS `market_prices` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `type_id` INT NOT NULL UNIQUE,
+  `adjusted_price` DECIMAL(20,2),
+  `average_price` DECIMAL(20,2),
+  `last_updated` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_type_id` (`type_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Planetary Colonies table
+CREATE TABLE IF NOT EXISTS `planetary_colonies` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `planet_id` BIGINT NOT NULL,
+  `owner_id` BIGINT NOT NULL,
+  `corporation_id` BIGINT,
+  `solar_system_id` BIGINT NOT NULL,
+  `planet_type` VARCHAR(50),
+  `upgrade_level` INT NOT NULL DEFAULT 0,
+  `num_pins` INT NOT NULL DEFAULT 0,
+  `last_update` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `idx_planet_owner` (`planet_id`, `owner_id`),
+  INDEX `idx_corporation_id` (`corporation_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Corporation Members table (alternative to members)
+CREATE TABLE IF NOT EXISTS `corporation_members` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `character_id` BIGINT NOT NULL UNIQUE,
+  `character_name` VARCHAR(255) NOT NULL,
+  `corporation_id` BIGINT NOT NULL,
+  `last_updated` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_corporation_id` (`corporation_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Contracts table
+CREATE TABLE IF NOT EXISTS `contracts` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `contract_id` BIGINT NOT NULL UNIQUE,
+  `corporation_id` BIGINT NOT NULL,
+  `issuer_id` BIGINT NOT NULL,
+  `assignee_id` BIGINT,
+  `type` VARCHAR(50) NOT NULL,
+  `status` VARCHAR(50) NOT NULL,
+  `title` VARCHAR(255),
+  `for_corporation` BOOLEAN NOT NULL DEFAULT FALSE,
+  `availability` VARCHAR(50),
+  `date_issued` DATETIME NOT NULL,
+  `date_expired` DATETIME,
+  `date_accepted` DATETIME,
+  `date_completed` DATETIME,
+  `price` DECIMAL(20,2),
+  `reward` DECIMAL(20,2),
+  `collateral` DECIMAL(20,2),
+  `buyout` DECIMAL(20,2),
+  `volume` DECIMAL(20,2),
+  `last_updated` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_corporation_id` (`corporation_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_type` (`type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Contract Items table
+CREATE TABLE IF NOT EXISTS `contract_items` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `contract_id` BIGINT NOT NULL,
+  `record_id` BIGINT NOT NULL,
+  `type_id` INT NOT NULL,
+  `quantity` BIGINT NOT NULL,
+  `is_included` BOOLEAN NOT NULL DEFAULT TRUE,
+  `is_singleton` BOOLEAN NOT NULL DEFAULT FALSE,
+  INDEX `idx_contract_id` (`contract_id`),
+  INDEX `idx_type_id` (`type_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Mining Ledger table
+CREATE TABLE IF NOT EXISTS `mining_ledger` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `corporation_id` BIGINT NOT NULL,
+  `character_id` BIGINT NOT NULL,
+  `date` DATE NOT NULL,
+  `type_id` INT NOT NULL,
+  `quantity` BIGINT NOT NULL,
+  `solar_system_id` BIGINT NOT NULL,
+  `last_updated` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `idx_unique_entry` (`corporation_id`, `character_id`, `date`, `type_id`, `solar_system_id`),
+  INDEX `idx_corporation_id` (`corporation_id`),
+  INDEX `idx_date` (`date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Container Logs table
+CREATE TABLE IF NOT EXISTS `container_logs` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `corporation_id` BIGINT NOT NULL,
+  `logged_at` DATETIME NOT NULL,
+  `character_id` BIGINT NOT NULL,
+  `container_id` BIGINT NOT NULL,
+  `container_type_id` INT NOT NULL,
+  `action` VARCHAR(50) NOT NULL,
+  `location_id` BIGINT NOT NULL,
+  `type_id` INT NOT NULL,
+  `quantity` BIGINT NOT NULL,
+  `last_updated` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_corporation_id` (`corporation_id`),
+  INDEX `idx_logged_at` (`logged_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Killmails table
+CREATE TABLE IF NOT EXISTS `killmails` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `killmail_id` BIGINT NOT NULL UNIQUE,
+  `killmail_hash` VARCHAR(255),
+  `killmail_time` DATETIME NOT NULL,
+  `solar_system_id` BIGINT NOT NULL,
+  `victim_character_id` BIGINT,
+  `victim_corporation_id` BIGINT,
+  `victim_alliance_id` BIGINT,
+  `victim_ship_type_id` INT NOT NULL,
+  `victim_damage_taken` BIGINT NOT NULL,
+  `total_value` DECIMAL(20,2),
+  `is_npc_kill` BOOLEAN NOT NULL DEFAULT FALSE,
+  `is_solo_kill` BOOLEAN NOT NULL DEFAULT FALSE,
+  `attacker_count` INT NOT NULL DEFAULT 0,
+  `last_updated` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_killmail_time` (`killmail_time`),
+  INDEX `idx_solar_system_id` (`solar_system_id`),
+  INDEX `idx_victim_corporation_id` (`victim_corporation_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Income Records table
+CREATE TABLE IF NOT EXISTS `income_records` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `corporation_id` BIGINT NOT NULL,
+  `character_id` BIGINT,
+  `income_type` VARCHAR(100) NOT NULL,
+  `amount` DECIMAL(20,2) NOT NULL,
+  `tax_amount` DECIMAL(20,2) DEFAULT 0.0,
+  `date` DATETIME NOT NULL,
+  `description` TEXT,
+  `transaction_id` BIGINT,
+  `reference_id` BIGINT,
+  `source` VARCHAR(100),
+  `last_updated` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_corporation_id` (`corporation_id`),
+  INDEX `idx_character_id` (`character_id`),
+  INDEX `idx_income_type` (`income_type`),
+  INDEX `idx_date` (`date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SCHEMA_EOF
+
+if [[ $? -eq 0 ]]; then
+    echo -e "${GREEN}✅ LMeve schema created successfully${NC}"
+else
+    echo -e "${YELLOW}⚠️  Schema creation had issues, but database may still be usable${NC}"
+fi
+
 # Step 5: Download and Import SDE (if requested)
 if [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]]; then
-    print_step "Downloading EVE Static Data"
+    print_step "Downloading EVE Static Data (MySQL Format)"
     
-    SDE_URL="https://www.fuzzwork.co.uk/dump/latest/eve.db.bz2"
+    # Use MySQL dump format from Fuzzwork
+    SDE_URL="https://www.fuzzwork.co.uk/dump/mysql-latest.tar.bz2"
     TEMP_DIR=$(mktemp -d)
     cd "$TEMP_DIR"
     
     echo -e "${CYAN}Downloading from: $SDE_URL${NC}"
     echo -e "${CYAN}This may take several minutes...${NC}\n"
     
-    if wget --show-progress "$SDE_URL" -O eve.db.bz2; then
+    if wget --show-progress "$SDE_URL" -O mysql-latest.tar.bz2 2>&1; then
         echo -e "\n${GREEN}✅ SDE download completed${NC}"
         
         print_step "Extracting SDE Data"
-        if bunzip2 eve.db.bz2; then
+        if tar -xjf mysql-latest.tar.bz2; then
             echo -e "${GREEN}✅ Extraction completed${NC}"
             
             print_step "Importing EVE Static Data"
-            echo -e "${CYAN}This may take several minutes...${NC}\n"
+            echo -e "${CYAN}This will take several minutes...${NC}\n"
             
-            if mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} < eve.db 2>/dev/null; then
+            # Import all SQL files
+            IMPORT_SUCCESS=true
+            for sqlfile in *.sql; do
+                if [[ -f "$sqlfile" ]]; then
+                    echo -e "${CYAN}Importing $sqlfile...${NC}"
+                    if ! mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} < "$sqlfile" 2>/dev/null; then
+                        echo -e "${YELLOW}⚠️  Warning: Failed to import $sqlfile${NC}"
+                        IMPORT_SUCCESS=false
+                    fi
+                fi
+            done
+            
+            if [[ "$IMPORT_SUCCESS" = true ]]; then
                 echo -e "${GREEN}✅ SDE data imported successfully${NC}"
             else
-                echo -e "${YELLOW}⚠️  SDE import had issues, but database is still usable${NC}"
+                echo -e "${YELLOW}⚠️  Some SDE tables may not have imported correctly${NC}"
             fi
         else
-            echo -e "${YELLOW}⚠️  SDE extraction failed${NC}"
+            echo -e "${RED}❌ SDE extraction failed${NC}"
+            echo -e "${CYAN}You can manually import SDE data later${NC}"
         fi
     else
-        echo -e "${YELLOW}⚠️  SDE download failed, continuing anyway${NC}"
+        echo -e "${RED}❌ SDE download failed${NC}"
         echo -e "${CYAN}You can manually import SDE data later${NC}"
     fi
     
