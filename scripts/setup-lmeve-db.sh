@@ -366,8 +366,11 @@ SDE_DB=${SDE_DB:-EveStaticData}
 
 # SDE download option
 echo -e "\n${YELLOW}EVE Static Data Export (SDE):${NC}"
-read -p "Download and import SDE? [Y/n]: " DOWNLOAD_SDE
-DOWNLOAD_SDE=${DOWNLOAD_SDE:-Y}
+echo -e "${CYAN}SDE provides item names, types, and other static EVE data.${NC}"
+echo -e "${CYAN}Note: SDE import can take 10+ minutes and is optional.${NC}"
+echo -e "${CYAN}You can import it later from the LMeve web interface.${NC}"
+read -p "Download and import SDE now? [y/N]: " DOWNLOAD_SDE
+DOWNLOAD_SDE=${DOWNLOAD_SDE:-N}
 
 # Configuration summary
 echo -e "\n${CYAN}═══════════════════════════════════════════════════════════${NC}"
@@ -822,78 +825,115 @@ fi
 
 # Step 5: Download and Import SDE (if requested)
 if [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]]; then
-    print_step "Downloading EVE Static Data (MySQL Format)"
+    print_step "Downloading EVE Static Data (SQLite Format)"
     
-    # Use MySQL dump format from Fuzzwork
-    SDE_URL="https://www.fuzzwork.co.uk/dump/mysql-latest.tar.bz2"
+    # Install sqlite3 if not present
+    if ! command_exists sqlite3; then
+        echo -e "${CYAN}Installing SQLite3...${NC}"
+        apt install -y sqlite3
+    fi
+    
+    # Use SQLite dump from Fuzzwork (most reliable)
+    SDE_URL="https://www.fuzzwork.co.uk/dump/latest/eve.db.bz2"
     TEMP_DIR=$(mktemp -d)
     cd "$TEMP_DIR"
     
     echo -e "${CYAN}Downloading from: $SDE_URL${NC}"
     echo -e "${CYAN}This may take several minutes...${NC}\n"
     
-    if wget --show-progress "$SDE_URL" -O mysql-latest.tar.bz2 2>&1; then
+    if wget --show-progress "$SDE_URL" -O eve.db.bz2 2>&1; then
         echo -e "\n${GREEN}✅ SDE download completed${NC}"
         
         print_step "Extracting SDE Data"
-        if tar -xjf mysql-latest.tar.bz2; then
+        if bunzip2 eve.db.bz2; then
             echo -e "${GREEN}✅ Extraction completed${NC}"
             
-            # Find the SDE directory (it's usually named sde-YYYYMMDD-TRANQUILITY)
-            SDE_DIR=$(find . -maxdepth 1 -type d -name "sde-*" | head -n 1)
+            print_step "Converting SQLite to MySQL and Importing"
+            echo -e "${CYAN}This will take 10-15 minutes...${NC}\n"
             
-            if [[ -z "$SDE_DIR" ]]; then
-                echo -e "${RED}❌ Could not find SDE directory in archive${NC}"
-                echo -e "${YELLOW}Archive contents:${NC}"
-                ls -lah
-            else
-                echo -e "${CYAN}Found SDE directory: $SDE_DIR${NC}"
-                cd "$SDE_DIR"
+            # Get list of tables from SQLite
+            TABLES=$(sqlite3 eve.db "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';" 2>/dev/null)
+            
+            TABLE_COUNT=0
+            FAILED_TABLES=""
+            
+            for table in $TABLES; do
+                echo -e "${CYAN}Processing table: $table${NC}"
                 
-                print_step "Importing EVE Static Data"
-                echo -e "${CYAN}This will take several minutes...${NC}\n"
+                # Get CREATE TABLE statement from SQLite
+                SCHEMA=$(sqlite3 eve.db ".schema $table" 2>/dev/null)
                 
-                # Find all .sql.bz2 files
-                SQL_FILES=$(find . -name "*.sql.bz2" 2>/dev/null)
-                IMPORT_COUNT=0
-                IMPORT_SUCCESS=true
-                FAILED_FILES=""
+                # Convert SQLite types to MySQL types
+                MYSQL_SCHEMA=$(echo "$SCHEMA" | \
+                    sed 's/INTEGER PRIMARY KEY AUTOINCREMENT/INT AUTO_INCREMENT PRIMARY KEY/g' | \
+                    sed 's/INTEGER PRIMARY KEY/INT PRIMARY KEY/g' | \
+                    sed 's/INTEGER/INT/g' | \
+                    sed 's/REAL/DOUBLE/g' | \
+                    sed 's/TEXT/LONGTEXT/g' | \
+                    sed 's/BLOB/LONGBLOB/g')
                 
-                if [ -z "$SQL_FILES" ]; then
-                    echo -e "${RED}❌ No .sql.bz2 files found in SDE directory${NC}"
-                    echo -e "${YELLOW}Directory contents:${NC}"
-                    ls -lah
-                    IMPORT_SUCCESS=false
-                else
-                    for sqlfile in $SQL_FILES; do
-                        filename=$(basename "$sqlfile" .bz2)
-                        echo -e "${CYAN}Importing: $filename${NC}"
+                # Create table in MySQL
+                echo "$MYSQL_SCHEMA" | mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} 2>/dev/null
+                
+                if [[ $? -ne 0 ]]; then
+                    echo -e "${YELLOW}  ⚠ Failed to create table${NC}"
+                    FAILED_TABLES="${FAILED_TABLES}\n  - $table (schema)"
+                    continue
+                fi
+                
+                # Export data as CSV and import
+                sqlite3 -csv -header eve.db "SELECT * FROM \`$table\`;" > "${table}.csv" 2>/dev/null
+                
+                if [[ -s "${table}.csv" ]] && [[ $(wc -l < "${table}.csv") -gt 1 ]]; then
+                    # Get column names
+                    COLUMNS=$(head -n 1 "${table}.csv")
+                    
+                    # Remove header from CSV
+                    tail -n +2 "${table}.csv" > "${table}_data.csv"
+                    
+                    # Import CSV into MySQL using mysqlimport or LOAD DATA
+                    mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" --local-infile=1 ${SDE_DB} << MYSQL_EOF 2>/dev/null
+LOAD DATA LOCAL INFILE '${TEMP_DIR}/${table}_data.csv'
+INTO TABLE \`$table\`
+FIELDS TERMINATED BY ','
+OPTIONALLY ENCLOSED BY '"'
+LINES TERMINATED BY '\n';
+MYSQL_EOF
+                    
+                    if [[ $? -eq 0 ]]; then
+                        TABLE_COUNT=$((TABLE_COUNT + 1))
+                        echo -e "${GREEN}  ✓ Imported successfully${NC}"
+                    else
+                        echo -e "${YELLOW}  ⚠ Data import failed, trying alternative method${NC}"
+                        # Try INSERT method as fallback
+                        while IFS=, read -r line; do
+                            mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} -e "INSERT INTO \`$table\` VALUES ($line);" 2>/dev/null
+                        done < "${table}_data.csv"
                         
-                        # Decompress and import in one step
-                        if bunzip2 -c "$sqlfile" | mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} 2>&1 | grep -v "Warning"; then
-                            IMPORT_COUNT=$((IMPORT_COUNT + 1))
-                            echo -e "${GREEN}  ✓ Imported successfully${NC}"
+                        if [[ $? -eq 0 ]]; then
+                            TABLE_COUNT=$((TABLE_COUNT + 1))
+                            echo -e "${GREEN}  ✓ Imported via INSERT method${NC}"
                         else
-                            echo -e "${YELLOW}  ⚠ Import had errors${NC}"
-                            FAILED_FILES="${FAILED_FILES}\n  - $filename"
-                            IMPORT_SUCCESS=false
+                            FAILED_TABLES="${FAILED_TABLES}\n  - $table (data)"
                         fi
-                    done
-                fi
-                
-                cd ..
-                
-                echo ""
-                if [[ "$IMPORT_SUCCESS" = true ]] && [[ $IMPORT_COUNT -gt 0 ]]; then
-                    echo -e "${GREEN}✅ SDE data imported successfully (${IMPORT_COUNT} files)${NC}"
-                elif [[ $IMPORT_COUNT -gt 0 ]]; then
-                    echo -e "${YELLOW}⚠️  Some SDE files failed to import:${NC}"
-                    echo -e "${YELLOW}${FAILED_FILES}${NC}"
-                    echo -e "${CYAN}Note: ${IMPORT_COUNT} files imported. The database is still usable.${NC}"
+                    fi
                 else
-                    echo -e "${RED}❌ No SQL files were imported${NC}"
-                    echo -e "${CYAN}You can manually import SDE data later${NC}"
+                    echo -e "${YELLOW}  ⚠ No data to import${NC}"
                 fi
+                
+                rm -f "${table}.csv" "${table}_data.csv"
+            done
+            
+            echo ""
+            if [[ $TABLE_COUNT -gt 0 ]]; then
+                echo -e "${GREEN}✅ SDE data imported successfully (${TABLE_COUNT} tables)${NC}"
+                if [[ -n "$FAILED_TABLES" ]]; then
+                    echo -e "${YELLOW}Failed tables:${NC}"
+                    echo -e "${YELLOW}${FAILED_TABLES}${NC}"
+                fi
+            else
+                echo -e "${RED}❌ No tables were imported${NC}"
+                echo -e "${CYAN}You can manually import SDE data later${NC}"
             fi
         else
             echo -e "${RED}❌ SDE extraction failed${NC}"
@@ -960,5 +1000,11 @@ echo -e "${BLUE}Connection Test:${NC}"
 echo -e "  Run this command to test the connection:"
 echo -e "  ${CYAN}mysql -h $DB_HOST -P $DB_PORT -u $LMEVE_USER -p'$LMEVE_PASS' -e \"USE ${LMEVE_DB}; SHOW TABLES;\"${NC}"
 echo ""
+if [[ $SDE_TABLES -eq 0 ]]; then
+    echo -e "${YELLOW}📝 Note: SDE data was not imported.${NC}"
+    echo -e "${YELLOW}   You can import it later from the LMeve web interface:${NC}"
+    echo -e "${YELLOW}   Settings → Database → Update SDE${NC}"
+    echo ""
+fi
 echo -e "${GREEN}Database server is ready for LMeve!${NC}"
 echo ""
