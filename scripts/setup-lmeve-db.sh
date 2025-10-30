@@ -237,21 +237,30 @@ if [[ -z "$DB_TYPE" ]]; then
     echo -e "${GREEN}✅ $DB_TYPE secured${NC}"
 fi
 
+# Configure database for remote access
+print_step "Configuring Database for Remote Access"
+echo -e "${CYAN}Configuring $DB_TYPE to accept remote connections...${NC}"
+
+# Determine config file location
+if [[ "$DB_TYPE" == "MySQL" ]]; then
+    MYSQL_CNF="/etc/mysql/mysql.conf.d/mysqld.cnf"
+else
+    MYSQL_CNF="/etc/mysql/mariadb.conf.d/50-server.cnf"
+fi
+
+# Backup config
+cp "$MYSQL_CNF" "${MYSQL_CNF}.backup.$(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
+
+# Set bind-address to 0.0.0.0 to allow remote connections
+if grep -q "^bind-address" "$MYSQL_CNF"; then
+    sed -i "s/^bind-address.*/bind-address = 0.0.0.0/" "$MYSQL_CNF"
+else
+    # Add bind-address line after [mysqld] section
+    sed -i "/^\[mysqld\]/a bind-address = 0.0.0.0" "$MYSQL_CNF"
+fi
+
 # Configure custom port if not default
 if [ "$DB_PORT" != "3306" ]; then
-    print_step "Configuring Custom Database Port"
-    echo -e "${CYAN}Configuring $DB_TYPE to listen on port ${DB_PORT}...${NC}"
-    
-    # Determine config file location
-    if [[ "$DB_TYPE" == "MySQL" ]]; then
-        MYSQL_CNF="/etc/mysql/mysql.conf.d/mysqld.cnf"
-    else
-        MYSQL_CNF="/etc/mysql/mariadb.conf.d/50-server.cnf"
-    fi
-    
-    # Backup config
-    cp "$MYSQL_CNF" "${MYSQL_CNF}.backup"
-    
     # Update port in config
     if grep -q "^port" "$MYSQL_CNF"; then
         sed -i "s/^port.*/port = ${DB_PORT}/" "$MYSQL_CNF"
@@ -259,13 +268,14 @@ if [ "$DB_PORT" != "3306" ]; then
         # Add port line after [mysqld] section
         sed -i "/^\[mysqld\]/a port = ${DB_PORT}" "$MYSQL_CNF"
     fi
-    
-    # Restart database service
-    systemctl restart ${DB_SERVICE}
-    
     echo -e "${GREEN}✅ $DB_TYPE configured for port ${DB_PORT}${NC}"
-    echo -e "${YELLOW}Note: Clients must connect using port ${DB_PORT}${NC}"
 fi
+
+# Restart database service to apply changes
+systemctl restart ${DB_SERVICE}
+
+echo -e "${GREEN}✅ $DB_TYPE configured to accept connections on 0.0.0.0:${DB_PORT}${NC}"
+echo -e "${YELLOW}Note: Clients can connect remotely using port ${DB_PORT}${NC}"
 
 # Step 5: Webmin Installation (Optional)
 print_step "Webmin Installation (Optional)"
