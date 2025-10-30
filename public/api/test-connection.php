@@ -1,6 +1,8 @@
 <?php
 // public/api/test-connection.php
-// Minimal MySQL connectivity check endpoint
+// Robust MySQL connectivity check endpoint (no mysql.user reads)
+
+declare(strict_types=1);
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -13,19 +15,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-function json_response($status, $data) {
+function respond(array $data, int $status = 200): void {
     http_response_code($status);
     echo json_encode($data);
     exit;
 }
 
-$raw = file_get_contents('php://input');
+$raw = file_get_contents('php://input') ?: '';
 $payload = json_decode($raw, true);
 if (!is_array($payload)) {
-    json_response(400, [
-        'ok' => false,
-        'error' => 'Invalid JSON body',
-    ]);
+    respond(['ok' => false, 'error' => 'Invalid JSON body'], 400);
 }
 
 $host = isset($payload['host']) ? (string)$payload['host'] : '';
@@ -33,35 +32,27 @@ $port = isset($payload['port']) ? (int)$payload['port'] : 3306;
 $user = isset($payload['username']) ? (string)$payload['username'] : '';
 $pass = isset($payload['password']) ? (string)$payload['password'] : '';
 $db   = isset($payload['database']) ? (string)$payload['database'] : '';
+$sdeDb = isset($payload['sdeDatabase']) ? (string)$payload['sdeDatabase'] : 'EveStaticData';
 
 if ($host === '' || $user === '' || $db === '') {
-    json_response(400, [
-        'ok' => false,
-        'error' => 'Missing required fields: host, username, database',
-    ]);
+    respond(['ok' => false, 'error' => 'Missing required fields: host, username, database'], 400);
 }
 
 $start = microtime(true);
 
-// Configure mysqli to use a short timeout
 mysqli_report(MYSQLI_REPORT_OFF);
 $mysqli = @mysqli_init();
 if (!$mysqli) {
-    json_response(500, [
-        'ok' => false,
-        'error' => 'Failed to initialize mysqli',
-    ]);
+    respond(['ok' => false, 'error' => 'Failed to initialize mysqli'], 500);
 }
+@$mysqli->options(MYSQLI_OPT_CONNECT_TIMEOUT, 10);
 
-// 8 second timeout
-@$mysqli->options(MYSQLI_OPT_CONNECT_TIMEOUT, 8);
-
-// Attempt connection
-$connected = @$mysqli->real_connect($host, $user, $pass, $db, $port);
+// Connect without selecting DB first to allow separate checks
+$connected = @$mysqli->real_connect($host, $user, $pass, null, $port);
 $latencyMs = (int) round((microtime(true) - $start) * 1000);
 
 if (!$connected) {
-    json_response(200, [
+    respond([
         'ok' => false,
         'latencyMs' => $latencyMs,
         'mysqlError' => $mysqli->connect_error,
@@ -69,15 +60,46 @@ if (!$connected) {
     ]);
 }
 
-// Run a trivial query to confirm the selected DB is reachable
-$pingOk = @$mysqli->query('SELECT 1 AS ok');
-$serverVersion = @$mysqli->server_info;
+// Identify current user and server version
+$currentUser = null; $serverVersion = null;
+if ($res = @$mysqli->query('SELECT CURRENT_USER() AS u')) {
+    if ($row = $res->fetch_assoc()) { $currentUser = $row['u']; }
+    $res->close();
+}
+if ($res = @$mysqli->query('SELECT VERSION() AS v')) {
+    if ($row = $res->fetch_assoc()) { $serverVersion = $row['v']; }
+    $res->close();
+}
 
-// Close ASAP
+// Check target DB access
+$hasLmeveDb = false; $canSelectLmeve = false;
+if (@$mysqli->select_db($db)) {
+    $hasLmeveDb = true;
+    if ($res = @$mysqli->query('SELECT 1 AS ok')) { $canSelectLmeve = true; $res->close(); }
+}
+
+// Check SDE DB access
+$hasSdeDb = false; $canSelectSde = false;
+if ($sdeDb) {
+    if (@$mysqli->select_db($sdeDb)) {
+        $hasSdeDb = true;
+        if ($res = @$mysqli->query('SELECT 1 AS ok')) { $canSelectSde = true; $res->close(); }
+    }
+}
+
 @$mysqli->close();
 
-json_response(200, [
-    'ok' => $pingOk ? true : false,
+respond([
+    'ok' => true,
     'latencyMs' => $latencyMs,
     'serverVersion' => $serverVersion,
+    'currentUser' => $currentUser,
+    'host' => $host,
+    'port' => $port,
+    'database' => $db,
+    'sdeDatabase' => $sdeDb,
+    'hasLmeveDb' => $hasLmeveDb,
+    'canSelectLmeve' => $canSelectLmeve,
+    'hasSdeDb' => $hasSdeDb,
+    'canSelectSde' => $canSelectSde,
 ]);

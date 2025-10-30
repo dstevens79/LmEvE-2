@@ -1932,38 +1932,32 @@ echo "See README.md for detailed setup instructions"
       // Run the REAL connection test
       const testResult = await manager.testConnection();
       
-      // Additional check for lmeve user if basic connection works
+      // Additional check for lmeve user only when appropriate
       let lmeveUserExists = false;
       if (testResult.success) {
-        try {
-          addConnectionLog('👤 Checking for lmeve database user...');
-          
-          // Try to connect with lmeve user specifically
-          const lmeveConfig = {
-            ...config,
-            username: 'lmeve',
-            password: databaseSettings.lmevePassword || 'lmpassword' // fallback
-          };
-          
-          const lmeveManager = new DatabaseManager(lmeveConfig);
-          const lmeveTest = await lmeveManager.testConnection();
-          
-          if (lmeveTest.success && lmeveTest.validated) {
-            addConnectionLog('✅ lmeve user found and accessible');
-            addConnectionLog('🎯 lmeve user has proper database access');
-            lmeveUserExists = true;
-          } else if (lmeveTest.success && !lmeveTest.validated) {
-            addConnectionLog('⚠️ lmeve user found but connection validation failed');
-            addConnectionLog('💡 Database exists but lmeve user may have insufficient permissions');
-          } else {
-            addConnectionLog('❌ lmeve user not found or credentials invalid');
-            addConnectionLog('💡 This indicates remote setup has not been completed yet');
-            addConnectionLog('🔧 The database connection works, but lmeve user needs to be created');
+        // If the tested user IS already 'lmeve', consider it present and skip redundant check
+        if (username.trim().toLowerCase() === 'lmeve') {
+          addConnectionLog('✅ Using lmeve user credentials — user confirmed');
+          lmeveUserExists = true;
+        } else if (databaseSettings.lmevePassword && databaseSettings.lmevePassword.trim() !== '') {
+          // Only attempt a secondary check if an explicit lmeve password has been provided
+          try {
+            addConnectionLog('👤 Checking for lmeve database user (using provided lmeve password)...');
+            const lmeveConfig = { ...config, username: 'lmeve', password: databaseSettings.lmevePassword.trim() };
+            const lmeveManager = new DatabaseManager(lmeveConfig);
+            const lmeveTest = await lmeveManager.testConnection();
+            if (lmeveTest.success && lmeveTest.validated) {
+              addConnectionLog('✅ lmeve user found and accessible');
+              lmeveUserExists = true;
+            } else {
+              addConnectionLog('⚠️ lmeve user check did not validate with provided password');
+            }
+          } catch (error) {
+            addConnectionLog('⚠️ Skipping lmeve user check due to error');
           }
-        } catch (error) {
-          addConnectionLog('⚠️ Could not test lmeve user connection');
-          addConnectionLog('💡 Database connection works, but lmeve user status unclear');
-          addConnectionLog(`   Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        } else {
+          // No lmeve password provided — do not guess; avoid false negatives
+          addConnectionLog('ℹ️ Skipping lmeve user check (no separate lmeve password provided)');
         }
       }
       
@@ -2072,7 +2066,7 @@ echo "See README.md for detailed setup instructions"
 
   // Database setup readiness check
   const getDatabaseSetupReadiness = () => {
-    const requirements = [];
+    const requirements: string[] = [];
     let isReady = true;
 
     // Check database connection settings - only if not filled in
