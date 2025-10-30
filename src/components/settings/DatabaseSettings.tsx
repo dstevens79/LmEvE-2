@@ -239,6 +239,10 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
 
   const handleSaveSettings = async () => {
     try {
+      // Force commit current settings to persistence
+      if (databaseSettings) {
+        setDatabaseSettings({ ...databaseSettings });
+      }
       toast.success('Database settings saved successfully');
     } catch (error) {
       toast.error('Failed to save database settings');

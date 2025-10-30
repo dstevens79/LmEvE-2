@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -121,7 +121,7 @@ function categorizeItem(typeName: string): string {
 
 export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   const { user } = useAuth();
-  const { assets, loading, refreshAssets } = useLMeveData();
+  const { assets, loading, refreshAssets, setupStatus } = useLMeveData();
   const [selectedStation, setSelectedStation] = useKV<number | null>('assets-selected-station', null);
   const [selectedHangar, setSelectedHangar] = useKV<number | null>('assets-selected-hangar', null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -226,11 +226,21 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
     }
   }, [stations, selectedStation, setSelectedStation]);
 
+  // Prevent runaway refresh: only attempt one automatic refresh when ESI+DB are configured
+  const didAutoRefresh = useRef(false);
   useEffect(() => {
-    if (user && assets.length === 0 && !loading.assets) {
+    if (
+      !didAutoRefresh.current &&
+      user &&
+      setupStatus?.databaseConnected &&
+      setupStatus?.esiConfigured &&
+      assets.length === 0 &&
+      !loading.assets
+    ) {
+      didAutoRefresh.current = true;
       refreshAssets();
     }
-  }, [user, assets.length, loading.assets]);
+  }, [user, setupStatus?.databaseConnected, setupStatus?.esiConfigured, assets.length, loading.assets, refreshAssets]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
