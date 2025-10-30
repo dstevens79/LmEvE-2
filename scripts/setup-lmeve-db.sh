@@ -842,31 +842,44 @@ if [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]]; then
             print_step "Importing EVE Static Data"
             echo -e "${CYAN}This will take several minutes...${NC}\n"
             
-            # Import all SQL files
-            IMPORT_SUCCESS=true
+            # Find all .sql.bz2 files in the extracted directory
+            SQL_FILES=$(find . -name "*.sql.bz2" 2>/dev/null)
             IMPORT_COUNT=0
+            IMPORT_SUCCESS=true
             FAILED_FILES=""
             
-            for sqlfile in *.sql; do
-                if [[ -f "$sqlfile" ]]; then
-                    echo -e "${CYAN}Importing $sqlfile...${NC}"
-                    if mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} < "$sqlfile" 2>&1 | grep -v "Warning"; then
+            if [ -z "$SQL_FILES" ]; then
+                echo -e "${RED}❌ No .sql.bz2 files found in extracted archive${NC}"
+                echo -e "${YELLOW}Archive contents:${NC}"
+                ls -lah
+                IMPORT_SUCCESS=false
+            else
+                for sqlfile in $SQL_FILES; do
+                    filename=$(basename "$sqlfile" .bz2)
+                    echo -e "${CYAN}Importing: $filename${NC}"
+                    
+                    # Decompress and import in one step
+                    if bunzip2 -c "$sqlfile" | mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} 2>&1 | grep -v "Warning"; then
                         IMPORT_COUNT=$((IMPORT_COUNT + 1))
+                        echo -e "${GREEN}  ✓ Imported successfully${NC}"
                     else
-                        echo -e "${YELLOW}⚠️  Warning: Failed to import $sqlfile${NC}"
-                        FAILED_FILES="${FAILED_FILES}\n  - $sqlfile"
+                        echo -e "${YELLOW}  ⚠ Import had errors${NC}"
+                        FAILED_FILES="${FAILED_FILES}\n  - $filename"
                         IMPORT_SUCCESS=false
                     fi
-                fi
-            done
+                done
+            fi
             
             echo ""
-            if [[ "$IMPORT_SUCCESS" = true ]]; then
+            if [[ "$IMPORT_SUCCESS" = true ]] && [[ $IMPORT_COUNT -gt 0 ]]; then
                 echo -e "${GREEN}✅ SDE data imported successfully (${IMPORT_COUNT} files)${NC}"
-            else
+            elif [[ $IMPORT_COUNT -gt 0 ]]; then
                 echo -e "${YELLOW}⚠️  Some SDE files failed to import:${NC}"
                 echo -e "${YELLOW}${FAILED_FILES}${NC}"
-                echo -e "${CYAN}Note: The database is still usable. You can reimport SDE data later.${NC}"
+                echo -e "${CYAN}Note: ${IMPORT_COUNT} files imported. The database is still usable.${NC}"
+            else
+                echo -e "${RED}❌ No SQL files were imported${NC}"
+                echo -e "${CYAN}You can manually import SDE data later${NC}"
             fi
         else
             echo -e "${RED}❌ SDE extraction failed${NC}"
