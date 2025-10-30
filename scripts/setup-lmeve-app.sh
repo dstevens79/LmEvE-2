@@ -75,9 +75,9 @@ else
 fi
 
 # Get installation directory
-echo -e "\n${BLUE}Installation Directory${NC}"
-read -p "Install directory [/var/www/lmeve2]: " INSTALL_DIR
-INSTALL_DIR=${INSTALL_DIR:-/var/www/lmeve2}
+echo -e "\n${BLUE}Select Installation Directory${NC}"
+read -p "Install directory [/var/www/html/lmeve2]: " INSTALL_DIR
+INSTALL_DIR=${INSTALL_DIR:-/var/www/html/lmeve2}
 
 # Get domain/server name
 echo -e "\n${BLUE}Server Configuration${NC}"
