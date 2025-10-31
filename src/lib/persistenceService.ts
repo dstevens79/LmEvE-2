@@ -635,6 +635,45 @@ export const backupSettings = async () => {
   document.body.removeChild(link);
 };
 
+// Server-backed persistence helpers
+export const saveSettingsToServer = async (): Promise<boolean> => {
+  try {
+    const backup = await exportAllSettings();
+    const resp = await fetch('/api/settings.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(backup)
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+};
+
+export const loadSettingsFromServer = async (): Promise<boolean> => {
+  try {
+    const resp = await fetch('/api/settings.php', { method: 'GET' });
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    if (!data || !data.settings) return false;
+    await importAllSettings(data.settings);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const bootstrapSettingsFromServerIfEmpty = async (): Promise<'loaded' | 'skipped' | 'failed'> => {
+  try {
+    const hasGeneral = localStorage.getItem('lmeve-settings-general');
+    if (hasGeneral) return 'skipped';
+    const ok = await loadSettingsFromServer();
+    return ok ? 'loaded' : 'failed';
+  } catch {
+    return 'failed';
+  }
+};
+
 // Configuration validation
 export const validateSettings = (category: string, settings: any): string[] => {
   const errors: string[] = [];

@@ -1,11 +1,12 @@
 <?php
 require_once __DIR__ . '/../../_lib/common.php';
 $payload = api_read_json();
-api_expect($payload, ['host','port','username','password','database','records']);
+api_expect($payload, ['records']);
 $records = $payload['records'];
 if (!is_array($records) || count($records) === 0) { api_fail(400, 'records must be a non-empty array'); }
 $mysqli = api_connect($payload);
-api_select_db($mysqli, (string)$payload['database']);
+$dbCfg = api_get_db_config($payload);
+api_select_db($mysqli, (string)($payload['database'] ?? $dbCfg['database'] ?? 'lmeve2'));
 
 // Match industry_jobs schema in setup-lmeve-db.sh
 $cols = [

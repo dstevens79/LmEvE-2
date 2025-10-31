@@ -44,17 +44,18 @@ function http_get_json($url, $headers) {
 }
 
 $payload = $_SERVER['REQUEST_METHOD'] === 'POST' ? api_read_json() : $_GET;
-// Expect DB creds + OAuth details
-$required = ['host','port','username','password','database','clientId','clientSecret','code','redirectUri'];
-api_expect($payload, $required);
+// Expect minimal OAuth details; DB/ESI config will be loaded from server settings if not provided
+api_expect($payload, ['code']);
 
 $db = api_connect($payload);
-api_select_db($db, (string)$payload['database']);
+$dbCfg = api_get_db_config($payload);
+api_select_db($db, (string)($payload['database'] ?? $dbCfg['database'] ?? 'lmeve2'));
 
-$clientId = (string)$payload['clientId'];
-$clientSecret = (string)$payload['clientSecret'];
+$esiCfg = api_get_esi_config($payload);
+$clientId = (string)($esiCfg['clientId'] ?? '');
+$clientSecret = (string)($esiCfg['clientSecret'] ?? '');
 $code = (string)$payload['code'];
-$redirectUri = (string)$payload['redirectUri'];
+$redirectUri = (string)($payload['redirectUri'] ?? $esiCfg['callbackUrl'] ?? '');
 
 $basic = base64_encode($clientId . ':' . $clientSecret);
 

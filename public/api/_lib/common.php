@@ -4,7 +4,7 @@
 declare(strict_types=1);
 
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -75,4 +75,110 @@ function api_limit(array $payload, int $default = 100, int $max = 1000): int {
     if ($limit < 1) $limit = 1;
     if ($limit > $max) $limit = $max;
     return $limit;
+}
+
+// ---- Server settings helpers ----
+
+function api_settings_path(): string {
+    // Align with settings.php location: /server/storage/settings.json
+    return __DIR__ . '/../../../server/storage/settings.json';
+}
+
+function api_load_server_settings(): ?array {
+    $file = api_settings_path();
+    if (!file_exists($file)) return null;
+    $raw = @file_get_contents($file);
+    if ($raw === false) return null;
+    $json = json_decode($raw, true);
+    return is_array($json) ? $json : null;
+}
+
+function api_resolve_settings_root(array $json): array {
+    // Support two shapes:
+    // 1) Full export: { version, exportDate, settings: { database, esi, ... } }
+    // 2) Direct: { database: {...}, esi: {...} }
+    if (isset($json['settings']) && is_array($json['settings'])) {
+        return $json['settings'];
+    }
+    return $json;
+}
+
+function api_get_db_config(array $payload = []): array {
+    $cfg = [
+        'host' => $payload['host'] ?? null,
+        'port' => isset($payload['port']) ? (int)$payload['port'] : null,
+        'username' => $payload['username'] ?? null,
+        'password' => $payload['password'] ?? null,
+        'database' => $payload['database'] ?? null,
+    ];
+    $missing = array_filter($cfg, fn($v) => $v === null || $v === '');
+    if (count($missing) === 0) return $cfg;
+
+    $json = api_load_server_settings();
+    if (!$json) return $cfg; // return possibly-partial
+    $root = api_resolve_settings_root($json);
+    $db = isset($root['database']) && is_array($root['database']) ? $root['database'] : [];
+    $cfg['host'] = $cfg['host'] ?? ($db['host'] ?? 'localhost');
+    $cfg['port'] = $cfg['port'] ?? (isset($db['port']) ? (int)$db['port'] : 3306);
+    $cfg['username'] = $cfg['username'] ?? ($db['username'] ?? '');
+    // If server stores masked password '***', treat as empty (client should supply or have stored real one earlier)
+    $serverPass = $db['password'] ?? '';
+    if ($serverPass === '***') $serverPass = '';
+    $cfg['password'] = $cfg['password'] ?? $serverPass;
+    $cfg['database'] = $cfg['database'] ?? ($db['database'] ?? 'lmeve2');
+    return $cfg;
+}
+
+function api_get_esi_config(array $payload = []): array {
+    $cfg = [
+        'clientId' => $payload['clientId'] ?? null,
+        'clientSecret' => $payload['clientSecret'] ?? null,
+        'callbackUrl' => $payload['redirectUri'] ?? ($payload['callbackUrl'] ?? null),
+        'userAgent' => $payload['userAgent'] ?? null,
+    ];
+    $missing = array_filter($cfg, fn($v) => $v === null || $v === '');
+    if (count($missing) === 0) return $cfg;
+
+    $json = api_load_server_settings();
+    if (!$json) return $cfg;
+    $root = api_resolve_settings_root($json);
+    $esi = isset($root['esi']) && is_array($root['esi']) ? $root['esi'] : [];
+    $cfg['clientId'] = $cfg['clientId'] ?? ($esi['clientId'] ?? '');
+    $secret = $esi['clientSecret'] ?? '';
+    if ($secret === '***') $secret = '';
+    $cfg['clientSecret'] = $cfg['clientSecret'] ?? $secret;
+    $cfg['callbackUrl'] = $cfg['callbackUrl'] ?? ($esi['callbackUrl'] ?? '');
+    $cfg['userAgent'] = $cfg['userAgent'] ?? ($esi['userAgent'] ?? 'LMeve-2');
+    return $cfg;
+}
+
+/**
+ * Connect to MySQL using credentials from payload (overrides) or server settings.
+ */
+function api_connect(array $payload): mysqli {
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $mysqli = @mysqli_init();
+    if (!$mysqli) {
+        api_fail(500, 'Failed to initialize MySQL client');
+    }
+    @$mysqli->options(MYSQLI_OPT_CONNECT_TIMEOUT, 10);
+
+    $dbCfg = api_get_db_config($payload);
+    $host = (string)($dbCfg['host'] ?? 'localhost');
+    $port = (int)($dbCfg['port'] ?? 3306);
+    $user = (string)($dbCfg['username'] ?? '');
+    $pass = (string)($dbCfg['password'] ?? '');
+
+    if ($host === '' || $user === '') {
+        api_fail(400, 'Database configuration missing: host/username');
+    }
+
+    $ok = @$mysqli->real_connect($host, $user, $pass, null, $port);
+    if (!$ok) {
+        api_fail(200, 'MySQL connect failed', [
+            'mysqlError' => $mysqli->connect_error,
+            'mysqlErrno' => $mysqli->connect_errno,
+        ]);
+    }
+    return $mysqli;
 }

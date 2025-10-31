@@ -93,6 +93,29 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   // Load settings on component mount
   useEffect(() => {
     checkSDEStatus();
+    // Load server-backed settings (if available) to hydrate local config for all users
+    (async () => {
+      try {
+        const resp = await fetch('/api/settings.php', { method: 'GET' });
+        if (resp.ok) {
+          const data = await resp.json();
+          const srv = data?.settings?.database;
+          if (srv && typeof srv === 'object') {
+            setDatabaseSettings(current => ({
+              ...current,
+              host: srv.host ?? current?.host ?? '',
+              port: srv.port ?? current?.port ?? 3306,
+              database: srv.database ?? current?.database ?? 'lmeve2',
+              username: srv.username ?? current?.username ?? 'lmeve',
+              // Keep existing local secret if server returns masked '***'
+              password: (srv.password && srv.password !== '***') ? srv.password : (current?.password ?? ''),
+              sudoUsername: srv.sudoUsername ?? current?.sudoUsername ?? 'root',
+              sudoPassword: (srv.sudoPassword && srv.sudoPassword !== '***') ? srv.sudoPassword : (current?.sudoPassword ?? ''),
+            }));
+          }
+        }
+      } catch {}
+    })();
     // Fetch server/client host information
     (async () => {
       try {
@@ -166,6 +189,14 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
 
       if (result.success) {
         setIsConnected(true);
+        // Persist to server so all users share the config
+        try {
+          await fetch('/api/settings.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ database: { ...databaseSettings } })
+          });
+        } catch {}
         try {
           const setupRaw = localStorage.getItem('lmeve-setup-status');
           const setup = setupRaw ? JSON.parse(setupRaw) : {};
@@ -234,6 +265,14 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
 
       if (result.success && result.validated) {
         setIsConnected(true);
+        // Persist to server on successful validation
+        try {
+          await fetch('/api/settings.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ database: { ...databaseSettings } })
+          });
+        } catch {}
         try {
           const setupRaw = localStorage.getItem('lmeve-setup-status');
           const setup = setupRaw ? JSON.parse(setupRaw) : {};
@@ -286,6 +325,14 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
       if (databaseSettings) {
         setDatabaseSettings({ ...databaseSettings });
       }
+      // Also persist to server so other clients pick it up
+      try {
+        await fetch('/api/settings.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ database: { ...databaseSettings } })
+        });
+      } catch {}
       toast.success('Database settings saved successfully');
     } catch (error) {
       toast.error('Failed to save database settings');

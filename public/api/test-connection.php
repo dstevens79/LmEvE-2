@@ -1,8 +1,10 @@
 <?php
 // public/api/test-connection.php
-// Robust MySQL connectivity check endpoint (no mysql.user reads)
+// Robust MySQL connectivity check endpoint (no mysql.user reads). Uses server settings by default.
 
 declare(strict_types=1);
+
+require_once __DIR__ . '/_lib/common.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -15,27 +17,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-function respond(array $data, int $status = 200): void {
-    http_response_code($status);
-    echo json_encode($data);
-    exit;
-}
-
 $raw = file_get_contents('php://input') ?: '';
 $payload = json_decode($raw, true);
-if (!is_array($payload)) {
-    respond(['ok' => false, 'error' => 'Invalid JSON body'], 400);
-}
+if (!is_array($payload)) { $payload = []; }
 
-$host = isset($payload['host']) ? (string)$payload['host'] : '';
-$port = isset($payload['port']) ? (int)$payload['port'] : 3306;
-$user = isset($payload['username']) ? (string)$payload['username'] : '';
-$pass = isset($payload['password']) ? (string)$payload['password'] : '';
-$db   = isset($payload['database']) ? (string)$payload['database'] : '';
-$sdeDb = isset($payload['sdeDatabase']) ? (string)$payload['sdeDatabase'] : 'EveStaticData';
+$dbCfg = api_get_db_config($payload);
+$host = (string)($dbCfg['host'] ?? 'localhost');
+$port = (int)($dbCfg['port'] ?? 3306);
+$user = (string)($dbCfg['username'] ?? '');
+$pass = (string)($dbCfg['password'] ?? '');
+$db   = (string)($payload['database'] ?? $dbCfg['database'] ?? '');
+$sdeDb = (string)($payload['sdeDatabase'] ?? 'EveStaticData');
 
 if ($host === '' || $user === '' || $db === '') {
-    respond(['ok' => false, 'error' => 'Missing required fields: host, username, database'], 400);
+    echo json_encode(['ok' => false, 'error' => 'Missing database configuration (host/username/database). Configure in Settings first or include overrides in the request body.']);
+    exit;
 }
 
 $start = microtime(true);
@@ -43,7 +39,8 @@ $start = microtime(true);
 mysqli_report(MYSQLI_REPORT_OFF);
 $mysqli = @mysqli_init();
 if (!$mysqli) {
-    respond(['ok' => false, 'error' => 'Failed to initialize mysqli'], 500);
+    echo json_encode(['ok' => false, 'error' => 'Failed to initialize mysqli']);
+    exit;
 }
 @$mysqli->options(MYSQLI_OPT_CONNECT_TIMEOUT, 10);
 
@@ -52,12 +49,13 @@ $connected = @$mysqli->real_connect($host, $user, $pass, null, $port);
 $latencyMs = (int) round((microtime(true) - $start) * 1000);
 
 if (!$connected) {
-    respond([
+    echo json_encode([
         'ok' => false,
         'latencyMs' => $latencyMs,
         'mysqlError' => $mysqli->connect_error,
         'mysqlErrno' => $mysqli->connect_errno,
     ]);
+    exit;
 }
 
 // Identify current user and server version
@@ -89,7 +87,7 @@ if ($sdeDb) {
 
 @$mysqli->close();
 
-respond([
+echo json_encode([
     'ok' => true,
     'latencyMs' => $latencyMs,
     'serverVersion' => $serverVersion,

@@ -139,23 +139,23 @@ interface SettingsProps {
 
 export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps) {
   // Use main auth provider for all authentication
-  const {
-    user,
-    esiConfig,
-    updateESIConfig,
-    getRegisteredCorporations,
-    registerCorporation,
-    updateCorporation,
-    deleteCorporation,
-    adminConfig,
-    updateAdminConfig,
-    getAllUsers,
-    createManualUser,
-    updateUserRole,
-    deleteUser,
-    loginWithESI,
-    logout
-  } = useAuth();
+  import { 
+    useGeneralSettings, 
+    useDatabaseSettings, 
+    useESISettings, 
+    useSDESettings, 
+    useSyncSettings, 
+    useNotificationSettings, 
+    useIncomeSettings, 
+    useManualUsers, 
+    useApplicationData, 
+    resetAllSettings,
+    backupSettings,
+    exportAllSettings,
+    importAllSettings,
+    validateSettings,
+    useLocalKV,
+  } from '@/lib/persistenceService';
   
   // Get registered corporations
   const registeredCorps = getRegisteredCorporations();
@@ -479,6 +479,18 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
 
 
 
+  // Helper: best-effort server sync after saves
+  const syncServerSettings = async () => {
+    try {
+      const backup = await exportAllSettings();
+      await fetch('/api/settings.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(backup)
+      });
+    } catch {}
+  };
+
   // Save handlers for each settings category
   const saveGeneralSettings = async () => {
     try {
@@ -488,7 +500,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
         return;
       }
       
-      setGeneralSettings({ ...generalSettings });
+  setGeneralSettings({ ...generalSettings });
+  syncServerSettings();
       toast.success('General settings saved successfully');
     } catch (error) {
       console.error('Failed to save general settings:', error);
@@ -504,7 +517,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
         return;
       }
       
-      setDatabaseSettings({ ...databaseSettings });
+  setDatabaseSettings({ ...databaseSettings });
+  syncServerSettings();
       toast.success('Database settings saved successfully');
     } catch (error) {
       console.error('Failed to save database settings:', error);
@@ -535,7 +549,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
       updateESIConfig(clientId, clientSecret);
       
       // Save to local settings as well
-      setESISettings({ ...esiSettings });
+  setESISettings({ ...esiSettings });
+  syncServerSettings();
       
       toast.success('ESI settings saved successfully');
     } catch (error) {
@@ -546,7 +561,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
 
   const saveSDESettings = async () => {
     try {
-      setSDESettings({ ...sdeSettings });
+  setSDESettings({ ...sdeSettings });
+  syncServerSettings();
       toast.success('SDE settings saved successfully');
     } catch (error) {
       console.error('Failed to save SDE settings:', error);
@@ -557,7 +573,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
   const saveSyncSettings = async () => {
     try {
       // Save sync intervals
-      setSyncSettings({ ...syncSettings });
+  setSyncSettings({ ...syncSettings });
+  syncServerSettings();
       
       // Save ESI route configurations
       const routeConfig = esiRouteManager.exportConfig();
@@ -592,7 +609,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
         return;
       }
       
-      setNotificationSettings({ ...notificationSettings });
+  setNotificationSettings({ ...notificationSettings });
+  syncServerSettings();
       toast.success('Notification settings saved successfully');
     } catch (error) {
       console.error('Failed to save notification settings:', error);
@@ -608,7 +626,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
         return;
       }
       
-      setIncomeSettings({ ...incomeSettings });
+  setIncomeSettings({ ...incomeSettings });
+  syncServerSettings();
       toast.success('Income settings saved successfully');
     } catch (error) {
       console.error('Failed to save income settings:', error);

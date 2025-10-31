@@ -36,7 +36,7 @@ import {
   Key,
   Receipt
 } from '@phosphor-icons/react';
-import { useLocalKV } from '@/lib/persistenceService';
+import { useLocalKV, bootstrapSettingsFromServerIfEmpty } from '@/lib/persistenceService';
 import { TabType } from '@/lib/types';
 import { DatabaseProvider } from '@/lib/DatabaseContext';
 import { LMeveDataProvider } from '@/lib/LMeveDataContext';
@@ -61,6 +61,16 @@ import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
 import { Buyback } from '@/components/tabs/Buyback';
 
 function AppContent() {
+  // Bootstrap settings from server if this origin has no local settings yet
+  React.useEffect(() => {
+    (async () => {
+      const status = await bootstrapSettingsFromServerIfEmpty();
+      if (status === 'loaded') {
+        // Reload to ensure all hooks read the just-restored settings
+        window.location.reload();
+      }
+    })();
+  }, []);
   const [activeTab, setActiveTab] = useLocalKV<TabType>('active-tab', 'dashboard');
   const [activeSettingsTab, setActiveSettingsTab] = useLocalKV<string>('active-settings-tab', 'general');
   const [settingsExpanded, setSettingsExpanded] = useLocalKV<boolean>('settings-expanded', false);

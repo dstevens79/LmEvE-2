@@ -17,13 +17,15 @@ function http_post_json($url, $headers, $data) {
 }
 
 $payload = api_read_json();
-api_expect($payload, ['host','port','username','password','database','clientId','clientSecret','characterId','refreshToken']);
+api_expect($payload, ['characterId','refreshToken']);
 
 $db = api_connect($payload);
-api_select_db($db, (string)$payload['database']);
+$dbCfg = api_get_db_config($payload);
+api_select_db($db, (string)($payload['database'] ?? $dbCfg['database'] ?? 'lmeve2'));
 
-$clientId = (string)$payload['clientId'];
-$clientSecret = (string)$payload['clientSecret'];
+$esiCfg = api_get_esi_config($payload);
+$clientId = (string)($esiCfg['clientId'] ?? '');
+$clientSecret = (string)($esiCfg['clientSecret'] ?? '');
 $refreshToken = (string)$payload['refreshToken'];
 $characterId = (int)$payload['characterId'];
 $basic = base64_encode($clientId . ':' . $clientSecret);

@@ -1,0 +1,4 @@
+# Ignore server-stored settings and runtime data
+*.json
+*.sqlite
+*.db

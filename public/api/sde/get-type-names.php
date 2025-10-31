@@ -2,7 +2,6 @@
 // Lookup type names from EveStaticData.invTypes by IDs
 require_once __DIR__ . '/../_lib/common.php';
 $payload = api_read_json();
-api_expect($payload, ['host','port','username','password']);
 $ids = $payload['typeIds'] ?? [];
 if (!is_array($ids) || count($ids) === 0) {
   api_fail(400, 'typeIds must be a non-empty array');
