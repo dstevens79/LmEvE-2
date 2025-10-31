@@ -119,10 +119,10 @@ export class ESIAuthService {
   private redirectUri: string;
   private registeredCorporations: CorporationConfig[];
 
-  constructor(clientId: string, clientSecret?: string, registeredCorps: CorporationConfig[] = []) {
+  constructor(clientId: string, clientSecret?: string, registeredCorps: CorporationConfig[] = [], redirectUri?: string) {
     this.clientId = clientId;
     this.clientSecret = clientSecret;
-    this.redirectUri = `${window.location.origin}/`;
+    this.redirectUri = redirectUri && redirectUri.trim().length > 0 ? redirectUri : `${window.location.origin}/`;
     this.registeredCorporations = registeredCorps;
   }
 
@@ -762,9 +762,10 @@ export let esiAuthService: ESIAuthService | null = null;
 export function initializeESIAuth(
   clientId: string, 
   clientSecret?: string, 
-  registeredCorps: CorporationConfig[] = []
+  registeredCorps: CorporationConfig[] = [],
+  redirectUri?: string
 ): void {
-  esiAuthService = new ESIAuthService(clientId, clientSecret, registeredCorps);
+  esiAuthService = new ESIAuthService(clientId, clientSecret, registeredCorps, redirectUri);
   console.log('✅ ESI Auth Service initialized');
 }
 

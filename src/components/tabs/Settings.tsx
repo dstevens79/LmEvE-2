@@ -3130,6 +3130,20 @@ echo "See README.md for detailed setup instructions"
                     </div>
                   </div>
                   
+                  {/* Callback URL */}
+                  <div className="space-y-2">
+                    <Label htmlFor="callbackUrl">Redirect/Callback URL</Label>
+                    <Input
+                      id="callbackUrl"
+                      value={esiSettings.callbackUrl || ''}
+                      onChange={(e) => updateESISetting('callbackUrl', e.target.value)}
+                      placeholder={`${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || window.location.hostname}${window.location.port ? ':' + window.location.port : ''}/api/auth/esi/callback.php`}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Must match a Redirect URI configured in your EVE developer application exactly. If you want to keep your old path (e.g. /lmeve/wwwroot/ssologin.php), set it here and add it in the dev console.
+                    </p>
+                  </div>
+
                   <div className="flex gap-2">
                     <Button
                       onClick={() => {
@@ -3174,6 +3188,7 @@ echo "See README.md for detailed setup instructions"
                         try {
                           const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
                           const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
+                          const callbackUrl = (esiSettings.callbackUrl || '').trim() || undefined;
                           if (!clientId) {
                             toast.error('Client ID is required to test ESI configuration');
                             return;
@@ -3181,7 +3196,7 @@ echo "See README.md for detailed setup instructions"
 
                           // Initialize ESI service on-demand with current inputs (without persisting form)
                           const corps = getRegisteredCorporations();
-                          initializeESIAuth(clientId, clientSecret, corps);
+                          initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
 
                           const svc = getESIAuthService();
                           const url = await svc.initiateLogin('basic');
@@ -3193,7 +3208,8 @@ echo "See README.md for detailed setup instructions"
                           } catch {}
 
                           const usedPKCE = url.includes('code_challenge=');
-                          toast.success(`${usedPKCE ? 'PKCE ready (secure)' : 'Non-PKCE fallback (HTTP)'} · ESI initialized`);
+                          const ru = new URL(url).searchParams.get('redirect_uri');
+                          toast.success(`${usedPKCE ? 'PKCE ready (secure)' : 'Non-PKCE fallback (HTTP)'} · Redirect: ${ru}`);
                         } catch (err) {
                           console.error('ESI config test failed:', err);
                           const message = err instanceof Error ? err.message : 'Failed to initialize ESI login';
@@ -3205,7 +3221,13 @@ echo "See README.md for detailed setup instructions"
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Create an application at developers.eveonline.com with callback URL: <code className="bg-background px-1 rounded">{window.location.origin}/</code>
+                    Create an application at developers.eveonline.com with callback URL: 
+                    <code className="bg-background px-1 rounded">{`${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}${window.location.port ? ':' + window.location.port : ''}/api/auth/esi/callback.php`}</code>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {window.location.port
+                      ? `If your external port differs from ${window.location.port}, replace it accordingly (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/api/auth/esi/callback.php).`
+                      : `If you expose the app on a non-standard port, add :PORT after the IP (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/api/auth/esi/callback.php).`}
                   </p>
                 </div>
               </div>

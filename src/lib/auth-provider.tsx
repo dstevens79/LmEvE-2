@@ -96,8 +96,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     if (esiConfiguration.clientId) {
       try {
-        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations);
-        console.log('✅ ESI Auth initialized with configuration');
+        // Try to read callback URL from ESI settings if present
+        let redirectUri: string | undefined = undefined;
+        try {
+          const raw = localStorage.getItem('lmeve-settings-esi');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.callbackUrl && typeof parsed.callbackUrl === 'string') {
+              redirectUri = parsed.callbackUrl;
+            }
+          }
+        } catch {}
+
+        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, redirectUri);
+        console.log('✅ ESI Auth initialized with configuration', { redirectUri });
       } catch (error) {
         console.error('❌ Failed to initialize ESI Auth:', error);
       }
@@ -186,7 +198,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } catch (e) {
         // Initialize on-demand if not yet initialized
         console.warn('ESI service not initialized. Initializing now...');
-        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations);
+        // Reinitialize with current callbackUrl if available
+        let redirectUri: string | undefined = undefined;
+        try {
+          const raw = localStorage.getItem('lmeve-settings-esi');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.callbackUrl && typeof parsed.callbackUrl === 'string') {
+              redirectUri = parsed.callbackUrl;
+            }
+          }
+        } catch {}
+        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, redirectUri);
         esiService = getESIAuthService();
       }
       const url = scopesOverride && scopesOverride.length > 0
@@ -681,7 +704,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
     // Initialize ESI service with new config
     try {
-      initializeESIAuth(clientId, clientSecret, registeredCorporations);
+      // Respect current callbackUrl if saved in settings
+      let redirectUri: string | undefined = undefined;
+      try {
+        const raw = localStorage.getItem('lmeve-settings-esi');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.callbackUrl && typeof parsed.callbackUrl === 'string') {
+            redirectUri = parsed.callbackUrl;
+          }
+        }
+      } catch {}
+      initializeESIAuth(clientId, clientSecret, registeredCorporations, redirectUri);
       console.log('✅ ESI configuration updated');
     } catch (error) {
       console.error('❌ Failed to update ESI configuration:', error);
