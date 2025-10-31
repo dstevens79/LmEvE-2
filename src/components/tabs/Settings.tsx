@@ -141,6 +141,9 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
   // Use main auth provider for all authentication
   // (moved) imports are already declared at the module top from '@/lib/persistenceService'
   const {
+    user,
+    loginWithESI,
+    logout,
     esiConfig,
     updateESIConfig,
     adminConfig,
@@ -148,6 +151,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     getRegisteredCorporations,
     getAllUsers,
     deleteUser,
+    updateCorporation,
+    deleteCorporation,
   } = useAuth();
   
   // Get registered corporations
@@ -1708,7 +1713,7 @@ echo "See README.md for detailed setup instructions"
         toast.warning(`SDE update available: ${latestVersion} (current: ${currentVersion})`);
         
         // Update SDE status
-        setSdeStatus(prev => ({
+  setSDEStats(prev => ({
           ...prev,
           isUpdateAvailable: true,
           latestVersion,
@@ -1718,7 +1723,7 @@ echo "See README.md for detailed setup instructions"
         addLog('✅ Your SDE is current with the latest Fuzzwork release');
         toast.success(`SDE is up to date: ${currentVersion}`);
         
-        setSdeStatus(prev => ({
+  setSDEStats(prev => ({
           ...prev,
           isUpdateAvailable: false,
           latestVersion,
@@ -1741,7 +1746,7 @@ echo "See README.md for detailed setup instructions"
       
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      addLog(`❌ SDE check failed: ${errorMsg}`);
+  addConnectionLog(`❌ SDE check failed: ${errorMsg}`);
       toast.error(`SDE check failed: ${errorMsg}`);
     }
   };
@@ -2352,7 +2357,7 @@ echo "See README.md for detailed setup instructions"
   };
 
   const handleSaveESIConfig = () => {
-    updateESIConfig(esiConfig);
+    updateESIConfig(esiConfig.clientId || '', esiConfig.clientSecret);
     toast.success('ESI configuration saved');
   };
 
