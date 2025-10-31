@@ -33,10 +33,10 @@ export const ROLE_DEFINITIONS: Record<UserRole, RolePermissions> = {
   
   corp_admin: {
     // System permissions
-    canManageSystem: false,
-    canManageMultipleCorps: false,
+    canManageSystem: true, // CEOs can manage site settings
+    canManageMultipleCorps: false, // but only within their own corp
     canConfigureESI: true,
-    canManageDatabase: false,
+    canManageDatabase: true, // allow DB settings management
     
     // Corporation permissions
     canManageCorp: true,
