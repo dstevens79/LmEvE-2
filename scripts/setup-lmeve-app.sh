@@ -15,6 +15,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Header
+clear 2>/dev/null || tput clear 2>/dev/null || true
 echo -e "${BLUE}"
 echo "╔════════════════════════════════════════════════════╗"
 echo "║          LmEvEv2 Application Installer            ║"
@@ -58,6 +59,21 @@ check_dep() {
         if [ -n "$ver_cmd" ]; then
             ver=$(eval "$ver_cmd" 2>/dev/null | head -n1)
         fi
+        # Trim noisy version strings for readability
+        case "$cmd" in
+            curl)
+                # Example: "curl 7.68.0 (x86_64-pc-linux-gnu) ..." -> "curl 7.68.0"
+                ver=$(echo "$ver" | awk '{print $1" "$2}')
+                ;;
+            php)
+                # Example: "PHP 7.4.3-...' -> "PHP 7.4.3-..." (first two tokens)
+                ver=$(echo "$ver" | awk '{print $1" "$2}')
+                ;;
+            apache2)
+                # Example: "Server version: Apache/2.4.41 (Ubuntu)" -> "Apache/2.4.41 (Ubuntu)"
+                ver=$(echo "$ver" | sed 's/^Server version: //')
+                ;;
+        esac
         echo -e "${GREEN}OK${NC}${ver:+  ($ver)}"
         return 0
     else

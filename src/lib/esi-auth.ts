@@ -281,7 +281,19 @@ export class ESIAuthService {
     
     const corporations = registeredCorps || this.registeredCorporations;
     
-    const storedStateData = sessionStorage.getItem('esi-auth-state');
+    // Gracefully wait for auth state (avoid momentary flash errors on slow loads)
+    let storedStateData = sessionStorage.getItem('esi-auth-state');
+    if (!storedStateData) {
+      for (let i = 0; i < 6 && !storedStateData; i++) {
+        // 6 retries ~ 1.2s total
+        await new Promise(res => setTimeout(res, 200));
+        storedStateData = sessionStorage.getItem('esi-auth-state');
+      }
+    }
+    if (!storedStateData) {
+      // As a last-resort fallback, check localStorage (some environments may persist there)
+      storedStateData = localStorage.getItem('esi-auth-state') || '';
+    }
     if (!storedStateData) {
       throw new Error('No stored authentication state found - possible session timeout');
     }
