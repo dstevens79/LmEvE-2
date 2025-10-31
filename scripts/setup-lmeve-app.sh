@@ -123,10 +123,12 @@ while true; do
     echo "  3) HTTP port             : ${HTTP_PORT}"
     echo "  4) Admin email           : ${ADMIN_EMAIL}"
     echo "  5) Install directory     : ${FINAL_DIR}"
-    echo "  6) Install SSL (certbot) : ${ENABLE_SSL}"
-    echo "  7) Configure UFW firewall: ${CONFIG_FIREWALL}"
-    echo "  P) Proceed with installation"
-    echo "  Q) Quit"
+            SSL_LABEL=$([[ "$ENABLE_SSL" =~ ^[Yy]$ ]] && echo "Yes" || echo "No")
+            FW_LABEL=$([[ "$CONFIG_FIREWALL" =~ ^[Yy]$ ]] && echo "Yes" || echo "No")
+        echo "  6) Install SSL (certbot) : ${SSL_LABEL}"
+        echo "  7) Configure UFW firewall: ${FW_LABEL}"
+        echo ""
+        echo ""
     read -p "Choose an option to change (1-7), P to proceed, Q to quit: " choice
     case "${choice^^}" in
         1)

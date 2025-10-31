@@ -33,6 +33,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # Banner
+clear 2>/dev/null || tput clear 2>/dev/null || true
 echo -e "\n${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║                                                            ║${NC}"
 echo -e "${CYAN}║    LMeve Complete Database Server - All-in-One Installer  ║${NC}"
@@ -75,6 +76,117 @@ if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
     fi
 fi
 
+# -----------------------------------------------------
+# Pre-flight dependency checks (read-only)
+# -----------------------------------------------------
+print_step "Pre-flight checks"
+
+check_dep() {
+    local name="$1"; shift
+    local cmd="$1"; shift
+    local ver_cmd="$1"; shift
+    printf "checking dependancy %-18s .... " "$name"
+    if command -v "$cmd" >/dev/null 2>&1; then
+        local ver
+        if [ -n "$ver_cmd" ]; then
+            ver=$(eval "$ver_cmd" 2>/dev/null | head -n1)
+        fi
+        case "$cmd" in
+            curl)
+                ver=$(echo "$ver" | awk '{print $1" "$2}')
+                ;;
+            apache2)
+                ver=$(echo "$ver" | sed 's/^Server version: //')
+                ;;
+            mysql)
+                ver=$(echo "$ver" | awk '{print $1" "$2" "$3}')
+                ;;
+        esac
+        echo -e "${GREEN}OK${NC}${ver:+  ($ver)}"
+        return 0
+    else
+        echo -e "${YELLOW}MISSING${NC}"
+        return 1
+    fi
+}
+
+MISSING_DEPS=0
+check_dep "curl"    curl   "curl --version"         || MISSING_DEPS=$((MISSING_DEPS+1))
+check_dep "wget"    wget   "wget --version"         || MISSING_DEPS=$((MISSING_DEPS+1))
+check_dep "bzip2"   bzip2  "bzip2 --version"        || MISSING_DEPS=$((MISSING_DEPS+1))
+check_dep "git"     git    "git --version"          || MISSING_DEPS=$((MISSING_DEPS+1))
+check_dep "ufw"     ufw    "ufw --version"          || true
+check_dep "mysql"   mysql  "mysql --version"        || true
+
+if [ "$MISSING_DEPS" -gt 0 ]; then
+    echo -e "${YELLOW}Some required components are missing and will be installed.${NC}"
+else
+    echo -e "${GREEN}All required dependencies are present.${NC}"
+fi
+
+# -----------------------------------------------------
+# Upfront configuration menu
+# -----------------------------------------------------
+DB_PORT=3306
+CONFIG_FIREWALL=N
+DB_CHOICE=1       # 1=MySQL, 2=MariaDB
+REMOVE_EXISTING=N
+INSTALL_WEBMIN=N
+DOWNLOAD_SDE=N
+
+while true; do
+    echo -e "\n${BLUE}Installer Options${NC}"
+    echo "  1) Database server        : $([[ \"$DB_CHOICE\" -eq 2 ]] && echo MariaDB || echo MySQL)"
+    echo "  2) Database port           : ${DB_PORT}"
+    echo "  3) Configure UFW firewall  : $([[ \"$CONFIG_FIREWALL\" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+    echo "  4) Remove existing DB      : $([[ \"$REMOVE_EXISTING\" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+    echo "  5) Install Webmin          : $([[ \"$INSTALL_WEBMIN\" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+    echo "  6) Download & import SDE   : $([[ \"$DOWNLOAD_SDE\" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+    echo ""
+    echo ""
+    read -p "Choose an option to change (1-6), P to proceed, Q to quit: " choice
+    case "${choice^^}" in
+        1)
+            read -p "Select database server [1=MySQL, 2=MariaDB]: " dc
+            DB_CHOICE=${dc:-$DB_CHOICE}
+            ;;
+        2)
+            read -p "Enter database port [${DB_PORT}]: " dp
+            DB_PORT=${dp:-$DB_PORT}
+            ;;
+        3)
+            read -p "Configure UFW firewall for DB port? (Y/N) [${CONFIG_FIREWALL}]: " fw
+            fw=${fw:-$CONFIG_FIREWALL}
+            if [[ "$fw" =~ ^[Yy]$ ]]; then CONFIG_FIREWALL=Y; else CONFIG_FIREWALL=N; fi
+            ;;
+        4)
+            read -p "Remove existing DB server if detected? (Y/N) [${REMOVE_EXISTING}]: " rm
+            rm=${rm:-$REMOVE_EXISTING}
+            if [[ "$rm" =~ ^[Yy]$ ]]; then REMOVE_EXISTING=Y; else REMOVE_EXISTING=N; fi
+            ;;
+        5)
+            read -p "Install Webmin? (Y/N) [${INSTALL_WEBMIN}]: " wb
+            wb=${wb:-$INSTALL_WEBMIN}
+            if [[ "$wb" =~ ^[Yy]$ ]]; then INSTALL_WEBMIN=Y; else INSTALL_WEBMIN=N; fi
+            ;;
+        6)
+            read -p "Download and import SDE now? (Y/N) [${DOWNLOAD_SDE}]: " sd
+            sd=${sd:-$DOWNLOAD_SDE}
+            if [[ "$sd" =~ ^[Yy]$ ]]; then DOWNLOAD_SDE=Y; else DOWNLOAD_SDE=N; fi
+            ;;
+        P)
+            break
+            ;;
+        Q)
+            echo "Exiting installer."
+            exit 0
+            ;;
+        *)
+            echo "Invalid option"
+            ;;
+    esac
+done
+
 # Step 1: System Update
 print_step "System Update"
 echo -e "${YELLOW}Update system packages?${NC}"
@@ -114,49 +226,20 @@ fi
 
 # Step 3: Firewall Configuration
 print_step "Firewall Configuration (UFW)"
-
-# Get port early for firewall config
-echo -e "${YELLOW}Database Port Configuration:${NC}"
-read -p "MySQL/MariaDB Port [3306]: " DB_PORT
-DB_PORT=${DB_PORT:-3306}
-
-echo -e "\n${YELLOW}Configure firewall settings?${NC}"
-echo -e "  1) Disable UFW (not recommended)"
-echo -e "  2) Configure UFW for database server (port ${DB_PORT})"
-echo -e "  3) Skip firewall configuration"
-read -p "Choice [2]: " UFW_CHOICE
-UFW_CHOICE=${UFW_CHOICE:-2}
-
-case $UFW_CHOICE in
-    1)
-        echo -e "${YELLOW}Disabling UFW...${NC}"
-        ufw disable
-        echo -e "${YELLOW}⚠️  Firewall disabled${NC}"
-        ;;
-    2)
-        echo -e "${CYAN}Configuring UFW...${NC}"
-        # Allow SSH (critical!)
-        ufw allow OpenSSH
-        # Allow MySQL/MariaDB on selected port
-        ufw allow ${DB_PORT}/tcp
-        # Enable UFW if not already enabled
-        echo "y" | ufw enable
-        ufw status
-        echo -e "${GREEN}✅ Firewall configured${NC}"
-        echo -e "${CYAN}Allowed: SSH (22), MySQL/MariaDB (${DB_PORT})${NC}"
-        ;;
-    3)
-        echo -e "${YELLOW}Skipping firewall configuration${NC}"
-        ;;
-esac
+if [[ "$CONFIG_FIREWALL" =~ ^[Yy]$ ]]; then
+    echo -e "${CYAN}Configuring UFW...${NC}"
+    ufw allow OpenSSH
+    ufw allow ${DB_PORT}/tcp
+    echo "y" | ufw enable
+    ufw status
+    echo -e "${GREEN}✅ Firewall configured${NC}"
+    echo -e "${CYAN}Allowed: SSH (22), MySQL/MariaDB (${DB_PORT})${NC}"
+else
+    echo -e "${YELLOW}Skipping firewall configuration${NC}"
+fi
 
 # Step 4: Database Server Selection
 print_step "Database Server Selection"
-echo -e "${YELLOW}Choose your database server:${NC}"
-echo -e "  1) MySQL (Oracle's MySQL Server)"
-echo -e "  2) MariaDB (Community fork, fully compatible)"
-read -p "Choice [1]: " DB_CHOICE
-DB_CHOICE=${DB_CHOICE:-1}
 
 DB_TYPE=""
 DB_SERVICE=""
@@ -176,9 +259,6 @@ fi
 if [[ "$MYSQL_INSTALLED" = true ]] || [[ "$MARIADB_INSTALLED" = true ]]; then
     echo -e "${YELLOW}⚠️  A database server is already installed:${NC}"
     mysql --version
-    read -p "Remove existing and install fresh? [y/N]: " REMOVE_EXISTING
-    REMOVE_EXISTING=${REMOVE_EXISTING:-N}
-    
     if [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]]; then
         echo -e "${CYAN}Removing existing database server...${NC}"
         systemctl stop mysql 2>/dev/null || systemctl stop mariadb 2>/dev/null || true
@@ -282,18 +362,12 @@ print_step "Webmin Installation (Optional)"
 
 # Check if Webmin is already installed
 WEBMIN_INSTALLED=false
-INSTALL_WEBMIN=N
 if command_exists webmin || dpkg -l | grep -q "^ii  webmin "; then
     WEBMIN_INSTALLED=true
-    INSTALL_WEBMIN=Y  # Set to Y so summary shows it
+    INSTALL_WEBMIN=Y  # reflect installed status in summary
     echo -e "${GREEN}✅ Webmin is already installed${NC}"
     echo -e "${CYAN}Access Webmin at: https://$(hostname -I | awk '{print $1}'):10000${NC}"
 else
-    echo -e "${YELLOW}Install Webmin for web-based server management?${NC}"
-    echo -e "${CYAN}Webmin provides a GUI for managing MySQL/MariaDB, users, and system settings${NC}"
-    read -p "Install Webmin? [Y/n]: " INSTALL_WEBMIN
-    INSTALL_WEBMIN=${INSTALL_WEBMIN:-Y}
-
     if [[ "$INSTALL_WEBMIN" =~ ^[Yy]$ ]]; then
         echo -e "${CYAN}Installing Webmin...${NC}"
         
@@ -369,8 +443,6 @@ echo -e "\n${YELLOW}EVE Static Data Export (SDE):${NC}"
 echo -e "${CYAN}SDE provides item names, types, and other static EVE data.${NC}"
 echo -e "${CYAN}Note: SDE import can take 10+ minutes and is optional.${NC}"
 echo -e "${CYAN}You can import it later from the LMeve web interface.${NC}"
-read -p "Download and import SDE now? [y/N]: " DOWNLOAD_SDE
-DOWNLOAD_SDE=${DOWNLOAD_SDE:-N}
 
 # Configuration summary
 echo -e "\n${CYAN}═══════════════════════════════════════════════════════════${NC}"
