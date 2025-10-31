@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { useAuth } from '@/lib/auth-provider';
 import { useLMeveData } from '@/lib/LMeveDataContext';
 import {

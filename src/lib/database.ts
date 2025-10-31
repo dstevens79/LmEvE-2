@@ -115,11 +115,8 @@ export class DatabaseManager {
     this.status.connected = false;
   }
 
-  async testConnection(): Promise<{ success: boolean; latency?: number; error?: string; validated?: boolean }> {
-    const startTime = Date.now();
-    
+  async testConnection(): Promise<{ success: boolean; latency?: number; error?: string; validated?: boolean; userExists?: boolean }> {
     try {
-      // STRICT VALIDATION - ONLY real MySQL connections should pass
       console.log(`🔍 Testing database connection: ${this.config.username}@${this.config.host}:${this.config.port}/${this.config.database}`);
       
       // Step 1: Basic configuration validation
@@ -128,39 +125,51 @@ export class DatabaseManager {
         throw new Error(configValidation.error);
       }
 
-      // Step 2: Perform real network connectivity check - REAL implementation
-      await this.performNetworkConnectivityCheck();
+      // Step 2: Call integrated API (PHP under Apache in production)
+      const response = await fetch('/api/test-connection.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          host: this.config.host,
+          port: this.config.port,
+          username: this.config.username,
+          password: this.config.password,
+          database: this.config.database
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error('API returned non-JSON response (likely HTML). Is PHP enabled and /api/test-connection.php deployed?');
+      }
+
+      const result = await response.json();
+
+      const ok = (typeof result.ok === 'boolean') ? result.ok : !!result.success;
+      if (!ok) {
+        throw new Error(result.error || 'Connection test failed');
+      }
+
+      console.log(`✅ Database connection validated successfully`);
       
-      // Step 3: Simulate MySQL authentication - REQUIRES VALID CREDENTIALS
-      const authCheck = await this.simulateAuthenticationCheck();
-      if (!authCheck.valid) {
-        throw new Error(authCheck.error);
-      }
-
-      // Step 4: Simulate database existence and structure validation - STRICT
-      const dbValidation = await this.validateDatabaseStructure();
-      if (!dbValidation.valid) {
-        throw new Error(dbValidation.error);
-      }
-
-      // Step 5: Simulate privilege validation - STRICT
-      const privilegeCheck = await this.validatePrivileges();
-      if (!privilegeCheck.valid) {
-        throw new Error(privilegeCheck.error);
-      }
-
-      // Step 6: Actually validate complete MySQL database setup - CRITICAL CHECK
-      const lmeveValidation = await this.checkLMeveTables();
-      if (!lmeveValidation.valid) {
-        throw new Error(lmeveValidation.error);
-      }
-
-      const latency = Date.now() - startTime;
-      console.log(`✅ Database connection validated successfully after ${latency}ms`);
-      return { success: true, latency, validated: true };
+      return { 
+        success: true,
+        latency: typeof result.latency !== 'undefined' ? result.latency : result.latencyMs,
+        validated: true,
+        userExists: result.userExists 
+      };
+      
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Connection test failed';
       console.log(`❌ Database connection failed: ${errorMessage}`);
+      
       return { 
         success: false, 
         error: errorMessage,
@@ -1165,7 +1174,7 @@ export class DatabaseSetupManager {
         port: 3306,
         database: 'mysql', // Connect to mysql system database for validation
         username: 'root',
-        password: config.mysqlRootPassword,
+  password: config.mysqlRootPassword || '',
         ssl: false,
         connectionPoolSize: 1,
         queryTimeout: 10,
@@ -1300,7 +1309,7 @@ export class DatabaseSetupManager {
         port: 3306,
         database: 'mysql',
         username: 'root',
-        password: config.mysqlRootPassword,
+        password: config.mysqlRootPassword || '',
         ssl: false,
         connectionPoolSize: 1,
         queryTimeout: 30,
@@ -1318,8 +1327,8 @@ export class DatabaseSetupManager {
         };
       }
 
-      // Execute each command
-      const results = [];
+  // Execute each command
+  const results: QueryResult[] = [];
       for (let i = 0; i < commands.length; i++) {
         const command = commands[i];
         console.log(`🔧 Executing MySQL command ${i + 1}/${commands.length}:`, command.substring(0, 100) + '...');

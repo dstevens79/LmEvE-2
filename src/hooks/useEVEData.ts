@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { eveApi, type IndustryJob, type ESIBlueprint, type AssetItem, type MarketPrice } from '@/lib/eveApi';
 import { toast } from 'sonner';
 

@@ -1,5 +1,5 @@
 // Enhanced Corporate Authentication System for LMeve
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import React from 'react';
 
 export interface CorporationESIConfig {

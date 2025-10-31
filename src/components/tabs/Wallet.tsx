@@ -25,7 +25,7 @@ import {
   ChartPie,
   ArrowClockwise
 } from '@phosphor-icons/react';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { toast } from 'sonner';
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 

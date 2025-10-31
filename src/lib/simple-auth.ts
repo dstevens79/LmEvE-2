@@ -1,5 +1,5 @@
 // Simple, working authentication based on LMeve patterns
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import React from 'react';
 
 export interface SimpleUser {

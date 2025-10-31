@@ -7,9 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Progress } from '@/components/ui/progress';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Database,
   CheckCircle,
@@ -27,13 +24,9 @@ import {
   RefreshCw
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
-import { useDatabaseSettings, useSDESettings } from '@/lib/persistenceService';
+import { useDatabaseSettings, useSDESettings, useLocalKV } from '@/lib/persistenceService';
 import { DatabaseManager } from '@/lib/database';
-import { EnhancedDatabaseSetupManager, validateSetupConfig, generateStandaloneCreateDBScript, type DatabaseSetupConfig } from '@/lib/database-setup-scripts';
-import { RemoteDatabaseAPI } from '@/lib/remoteDatabaseAPI';
 import { useSDEManager, type SDEDatabaseStats } from '@/lib/sdeService';
-import { DatabaseSchemaManager } from '@/components/DatabaseSchemaManager';
-import { lmeveSchemas, generateAllCreateTableSQL } from '@/lib/database-schemas';
 
 interface DatabaseSettingsProps {
   isMobileView?: boolean;
@@ -43,12 +36,12 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   const [databaseSettings, setDatabaseSettings] = useDatabaseSettings();
   const [sdeSettings, setSDESettings] = useSDESettings();
 
-  const { 
-    stats, 
-    isUpdating, 
-    checkForUpdates, 
-    downloadAndInstallSDE,
-    isCurrentVersion 
+  const {
+    sdeStatus,
+    checkForUpdates,
+    downloadSDE,
+    updateDatabase,
+    getDatabaseStats
   } = useSDEManager();
 
   // Update helper functions
@@ -66,31 +59,32 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     }));
   };
 
-  // Database connection state
-  const [isConnected, setIsConnected] = useState(false);
+  // Database connection state (persisted)
+  const [isConnected, setIsConnected] = useLocalKV<boolean>('lmeve-database-connected', false);
+
+  // Keep system status indicator in sync with persisted connection state
+  useEffect(() => {
+    setSystemStatus(prev => ({
+      ...prev,
+      databaseConnection: isConnected ? 'online' : 'offline'
+    }));
+  }, [isConnected]);
   const [connectionLogs, setConnectionLogs] = useState<string[]>([]);
   const [testingConnection, setTestingConnection] = useState(false);
-  const [setupProgress, setSetupProgress] = useState(0);
-  const [setupStatus, setSetupStatus] = useState<'ready' | 'running' | 'complete' | 'error'>('ready');
+  // Removed legacy setup progress/status state
   
   // Ref for auto-scrolling logs
   const logsEndRef = useRef<HTMLDivElement>(null);
-  
-  // Remote access state
-  const [remoteAccess, setRemoteAccess] = useState({
-    sshConnected: false,
-    scriptsDeployed: false,
-    remoteSetupComplete: false,
-    sshStatus: 'offline' as 'online' | 'offline' | 'unknown',
-    lastSSHCheck: null as string | null
-  });
+
+  // Network info state
+  const [serverLocalIps, setServerLocalIps] = useState<string[]>([]);
+  const [serverPublicIp, setServerPublicIp] = useState<string | null>(null);
+  const [serverHostname, setServerHostname] = useState<string | null>(null);
+  const [clientIp, setClientIp] = useState<string | null>(null);
 
   // System status indicators
   const [systemStatus, setSystemStatus] = useState({
     databaseConnection: 'unknown' as 'online' | 'offline' | 'unknown',
-    sshConnection: 'unknown' as 'online' | 'offline' | 'unknown',
-    scriptsDeployed: 'unknown' as 'online' | 'offline' | 'unknown',
-    remoteSetup: 'unknown' as 'online' | 'offline' | 'unknown',
     sdeVersion: 'unknown' as 'current' | 'outdated' | 'unknown'
   });
 
@@ -99,7 +93,58 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   // Load settings on component mount
   useEffect(() => {
     checkSDEStatus();
+    // Load server-backed settings (if available) to hydrate local config for all users
+    (async () => {
+      try {
+        const resp = await fetch('/api/settings.php', { method: 'GET' });
+        if (resp.ok) {
+          const data = await resp.json();
+          const srv = data?.settings?.database;
+          if (srv && typeof srv === 'object') {
+            setDatabaseSettings(current => ({
+              ...current,
+              host: srv.host ?? current?.host ?? '',
+              port: srv.port ?? current?.port ?? 3306,
+              database: srv.database ?? current?.database ?? 'lmeve2',
+              username: srv.username ?? current?.username ?? 'lmeve',
+              // Keep existing local secret if server returns masked '***'
+              password: (srv.password && srv.password !== '***') ? srv.password : (current?.password ?? ''),
+              sudoUsername: srv.sudoUsername ?? current?.sudoUsername ?? 'root',
+              sudoPassword: (srv.sudoPassword && srv.sudoPassword !== '***') ? srv.sudoPassword : (current?.sudoPassword ?? ''),
+            }));
+          }
+        }
+      } catch {}
+    })();
+    // Fetch server/client host information
+    (async () => {
+      try {
+        const resp = await fetch('/api/host-info.php', { method: 'POST' });
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.ok) {
+            setServerLocalIps(Array.isArray(json.server?.localAddrs) ? json.server.localAddrs : []);
+            setServerPublicIp(json.server?.publicIp || null);
+            setServerHostname(json.server?.hostname || null);
+            setClientIp(json.client?.ip || null);
+          }
+        }
+      } catch (e) {
+        // non-fatal
+      }
+    })();
   }, []);
+
+  // Reflect SDE status into System Status indicator
+  useEffect(() => {
+    if (!sdeStatus) return;
+    setSystemStatus(prev => ({
+      ...prev,
+      sdeVersion: sdeStatus.isInstalled
+        ? (sdeStatus.isUpdateAvailable ? 'outdated' : 'current')
+        : 'unknown'
+    }));
+  }, [sdeStatus]);
 
   // Auto-scroll logs to bottom when new logs are added
   useEffect(() => {
@@ -144,6 +189,26 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
 
       if (result.success) {
         setIsConnected(true);
+        // Persist to server so all users share the config
+        try {
+          await fetch('/api/settings.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ database: { ...databaseSettings } })
+          });
+        } catch {}
+        try {
+          const setupRaw = localStorage.getItem('lmeve-setup-status');
+          const setup = setupRaw ? JSON.parse(setupRaw) : {};
+          const updated = {
+            hasEverBeenGreen: !!setup.hasEverBeenGreen,
+            esiConfigured: !!setup.esiConfigured,
+            databaseConnected: true,
+            isFullyConfigured: !!setup.esiConfigured && true,
+            lastUpdated: new Date().toISOString()
+          };
+          localStorage.setItem('lmeve-setup-status', JSON.stringify({ ...setup, ...updated }));
+        } catch {}
         setSystemStatus(prev => ({ ...prev, databaseConnection: 'online' }));
         addConnectionLog('✅ Database connection successful');
         addConnectionLog(`Connected to: ${databaseSettings?.host}:${databaseSettings?.port}`);
@@ -172,238 +237,102 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     }
   };
 
-  const handleSetupSSHConnection = async () => {
-    if (!databaseSettings?.sshHost || !databaseSettings?.sshUsername) {
-      toast.error('Please fill in SSH connection details');
+  const handleConnect = async () => {
+    if (!databaseSettings?.host || !databaseSettings?.port || 
+        !databaseSettings?.username || !databaseSettings?.password) {
+      toast.error('Please fill in all database connection fields');
       return;
     }
 
-    addConnectionLog('Initiating SSH connection...');
-    
+    setTestingConnection(true);
+    addConnectionLog('Starting database connect...');
     try {
-      const remoteAPI = new RemoteDatabaseAPI();
-      const result = await remoteAPI.testConnection({
-        host: databaseSettings.sshHost,
-        port: parseInt(String(databaseSettings.sshPort || 22)),
-        sshUser: databaseSettings.sshUsername,
-        sshKeyPath: '~/.ssh/id_rsa', // Default path
-        lmevePassword: databaseSettings.password || ''
-      });
-      
-      if (result.success) {
-        setRemoteAccess(prev => ({ 
-          ...prev, 
-          sshConnected: true,
-          sshStatus: 'online',
-          lastSSHCheck: new Date().toISOString()
-        }));
-        setSystemStatus(prev => ({ ...prev, sshConnection: 'online' }));
-        
-        addConnectionLog(`✅ ${result.message}`);
-        toast.success('SSH connection test successful');
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (error) {
-      setRemoteAccess(prev => ({ ...prev, sshStatus: 'offline' }));
-      setSystemStatus(prev => ({ ...prev, sshConnection: 'offline' }));
-      const errorMessage = error instanceof Error ? error.message : 'SSH connection failed';
-      addConnectionLog(`❌ SSH connection failed: ${errorMessage}`);
-      toast.error(`SSH connection failed: ${errorMessage}`);
-    }
-  };
-
-  const handleDeployScripts = async () => {
-    if (!remoteAccess.sshConnected) {
-      toast.error('SSH connection required before deploying scripts');
-      return;
-    }
-
-    addConnectionLog('Deploying database setup scripts...');
-    
-    try {
-      const remoteAPI = new RemoteDatabaseAPI();
-      
-      // Create script content
-      const scriptContent = generateStandaloneCreateDBScript();
-      const scriptBlob = new File([scriptContent], 'create-db.sh', { type: 'text/plain' });
-      
-      // Upload script to remote server
-      const uploadResult = await remoteAPI.uploadFile(scriptBlob, 'deploy-scripts');
-      
-      if (uploadResult.success) {
-        setRemoteAccess(prev => ({ ...prev, scriptsDeployed: true }));
-        setSystemStatus(prev => ({ ...prev, scriptsDeployed: 'online' }));
-        
-        addConnectionLog('✅ Scripts deployed to remote machine');
-        addConnectionLog(`📁 Script uploaded to: ${uploadResult.path}`);
-        addConnectionLog('📝 Deployed create-db.sh script');
-        addConnectionLog('📝 Script accepts 3 parameters: <mysql_root_password> <lmeve_password> <lmeve_username>');
-        addConnectionLog('💡 Usage: sudo /usr/local/lmeve/create-db.sh "root_pass" "lmeve_pass" "lmeve_user"');
-        toast.success('Database scripts deployed successfully');
-      } else {
-        throw new Error('Script upload failed');
-      }
-    } catch (error) {
-      setSystemStatus(prev => ({ ...prev, scriptsDeployed: 'offline' }));
-      const errorMessage = error instanceof Error ? error.message : 'Script deployment failed';
-      addConnectionLog(`❌ Script deployment failed: ${errorMessage}`);
-      toast.error(`Script deployment failed: ${errorMessage}`);
-    }
-  };
-
-  const handleRunRemoteSetup = async () => {
-    if (!remoteAccess.scriptsDeployed) {
-      toast.error('Scripts must be deployed before running remote setup');
-      return;
-    }
-
-    if (!databaseSettings?.sudoPassword || !databaseSettings?.password || !databaseSettings?.username) {
-      toast.error('MySQL root password, LMeve password, and username are required');
-      return;
-    }
-
-    setSetupStatus('running');
-    setSetupProgress(0);
-    addConnectionLog('🚀 Starting remote database setup...');
-    addConnectionLog('📋 Debug: Preparing setup configuration...');
-    
-    try {
-      // Log the actual command that will be executed
-      addConnectionLog('');
-      addConnectionLog('📋 Command to be executed on remote server:');
-      addConnectionLog(`   sudo /usr/local/lmeve/create-db.sh "${databaseSettings.sudoPassword}" "${databaseSettings.password}" "${databaseSettings.username}"`);
-      addConnectionLog('');
-      addConnectionLog('⚙️ Parameters being passed:');
-      addConnectionLog(`   - MySQL Root Password: ${databaseSettings.sudoPassword ? '✓ provided' : '✗ missing'}`);
-      addConnectionLog(`   - LMeve Password: ${databaseSettings.password ? '✓ provided' : '✗ missing'}`);
-      addConnectionLog(`   - LMeve Username: ${databaseSettings.username || 'lmeve (default)'}`);
-      addConnectionLog(`   - Password length: ${databaseSettings.password?.length || 0} characters`);
-      addConnectionLog('');
-      
-      // Generate schema content based on source selection
-      let schemaContent: string | undefined;
-      const schemaSource = databaseSettings?.schemaSource || 'default';
-      const useCustomSchema = schemaSource === 'custom';
-      
-      addConnectionLog(`📋 Debug: Schema source = ${schemaSource}`);
-      
-      if (useCustomSchema) {
-        addConnectionLog('📋 Debug: Custom schema selected - checking for uploaded schema...');
-        addConnectionLog('⚠️ Warning: Custom schema upload not yet implemented, using default');
-        schemaContent = generateAllCreateTableSQL();
-      } else {
-        addConnectionLog('📋 Debug: Using default LMeve schema...');
-        try {
-          schemaContent = generateAllCreateTableSQL();
-          addConnectionLog(`✅ Debug: Schema generated successfully (${schemaContent.length} characters)`);
-          addConnectionLog(`📋 Debug: Schema preview: ${schemaContent.substring(0, 200)}...`);
-        } catch (schemaError) {
-          const schemaErrorMsg = schemaError instanceof Error ? schemaError.message : 'Unknown schema generation error';
-          addConnectionLog(`❌ Debug: Failed to generate schema: ${schemaErrorMsg}`);
-          throw new Error(`Failed to generate schema: ${schemaErrorMsg}`);
-        }
-      }
-      
-      if (!schemaContent) {
-        addConnectionLog('❌ Debug: schemaContent is undefined or empty');
-        throw new Error('Schema content is required but was not generated. Check schema source configuration.');
-      }
-      
-      addConnectionLog('✅ Debug: Schema content validated');
-      addConnectionLog(`📋 Debug: Building setup configuration object...`);
-      
-      const setupConfig: DatabaseSetupConfig = {
-        host: databaseSettings.host || 'localhost',
-        port: parseInt(String(databaseSettings.port || 3306)),
-        mysqlRootPassword: databaseSettings.sudoPassword,
-        lmevePassword: databaseSettings.password,
-        lmeveUsername: databaseSettings.username || 'lmeve',
-        allowedHosts: '%',
-        schemaSource: schemaSource,
-        schemaContent: schemaContent,
-        useCustomSchema: useCustomSchema,
-        sdeConfig: {
-          download: (sdeSettings?.sdeSource || 'fuzzwork') === 'fuzzwork',
-          skip: false
-        },
-        createDatabases: true,
-        importSchema: true,
-        createUser: true,
-        grantPrivileges: true,
-        validateSetup: true,
-        isRemote: true,
-        sshConfig: {
-          host: databaseSettings.sshHost || databaseSettings.host || 'localhost',
-          user: databaseSettings.sshUsername || 'root',
-          keyPath: '~/.ssh/id_rsa'
-        }
+      const dbConfig = {
+        host: databaseSettings.host,
+        port: parseInt(String(databaseSettings.port)),
+        username: databaseSettings.username,
+        password: databaseSettings.password,
+        database: databaseSettings.database || 'mysql',
+        ssl: false,
+        connectionPoolSize: 10,
+        queryTimeout: 30,
+        autoReconnect: true,
+        charset: 'utf8mb4'
       };
 
-      addConnectionLog(`✅ Debug: Setup config created with the following properties:`);
-      addConnectionLog(`  - host: ${setupConfig.host}`);
-      addConnectionLog(`  - port: ${setupConfig.port}`);
-      addConnectionLog(`  - lmeveUsername: ${setupConfig.lmeveUsername}`);
-      addConnectionLog(`  - allowedHosts: ${setupConfig.allowedHosts}`);
-      addConnectionLog(`  - schemaSource: ${setupConfig.schemaSource}`);
-      addConnectionLog(`  - useCustomSchema: ${setupConfig.useCustomSchema}`);
-      addConnectionLog(`  - schemaContent length: ${setupConfig.schemaContent?.length || 0} characters`);
-      addConnectionLog(`  - createDatabases: ${setupConfig.createDatabases}`);
-      addConnectionLog(`  - createUser: ${setupConfig.createUser}`);
-      addConnectionLog(`  - grantPrivileges: ${setupConfig.grantPrivileges}`);
-      addConnectionLog(`  - importSchema: ${setupConfig.importSchema}`);
-      addConnectionLog(`  - sdeConfig.download: ${setupConfig.sdeConfig.download}`);
-      addConnectionLog(`  - isRemote: ${setupConfig.isRemote}`);
+      const databaseManager = new DatabaseManager(dbConfig);
+      const result = await databaseManager.testConnection();
 
-      addConnectionLog('🔍 Debug: Validating setup configuration...');
-      const errors = validateSetupConfig(setupConfig);
-      if (errors.length > 0) {
-        addConnectionLog(`❌ Debug: Configuration validation failed with ${errors.length} error(s):`);
-        errors.forEach((err, idx) => addConnectionLog(`  ${idx + 1}. ${err}`));
-        throw new Error(`Configuration errors: ${errors.join(', ')}`);
-      }
-      addConnectionLog('✅ Debug: Configuration validation passed');
-
-      addConnectionLog('🏗️ Debug: Creating EnhancedDatabaseSetupManager instance...');
-      const manager = new EnhancedDatabaseSetupManager(setupConfig, (progress) => {
-        setSetupProgress(progress.progress);
-        addConnectionLog(`⏳ ${progress.stage}: ${progress.message}`);
-      });
-      addConnectionLog('✅ Debug: Manager instance created successfully');
-
-      addConnectionLog('🗄️ Step 1: Creating databases and users...');
-      addConnectionLog('📡 Running: sudo /usr/local/lmeve/create-db.sh');
-      addConnectionLog(`🔧 Executing: sudo /usr/local/lmeve/create-db.sh "${databaseSettings.sudoPassword ? '***' : ''}" "${databaseSettings.password ? '***' : ''}" "${databaseSettings.username}"`);
-      
-      const result = await manager.setupDatabase();
-
-      if (result.success) {
-        setRemoteAccess(prev => ({ ...prev, remoteSetupComplete: true }));
-        setSystemStatus(prev => ({ ...prev, remoteSetup: 'online' }));
-        setSetupStatus('complete');
-        
-        result.details?.forEach(detail => addConnectionLog(detail));
-        addConnectionLog('🎉 Database setup completed successfully');
-        toast.success('Remote database setup completed');
+      if (result.success && result.validated) {
+        setIsConnected(true);
+        // Persist to server on successful validation
+        try {
+          await fetch('/api/settings.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ database: { ...databaseSettings } })
+          });
+        } catch {}
+        try {
+          const setupRaw = localStorage.getItem('lmeve-setup-status');
+          const setup = setupRaw ? JSON.parse(setupRaw) : {};
+          const updated = {
+            hasEverBeenGreen: !!setup.hasEverBeenGreen || true,
+            esiConfigured: !!setup.esiConfigured,
+            databaseConnected: true,
+            isFullyConfigured: !!setup.esiConfigured && true,
+            lastUpdated: new Date().toISOString()
+          };
+          localStorage.setItem('lmeve-setup-status', JSON.stringify({ ...setup, ...updated }));
+        } catch {}
+        setSystemStatus(prev => ({ ...prev, databaseConnection: 'online' }));
+        addConnectionLog('✅ Connected and locked settings');
+        toast.success('Connected. Settings locked.');
       } else {
-        addConnectionLog(`❌ Debug: Setup failed with error: ${result.error}`);
-        throw new Error(result.error || 'Setup failed');
+        addConnectionLog(`❌ Connect failed: ${result.error || 'Validation failed'}`);
+        toast.error(`Connect failed: ${result.error || 'Validation failed'}`);
       }
     } catch (error) {
-      setSetupStatus('error');
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const errorStack = error instanceof Error ? error.stack : '';
-      addConnectionLog(`❌ Remote setup failed: ${errorMessage}`);
-      if (errorStack) {
-        addConnectionLog(`📋 Debug: Error stack trace:`);
-        errorStack.split('\n').slice(0, 5).forEach(line => addConnectionLog(`  ${line}`));
-      }
-      toast.error(`Remote setup failed: ${errorMessage}`);
+      addConnectionLog(`❌ Connect error: ${errorMessage}`);
+      toast.error(`Connect error: ${errorMessage}`);
+    } finally {
+      setTestingConnection(false);
     }
+  };
+
+  const handleDisconnect = () => {
+    setIsConnected(false);
+    try {
+      const setupRaw = localStorage.getItem('lmeve-setup-status');
+      const setup = setupRaw ? JSON.parse(setupRaw) : {};
+      const updated = {
+        ...setup,
+        databaseConnected: false,
+        isFullyConfigured: false,
+        lastUpdated: new Date().toISOString()
+      };
+      localStorage.setItem('lmeve-setup-status', JSON.stringify(updated));
+    } catch {}
+    setSystemStatus(prev => ({ ...prev, databaseConnection: 'offline' }));
+    addConnectionLog('🔌 Disconnected. Settings unlocked');
+    toast.info('Disconnected. You can edit settings again.');
   };
 
   const handleSaveSettings = async () => {
     try {
+      // Force commit current settings to persistence
+      if (databaseSettings) {
+        setDatabaseSettings({ ...databaseSettings });
+      }
+      // Also persist to server so other clients pick it up
+      try {
+        await fetch('/api/settings.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ database: { ...databaseSettings } })
+        });
+      } catch {}
       toast.success('Database settings saved successfully');
     } catch (error) {
       toast.error('Failed to save database settings');
@@ -413,10 +342,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   const checkSDEStatus = async () => {
     try {
       await checkForUpdates();
-      setSystemStatus(prev => ({ 
-        ...prev, 
-        sdeVersion: isCurrentVersion ? 'current' : 'outdated'
-      }));
+      // sdeStatus will update via hook; local system status syncs in effect
     } catch (error) {
       console.error('SDE status check failed:', error);
     }
@@ -425,7 +351,8 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   const handleUpdateSDE = async () => {
     try {
       addConnectionLog('Starting SDE update...');
-      await downloadAndInstallSDE();
+      await downloadSDE();
+      await updateDatabase();
       addConnectionLog('✅ SDE update completed');
       toast.success('SDE updated successfully');
       await checkSDEStatus();
@@ -485,6 +412,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                     value={databaseSettings?.host || ''}
                     onChange={(e) => updateDatabaseSettings({ host: e.target.value })}
                     placeholder="localhost or IP address"
+                    disabled={isConnected}
                   />
                 </div>
                 <div className="space-y-2">
@@ -494,6 +422,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                     value={databaseSettings?.port || '3306'}
                     onChange={(e) => updateDatabaseSettings({ port: e.target.value })}
                     placeholder="3306"
+                    disabled={isConnected}
                   />
                 </div>
               </div>
@@ -502,9 +431,10 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                 <Label htmlFor="dbName">Database Name</Label>
                 <Input
                   id="dbName"
-                  value={databaseSettings?.database || 'lmeve'}
+                  value={databaseSettings?.database || 'lmeve2'}
                   onChange={(e) => updateDatabaseSettings({ database: e.target.value })}
-                  placeholder="lmeve"
+                  placeholder="lmeve2"
+                  disabled={isConnected}
                 />
               </div>
             </CardContent>
@@ -540,65 +470,16 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                       placeholder="lmeve"
                       value={databaseSettings?.username || ''}
                       onChange={(e) => updateDatabaseSettings({ username: e.target.value })}
+                      disabled={isConnected}
                     />
                     <Input
                       type="password"
                       placeholder="application password"
                       value={databaseSettings?.password || ''}
                       onChange={(e) => updateDatabaseSettings({ password: e.target.value })}
+                      disabled={isConnected}
                     />
                   </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* SSH Configuration for remote databases */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">SSH Configuration</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="sshHost">SSH Host</Label>
-                  <Input
-                    id="sshHost"
-                    value={databaseSettings?.sshHost || ''}
-                    onChange={(e) => updateDatabaseSettings({ sshHost: e.target.value })}
-                    placeholder="Same as database host"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sshPort">SSH Port</Label>
-                  <Input
-                    id="sshPort"
-                    value={databaseSettings?.sshPort || '22'}
-                    onChange={(e) => updateDatabaseSettings({ sshPort: e.target.value })}
-                    placeholder="22"
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="sshUsername">SSH Username</Label>
-                  <Input
-                    id="sshUsername"
-                    value={databaseSettings?.sshUsername || ''}
-                    onChange={(e) => updateDatabaseSettings({ sshUsername: e.target.value })}
-                    placeholder="opsuser"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sshPassword">SSH Password</Label>
-                  <Input
-                    id="sshPassword"
-                    type="password"
-                    value={databaseSettings?.sshPassword || ''}
-                    onChange={(e) => updateDatabaseSettings({ sshPassword: e.target.value })}
-                    placeholder="ssh password"
-                  />
                 </div>
               </div>
             </CardContent>
@@ -614,28 +495,30 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <StatusIndicator label="Database" status={systemStatus.databaseConnection} />
-                <StatusIndicator label="SSH Connection" status={systemStatus.sshConnection} />
-                <StatusIndicator label="Scripts Deployed" status={systemStatus.scriptsDeployed} />
-                <StatusIndicator label="Remote Setup" status={systemStatus.remoteSetup} />
                 <StatusIndicator label="SDE Version" status={systemStatus.sdeVersion} />
               </div>
               
               <Separator />
               
+              {/* Removed Database Schema section as requested */}
+
+              {/* Network Info */}
               <div className="space-y-2">
-                <Label>Schema Source</Label>
-                <Select 
-                  value={databaseSettings?.schemaSource || 'default'} 
-                  onValueChange={(value) => updateDatabaseSettings({ schemaSource: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Use Default Schema</SelectItem>
-                    <SelectItem value="custom">Custom Schema File</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Network Info</Label>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  {serverHostname && (
+                    <div><span className="font-medium text-foreground">Server:</span> {serverHostname}</div>
+                  )}
+                  {serverLocalIps.length > 0 && (
+                    <div><span className="font-medium text-foreground">Internal IPs:</span> {serverLocalIps.join(', ')}</div>
+                  )}
+                  <div>
+                    <span className="font-medium text-foreground">External IP:</span> {serverPublicIp || 'Unknown'}
+                  </div>
+                  {clientIp && (
+                    <div><span className="font-medium text-foreground">Your IP:</span> {clientIp}</div>
+                  )}
+                </div>
               </div>
               
               <div className="space-y-2">
@@ -662,7 +545,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                   </Button>
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {stats?.lastModified ? new Date(stats.lastModified).toLocaleDateString() : 'Unknown'}
+                  {sdeStatus?.latestVersion || 'Unknown'}{sdeStatus?.lastChecked ? ` (checked ${new Date(sdeStatus.lastChecked).toLocaleDateString()})` : ''}
                 </div>
               </div>
             </CardContent>
@@ -681,55 +564,28 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                 >
                   {testingConnection ? 'Testing...' : 'Test Connection'}
                 </Button>
-                
-                <Button 
-                  onClick={handleSetupSSHConnection}
-                  disabled={!databaseSettings.sshHost}
-                  variant="outline"
-                >
-                  Setup SSH Connection
-                </Button>
-                
-                <Button 
-                  onClick={handleDeployScripts}
-                  disabled={!remoteAccess.sshConnected}
-                  variant="outline"
-                >
-                  Deploy Scripts
-                </Button>
-                
-                <Button 
-                  onClick={() => {
-                    const script = generateStandaloneCreateDBScript();
-                    const blob = new Blob([script], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'create-db.sh';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    addConnectionLog('📥 Downloaded create-db.sh script');
-                    toast.success('Script downloaded - upload to /usr/local/lmeve/ on your server');
-                  }}
-                  variant="outline"
-                >
-                  Download create-db.sh
-                </Button>
-                
-                <Button 
-                  onClick={handleRunRemoteSetup}
-                  disabled={!remoteAccess.scriptsDeployed}
-                  variant="outline"
-                >
-                  Run Remote Setup
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={handleConnect}
+                    disabled={testingConnection || isConnected}
+                  >
+                    {isConnected ? 'Connected' : 'Connect'}
+                  </Button>
+                  <Button 
+                    onClick={handleDisconnect}
+                    disabled={testingConnection || !isConnected}
+                    variant="outline"
+                  >
+                    Disconnect
+                  </Button>
+                </div>
                 
                 <Button 
                   onClick={handleUpdateSDE}
-                  disabled={isUpdating || systemStatus.sdeVersion === 'current'}
+                  disabled={sdeStatus?.isUpdating || sdeStatus?.isDownloading || systemStatus.sdeVersion === 'current'}
                   variant="outline"
                 >
-                  {isUpdating ? 'Updating SDE...' : 'Update SDE'}
+                  {sdeStatus?.isUpdating || sdeStatus?.isDownloading ? 'Updating SDE...' : 'Update SDE'}
                 </Button>
               </div>
 
@@ -747,21 +603,6 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
           </Card>
         </div>
       </div>
-
-      {/* Setup Progress */}
-      {setupStatus === 'running' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Database Setup Progress</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Progress value={setupProgress} className="w-full" />
-            <p className="text-sm text-muted-foreground mt-2">
-              Setting up database... {Math.round(setupProgress)}% complete
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Connection Logs */}
       <Card>
@@ -784,93 +625,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         </CardContent>
       </Card>
 
-      {/* Troubleshooting Guide */}
-      <Card className="border-yellow-500/50 bg-yellow-500/5">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Warning size={20} className="text-yellow-500" />
-            Troubleshooting Guide - User Creation Issues
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-          <div>
-            <h4 className="font-semibold mb-2">Issue: lmeve user not created after running scripts</h4>
-            <p className="text-muted-foreground mb-3">
-              If you see "empty set" when running <code className="bg-muted px-1 py-0.5 rounded">SELECT user, host FROM mysql.user WHERE user='lmeve';</code>
-            </p>
-          </div>
-          
-          <div className="space-y-3">
-            <div>
-              <h5 className="font-medium mb-1">✅ Solution 1: Verify Script Parameters</h5>
-              <p className="text-muted-foreground text-xs mb-2">
-                The create-db.sh script requires THREE parameters to be passed correctly:
-              </p>
-              <div className="bg-muted p-2 rounded font-mono text-xs">
-                sudo /usr/local/lmeve/create-db.sh "YOUR_MYSQL_ROOT_PASSWORD" "YOUR_LMEVE_PASSWORD" "YOUR_LMEVE_USERNAME"
-              </div>
-              <p className="text-muted-foreground text-xs mt-2">
-                Make sure all three parameters are enclosed in quotes and match what you entered in the fields above.
-              </p>
-            </div>
-            
-            <div>
-              <h5 className="font-medium mb-1">✅ Solution 2: Download and Manually Execute</h5>
-              <p className="text-muted-foreground text-xs mb-2">
-                Click "Download create-db.sh" button above, then manually upload and execute:
-              </p>
-              <div className="bg-muted p-2 rounded font-mono text-xs space-y-1">
-                <div># Upload the script to your server</div>
-                <div>scp create-db.sh user@yourserver:/usr/local/lmeve/</div>
-                <div className="mt-2"># Make it executable</div>
-                <div>ssh user@yourserver "chmod +x /usr/local/lmeve/create-db.sh"</div>
-                <div className="mt-2"># Run with your passwords and username</div>
-                <div>ssh user@yourserver "sudo /usr/local/lmeve/create-db.sh 'root_pass' 'lmeve_pass' 'lmeve_user'"</div>
-              </div>
-            </div>
-            
-            <div>
-              <h5 className="font-medium mb-1">✅ Solution 3: Manual SQL Execution</h5>
-              <p className="text-muted-foreground text-xs mb-2">
-                If scripts fail, execute these SQL commands directly on your MySQL server:
-              </p>
-              <div className="bg-muted p-2 rounded font-mono text-xs space-y-1">
-                <div>DROP USER IF EXISTS 'lmeve'@'%';</div>
-                <div>CREATE USER 'lmeve'@'%' IDENTIFIED BY 'your_password_here';</div>
-                <div>GRANT ALL PRIVILEGES ON lmeve.* TO 'lmeve'@'%';</div>
-                <div>GRANT ALL PRIVILEGES ON EveStaticData.* TO 'lmeve'@'%';</div>
-                <div>FLUSH PRIVILEGES;</div>
-              </div>
-              <p className="text-muted-foreground text-xs mt-2">
-                Replace 'your_password_here' with the LMeve password you want to use.
-              </p>
-            </div>
-            
-            <div>
-              <h5 className="font-medium mb-1">🔍 Verification</h5>
-              <p className="text-muted-foreground text-xs mb-2">
-                After running any solution, verify the user was created:
-              </p>
-              <div className="bg-muted p-2 rounded font-mono text-xs">
-                SELECT user, host FROM mysql.user WHERE user='lmeve';
-              </div>
-              <p className="text-muted-foreground text-xs mt-2">
-                You should see: lmeve | %
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Database Schema Manager */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Database Schema Manager</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DatabaseSchemaManager schemas={lmeveSchemas} />
-        </CardContent>
-      </Card>
+      {/* Removed legacy database setup and troubleshooting sections as requested */}
     </div>
   );
 }

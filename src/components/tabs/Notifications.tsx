@@ -18,7 +18,7 @@ import {
   CaretRight,
   CaretDown
 } from '@phosphor-icons/react';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { useNotificationSettings } from '@/lib/persistenceService';
 import { DiscordNotifications } from '@/components/settings/DiscordNotifications';
 import { EVEMailNotifications } from '@/components/settings/EVEMailNotifications';

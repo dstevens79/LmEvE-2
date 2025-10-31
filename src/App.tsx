@@ -36,7 +36,7 @@ import {
   Key,
   Receipt
 } from '@phosphor-icons/react';
-import { useKV } from '@github/spark/hooks';
+import { useLocalKV, bootstrapSettingsFromServerIfEmpty } from '@/lib/persistenceService';
 import { TabType } from '@/lib/types';
 import { DatabaseProvider } from '@/lib/DatabaseContext';
 import { LMeveDataProvider } from '@/lib/LMeveDataContext';
@@ -61,10 +61,20 @@ import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
 import { Buyback } from '@/components/tabs/Buyback';
 
 function AppContent() {
-  const [activeTab, setActiveTab] = useKV<TabType>('active-tab', 'dashboard');
-  const [activeSettingsTab, setActiveSettingsTab] = useKV<string>('active-settings-tab', 'general');
-  const [settingsExpanded, setSettingsExpanded] = useKV<boolean>('settings-expanded', false);
-  const [isMobileView, setIsMobileView] = useKV<boolean>('mobile-view', false);
+  // Bootstrap settings from server if this origin has no local settings yet
+  React.useEffect(() => {
+    (async () => {
+      const status = await bootstrapSettingsFromServerIfEmpty();
+      if (status === 'loaded') {
+        // Reload to ensure all hooks read the just-restored settings
+        window.location.reload();
+      }
+    })();
+  }, []);
+  const [activeTab, setActiveTab] = useLocalKV<TabType>('active-tab', 'dashboard');
+  const [activeSettingsTab, setActiveSettingsTab] = useLocalKV<string>('active-settings-tab', 'general');
+  const [settingsExpanded, setSettingsExpanded] = useLocalKV<boolean>('settings-expanded', false);
+  const [isMobileView, setIsMobileView] = useLocalKV<boolean>('mobile-view', false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const { 
     user, 
@@ -263,7 +273,7 @@ function AppContent() {
   };
 
   // Handle ESI SSO login
-  const handleESILogin = (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic') => {
+  const handleESILogin = async (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic') => {
     try {
       if (!esiConfig?.clientId) {
         toast.error('ESI authentication is not configured. Please contact your administrator.');
@@ -271,7 +281,7 @@ function AppContent() {
       }
       
       console.log('🚀 Starting ESI SSO login with scope type:', scopeType);
-      const authUrl = loginWithESI(scopeType);
+      const authUrl = await loginWithESI(scopeType);
       
       // Redirect to EVE Online SSO
       window.location.href = authUrl;

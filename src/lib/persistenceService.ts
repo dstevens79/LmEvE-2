@@ -5,7 +5,30 @@
  * using the useKV hooks and provides a unified interface for data operations.
  */
 
-import { useKV } from '@github/spark/hooks';
+import React from 'react';
+
+// Lightweight fallback to localStorage when Spark KV isn't available or isn't persisting
+function useLocalStorageKV<T>(key: string, defaultValue: T): [T, (value: T | ((prev: T) => T)) => void] {
+  const initializer = () => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw != null) return JSON.parse(raw) as T;
+    } catch {}
+    return defaultValue;
+  };
+  const [value, setValue] = React.useState<T>(initializer);
+  const setAndPersist = (next: T | ((prev: T) => T)) => {
+    setValue(prev => {
+      const resolved = typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
+      try { localStorage.setItem(key, JSON.stringify(resolved)); } catch {}
+      return resolved;
+    });
+  };
+  return [value, setAndPersist];
+}
+
+// Expose a local KV hook for use across the app (no Spark KV dependency)
+export const useLocalKV = useLocalStorageKV;
 
 export interface GeneralSettings {
   applicationName: string;
@@ -31,6 +54,9 @@ export interface DatabaseSettings {
   database: string;
   username: string;
   password: string;
+  // Optional fields used by setup flows
+  rootPassword?: string;
+  lmevePassword?: string;
   ssl: boolean;
   connectionPoolSize: number;
   queryTimeout: number;
@@ -300,7 +326,7 @@ export const defaultGeneralSettings: GeneralSettings = {
 export const defaultDatabaseSettings: DatabaseSettings = {
   host: 'localhost',
   port: 3306,
-  database: 'lmeve',
+  database: 'lmeve2',
   username: 'lmeve',
   password: '',
   ssl: false,
@@ -323,7 +349,7 @@ export const defaultDatabaseSettings: DatabaseSettings = {
 export const defaultESISettings: ESISettings = {
   clientId: '',
   clientSecret: '',
-  callbackUrl: `${window.location.origin}/auth/callback`,
+  callbackUrl: `${window.location.origin}/api/auth/esi/callback.php`,
   userAgent: 'LMeve Corporation Management Tool',
   scopes: [
     'esi-corporations.read_corporation_membership.v1',
@@ -519,29 +545,46 @@ export const defaultApplicationData: ApplicationData = {
 };
 
 // Hook exports for React components
-export const useGeneralSettings = () => useKV<GeneralSettings>('lmeve-settings-general', defaultGeneralSettings);
-export const useDatabaseSettings = () => useKV<DatabaseSettings>('lmeve-settings-database', defaultDatabaseSettings);
-export const useESISettings = () => useKV<ESISettings>('lmeve-settings-esi', defaultESISettings);
-export const useSDESettings = () => useKV<SDESettings>('lmeve-settings-sde', defaultSDESettings);
-export const useSyncSettings = () => useKV<SyncSettings>('lmeve-settings-sync', defaultSyncSettings);
-export const useNotificationSettings = () => useKV<NotificationSettings>('lmeve-settings-notifications', defaultNotificationSettings);
-export const useIncomeSettings = () => useKV<IncomeSettings>('lmeve-settings-income', defaultIncomeSettings);
-export const useManualUsers = () => useKV<ManualUser[]>('lmeve-manual-users', []);
-export const useApplicationData = () => useKV<ApplicationData>('lmeve-application-data', defaultApplicationData);
-export const useCorporationData = () => useKV<CorporationData[]>('lmeve-corporation-data', []);
+export const useGeneralSettings = () => useLocalStorageKV<GeneralSettings>('lmeve-settings-general', defaultGeneralSettings);
+// Use localStorage to ensure persistence across navigation
+export const useDatabaseSettings = () => useLocalStorageKV<DatabaseSettings>('lmeve-settings-database', defaultDatabaseSettings);
+export const useESISettings = () => useLocalStorageKV<ESISettings>('lmeve-settings-esi', defaultESISettings);
+export const useSDESettings = () => useLocalStorageKV<SDESettings>('lmeve-settings-sde', defaultSDESettings);
+export const useSyncSettings = () => useLocalStorageKV<SyncSettings>('lmeve-settings-sync', defaultSyncSettings);
+export const useNotificationSettings = () => useLocalStorageKV<NotificationSettings>('lmeve-settings-notifications', defaultNotificationSettings);
+export const useIncomeSettings = () => useLocalStorageKV<IncomeSettings>('lmeve-settings-income', defaultIncomeSettings);
+export const useManualUsers = () => useLocalStorageKV<ManualUser[]>('lmeve-manual-users', []);
+export const useApplicationData = () => useLocalStorageKV<ApplicationData>('lmeve-application-data', defaultApplicationData);
+export const useCorporationData = () => useLocalStorageKV<CorporationData[]>('lmeve-corporation-data', []);
+
+// Local-only helpers to read/write settings
+async function safeKVGet<T>(key: string): Promise<T | null> {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw != null ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function safeKVSet<T>(key: string, value: T): Promise<void> {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
 
 // Utility functions for data export/import
 export const exportAllSettings = async () => {
   const settings = {
-    general: await window.spark.kv.get<GeneralSettings>('lmeve-settings-general'),
-    database: await window.spark.kv.get<DatabaseSettings>('lmeve-settings-database'),
-    esi: await window.spark.kv.get<ESISettings>('lmeve-settings-esi'),
-    sde: await window.spark.kv.get<SDESettings>('lmeve-settings-sde'),
-    sync: await window.spark.kv.get<SyncSettings>('lmeve-settings-sync'),
-    notifications: await window.spark.kv.get<NotificationSettings>('lmeve-settings-notifications'),
-    income: await window.spark.kv.get<IncomeSettings>('lmeve-settings-income'),
-    users: await window.spark.kv.get<ManualUser[]>('lmeve-manual-users'),
-    application: await window.spark.kv.get<ApplicationData>('lmeve-application-data'),
+    general: (await safeKVGet<GeneralSettings>('lmeve-settings-general')) ?? defaultGeneralSettings,
+    database: (await safeKVGet<DatabaseSettings>('lmeve-settings-database')) ?? defaultDatabaseSettings,
+    esi: (await safeKVGet<ESISettings>('lmeve-settings-esi')) ?? defaultESISettings,
+    sde: (await safeKVGet<SDESettings>('lmeve-settings-sde')) ?? defaultSDESettings,
+    sync: (await safeKVGet<SyncSettings>('lmeve-settings-sync')) ?? defaultSyncSettings,
+    notifications: (await safeKVGet<NotificationSettings>('lmeve-settings-notifications')) ?? defaultNotificationSettings,
+    income: (await safeKVGet<IncomeSettings>('lmeve-settings-income')) ?? defaultIncomeSettings,
+    users: (await safeKVGet<ManualUser[]>('lmeve-manual-users')) ?? [],
+    application: (await safeKVGet<ApplicationData>('lmeve-application-data')) ?? defaultApplicationData,
   };
 
   return {
@@ -558,27 +601,27 @@ export const importAllSettings = async (importData: any) => {
 
   const { settings } = importData;
 
-  if (settings.general) await window.spark.kv.set('lmeve-settings-general', settings.general);
-  if (settings.database) await window.spark.kv.set('lmeve-settings-database', settings.database);
-  if (settings.esi) await window.spark.kv.set('lmeve-settings-esi', settings.esi);
-  if (settings.sde) await window.spark.kv.set('lmeve-settings-sde', settings.sde);
-  if (settings.sync) await window.spark.kv.set('lmeve-settings-sync', settings.sync);
-  if (settings.notifications) await window.spark.kv.set('lmeve-settings-notifications', settings.notifications);
-  if (settings.income) await window.spark.kv.set('lmeve-settings-income', settings.income);
-  if (settings.users) await window.spark.kv.set('lmeve-manual-users', settings.users);
-  if (settings.application) await window.spark.kv.set('lmeve-application-data', settings.application);
+  if (settings.general) await safeKVSet('lmeve-settings-general', settings.general);
+  if (settings.database) await safeKVSet('lmeve-settings-database', settings.database);
+  if (settings.esi) await safeKVSet('lmeve-settings-esi', settings.esi);
+  if (settings.sde) await safeKVSet('lmeve-settings-sde', settings.sde);
+  if (settings.sync) await safeKVSet('lmeve-settings-sync', settings.sync);
+  if (settings.notifications) await safeKVSet('lmeve-settings-notifications', settings.notifications);
+  if (settings.income) await safeKVSet('lmeve-settings-income', settings.income);
+  if (settings.users) await safeKVSet('lmeve-manual-users', settings.users);
+  if (settings.application) await safeKVSet('lmeve-application-data', settings.application);
 };
 
 // Reset all settings to defaults
 export const resetAllSettings = async () => {
-  await window.spark.kv.set('lmeve-settings-general', defaultGeneralSettings);
-  await window.spark.kv.set('lmeve-settings-database', defaultDatabaseSettings);
-  await window.spark.kv.set('lmeve-settings-esi', defaultESISettings);
-  await window.spark.kv.set('lmeve-settings-sde', defaultSDESettings);
-  await window.spark.kv.set('lmeve-settings-sync', defaultSyncSettings);
-  await window.spark.kv.set('lmeve-settings-notifications', defaultNotificationSettings);
-  await window.spark.kv.set('lmeve-settings-income', defaultIncomeSettings);
-  await window.spark.kv.set('lmeve-manual-users', []);
+  await safeKVSet('lmeve-settings-general', defaultGeneralSettings);
+  await safeKVSet('lmeve-settings-database', defaultDatabaseSettings);
+  await safeKVSet('lmeve-settings-esi', defaultESISettings);
+  await safeKVSet('lmeve-settings-sde', defaultSDESettings);
+  await safeKVSet('lmeve-settings-sync', defaultSyncSettings);
+  await safeKVSet('lmeve-settings-notifications', defaultNotificationSettings);
+  await safeKVSet('lmeve-settings-income', defaultIncomeSettings);
+  await safeKVSet('lmeve-manual-users', []);
   // Don't reset application data as it contains version info
 };
 
@@ -593,6 +636,45 @@ export const backupSettings = async () => {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+};
+
+// Server-backed persistence helpers
+export const saveSettingsToServer = async (): Promise<boolean> => {
+  try {
+    const backup = await exportAllSettings();
+    const resp = await fetch('/api/settings.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(backup)
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+};
+
+export const loadSettingsFromServer = async (): Promise<boolean> => {
+  try {
+    const resp = await fetch('/api/settings.php', { method: 'GET' });
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    if (!data || !data.settings) return false;
+    await importAllSettings(data.settings);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const bootstrapSettingsFromServerIfEmpty = async (): Promise<'loaded' | 'skipped' | 'failed'> => {
+  try {
+    const hasGeneral = localStorage.getItem('lmeve-settings-general');
+    if (hasGeneral) return 'skipped';
+    const ok = await loadSettingsFromServer();
+    return ok ? 'loaded' : 'failed';
+  } catch {
+    return 'failed';
+  }
 };
 
 // Configuration validation

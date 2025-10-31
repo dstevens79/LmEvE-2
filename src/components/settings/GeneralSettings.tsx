@@ -21,7 +21,7 @@ import {
 import { toast } from 'sonner';
 import { useGeneralSettings } from '@/lib/persistenceService';
 import { useAuth } from '@/lib/auth-provider';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 
 interface GeneralSettingsProps {
   isMobileView?: boolean;

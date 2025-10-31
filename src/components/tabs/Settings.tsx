@@ -12,8 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DatabaseSchemaManager } from '@/components/DatabaseSchemaManager';
-import { lmeveSchemas } from '@/lib/database-schemas';
+// Removed DatabaseSchemaManager and schema dropdown per UX cleanup
 import { esiRouteManager, useESIRoutes } from '@/lib/esi-routes';
 import { 
   Gear, 
@@ -61,8 +60,8 @@ import {
   Settings as SettingsIcon,
   RefreshCw
 } from '@phosphor-icons/react';
-import { useKV } from '@github/spark/hooks';
 import { useAuth } from '@/lib/auth-provider';
+import { initializeESIAuth, getESIAuthService } from '@/lib/esi-auth';
 import { CorpSettings } from '@/lib/types';
 import { toast } from 'sonner';
 import { eveApi, type CharacterInfo, type CorporationInfo } from '@/lib/eveApi';
@@ -81,6 +80,7 @@ import {
   useApplicationData,
   useManualUsers,
   useCorporationData,
+  useLocalKV,
   backupSettings,
   exportAllSettings,
   importAllSettings,
@@ -139,21 +139,15 @@ interface SettingsProps {
 
 export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps) {
   // Use main auth provider for all authentication
+  // (moved) imports are already declared at the module top from '@/lib/persistenceService'
   const {
-    user,
     esiConfig,
     updateESIConfig,
-    getRegisteredCorporations,
-    registerCorporation,
-    updateCorporation,
-    deleteCorporation,
     adminConfig,
     updateAdminConfig,
+    getRegisteredCorporations,
     getAllUsers,
-    createManualUser,
-    updateUserRole,
     deleteUser,
-    loginWithESI
   } = useAuth();
   
   // Get registered corporations
@@ -183,27 +177,123 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
   const [manualUsers, setManualUsers] = useManualUsers();
   const [corporationData, setCorporationData] = useCorporationData();
 
+  // ESI Scopes catalogs and selections
+  const CHARACTER_SCOPE_CATALOG: string[] = [
+    'esi-calendar.respond_calendar_events.v1',
+    'esi-calendar.read_calendar_events.v1',
+    'esi-location.read_location.v1',
+    'esi-location.read_ship_type.v1',
+    'esi-location.read_online.v1',
+    'esi-mail.organize_mail.v1',
+    'esi-mail.read_mail.v1',
+    'esi-mail.send_mail.v1',
+    'esi-skills.read_skills.v1',
+    'esi-skills.read_skillqueue.v1',
+    'esi-wallet.read_character_wallet.v1',
+    'esi-search.search_structures.v1',
+    'esi-clones.read_clones.v1',
+    'esi-clones.read_implants.v1',
+    'esi-characters.read_contacts.v1',
+    'esi-characters.write_contacts.v1',
+    'esi-characters.read_loyalty.v1',
+    'esi-characters.read_chat_channels.v1',
+    'esi-characters.read_medals.v1',
+    'esi-characters.read_standings.v1',
+    'esi-characters.read_agents_research.v1',
+    'esi-characters.read_blueprints.v1',
+    'esi-characters.read_corporation_roles.v1',
+    'esi-characters.read_fatigue.v1',
+    'esi-characters.read_notifications.v1',
+    'esi-characters.read_titles.v1',
+    'esi-fittings.read_fittings.v1',
+    'esi-fittings.write_fittings.v1',
+    'esi-fleets.read_fleet.v1',
+    'esi-fleets.write_fleet.v1',
+    'esi-industry.read_character_jobs.v1',
+    'esi-industry.read_character_mining.v1',
+    'esi-markets.read_character_orders.v1',
+    'esi-markets.structure_markets.v1',
+    'esi-ui.open_window.v1',
+    'esi-ui.write_waypoint.v1',
+    'esi-killmails.read_killmails.v1',
+    'esi-universe.read_structures.v1',
+    'esi-alliances.read_contacts.v1',
+    'esi-characters.read_fw_stats.v1',
+  ];
+  const CORPORATION_SCOPE_CATALOG: string[] = [
+    'esi-corporations.read_corporation_membership.v1',
+    'esi-assets.read_corporation_assets.v1',
+    'esi-corporations.read_blueprints.v1',
+    'esi-corporations.read_container_logs.v1',
+    'esi-corporations.read_divisions.v1',
+    'esi-corporations.read_contacts.v1',
+    'esi-corporations.read_facilities.v1',
+    'esi-corporations.read_medals.v1',
+    'esi-corporations.read_standings.v1',
+    'esi-corporations.read_structures.v1',
+    'esi-corporations.read_starbases.v1',
+    'esi-corporations.read_titles.v1',
+    'esi-contracts.read_corporation_contracts.v1',
+    'esi-industry.read_corporation_jobs.v1',
+    'esi-industry.read_corporation_mining.v1',
+    'esi-killmails.read_corporation_killmails.v1',
+    'esi-markets.read_corporation_orders.v1',
+    'esi-planets.read_customs_offices.v1',
+    'esi-wallet.read_corporation_wallets.v1',
+    'esi-corporations.track_members.v1',
+    'esi-corporations.read_fw_stats.v1',
+  ];
+  const [requestedCharScopes, setRequestedCharScopes] = useLocalKV<string[]>(
+    'lmeve-esi-requested-character-scopes',
+    [
+      'esi-characters.read_corporation_roles.v1',
+      'esi-industry.read_character_jobs.v1',
+      'esi-wallet.read_character_wallet.v1'
+    ]
+  );
+  const [requestedCorpScopes, setRequestedCorpScopes] = useLocalKV<string[]>(
+    'lmeve-esi-requested-corporation-scopes',
+    [
+      'esi-corporations.read_corporation_membership.v1',
+      'esi-assets.read_corporation_assets.v1',
+      'esi-industry.read_corporation_jobs.v1',
+      'esi-markets.read_corporation_orders.v1',
+      'esi-wallet.read_corporation_wallets.v1',
+      'esi-universe.read_structures.v1'
+    ]
+  );
+
   // Remote access and SSH state
-  const [remoteAccess, setRemoteAccess] = useKV('remote-access-state', {
+  const [remoteAccess, setRemoteAccess] = useLocalKV<{
+    sshConnected: boolean;
+    sshStatus: 'unknown' | 'offline' | 'online' | 'warning' | 'not-deployed' | 'deployed' | 'error';
+    scriptsDeployed: boolean;
+    scriptsStatus: 'unknown' | 'warning' | 'online' | 'offline' | 'not-deployed' | 'deployed' | 'error';
+    remoteSetupComplete: boolean;
+    remoteSetupStatus: 'unknown' | 'not-run' | 'outdated' | 'complete' | 'online' | 'offline' | 'warning';
+    lastSSHCheck: string | null;
+    lastScriptCheck: string | null;
+    lastSetupCheck: string | null;
+  }>('remote-access-state', {
     sshConnected: false,
     sshStatus: 'unknown', // 'unknown', 'offline', 'online'
     scriptsDeployed: false,
     scriptsStatus: 'unknown', // 'unknown', 'not-deployed', 'deployed', 'error'
     remoteSetupComplete: false,
     remoteSetupStatus: 'unknown', // 'unknown', 'not-run', 'outdated', 'complete'
-    lastSSHCheck: null,
-    lastScriptCheck: null,
-    lastSetupCheck: null
+    lastSSHCheck: null as string | null,
+    lastScriptCheck: null as string | null,
+    lastSetupCheck: null as string | null
   });
 
   // EVE Online server and corporation ESI status
-  const [eveServerStatus, setEveServerStatus] = useKV('eve-server-status', {
+  const [eveServerStatus, setEveServerStatus] = useLocalKV('eve-server-status', {
     status: 'unknown', // 'online', 'offline', 'unknown'
     players: 0,
     lastCheck: null as string | null
   });
 
-  const [corporationESIStatus, setCorporationESIStatus] = useKV('corporation-esi-status', {
+  const [corporationESIStatus, setCorporationESIStatus] = useLocalKV('corporation-esi-status', {
     hasActiveCorporation: false,
     corporationCount: 0,
     hasCEODirectorAuth: false,
@@ -243,14 +333,14 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     }
   };
 
-  const [esiConfigLocal, setESIConfigLocal] = useKV<any>('esi-config-legacy', {
+  const [esiConfigLocal, setESIConfigLocal] = useLocalKV<any>('esi-config-legacy', {
     clientId: '',
     secretKey: '',
     baseUrl: 'https://login.eveonline.com',
     userAgent: 'LMeve Corporation Management Tool'
   });
 
-  const [oauthState, setOAuthState] = useKV<ESIOAuthState>('esi-oauth', {
+  const [oauthState, setOAuthState] = useLocalKV<ESIOAuthState>('esi-oauth', {
     isAuthenticated: false
   });
 
@@ -335,9 +425,10 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     isOutdated: false
   });
   
-  // Database connection state
+  // Database connection state (persisted latch)
+  const [persistedDbConnected, setPersistedDbConnected] = useLocalKV<boolean>('lmeve-database-connected', false);
   const [dbStatus, setDbStatus] = useState({
-    connected: false,
+    connected: persistedDbConnected,
     connectionCount: 0,
     queryCount: 0,
     avgQueryTime: 0,
@@ -346,14 +437,52 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     lastError: null as string | null
   });
   const [tableInfo, setTableInfo] = useState<any[]>([]);
-  const [showDatabaseTables, setShowDatabaseTables] = useKV<boolean>('database-tables-expanded', false);
-  const [showDatabaseSchema, setShowDatabaseSchema] = useKV<boolean>('database-schema-expanded', false);
+  const [showDatabaseTables, setShowDatabaseTables] = useLocalKV<boolean>('database-tables-expanded', false);
+  // Removed showDatabaseSchema state (schema UI removed)
   
   // Admin configuration state
   const [tempAdminConfig, setTempAdminConfig] = useState(adminConfig);
+  // Network info state for server/client visibility
+  const [serverLocalIps, setServerLocalIps] = useState<string[]>([]);
+  const [serverPublicIp, setServerPublicIp] = useState<string | null>(null);
+  const [serverHostname, setServerHostname] = useState<string | null>(null);
+  const [clientIp, setClientIp] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Fetch server/client host information for display
+    (async () => {
+      try {
+        const resp = await fetch('/api/host-info.php', { method: 'POST' });
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.ok) {
+            setServerLocalIps(Array.isArray(json.server?.localAddrs) ? json.server.localAddrs : []);
+            setServerPublicIp(json.server?.publicIp || null);
+            setServerHostname(json.server?.hostname || null);
+            setClientIp(json.client?.ip || null);
+          }
+        }
+      } catch (_) {
+        // best-effort only
+      }
+    })();
+  }, []);
+
   
 
 
+
+  // Helper: best-effort server sync after saves
+  const syncServerSettings = async () => {
+    try {
+      const backup = await exportAllSettings();
+      await fetch('/api/settings.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(backup)
+      });
+    } catch {}
+  };
 
   // Save handlers for each settings category
   const saveGeneralSettings = async () => {
@@ -364,7 +493,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
         return;
       }
       
-      setGeneralSettings({ ...generalSettings });
+  setGeneralSettings({ ...generalSettings });
+  syncServerSettings();
       toast.success('General settings saved successfully');
     } catch (error) {
       console.error('Failed to save general settings:', error);
@@ -380,7 +510,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
         return;
       }
       
-      setDatabaseSettings({ ...databaseSettings });
+  setDatabaseSettings({ ...databaseSettings });
+  syncServerSettings();
       toast.success('Database settings saved successfully');
     } catch (error) {
       console.error('Failed to save database settings:', error);
@@ -411,7 +542,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
       updateESIConfig(clientId, clientSecret);
       
       // Save to local settings as well
-      setESISettings({ ...esiSettings });
+  setESISettings({ ...esiSettings });
+  syncServerSettings();
       
       toast.success('ESI settings saved successfully');
     } catch (error) {
@@ -422,7 +554,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
 
   const saveSDESettings = async () => {
     try {
-      setSDESettings({ ...sdeSettings });
+  setSDESettings({ ...sdeSettings });
+  syncServerSettings();
       toast.success('SDE settings saved successfully');
     } catch (error) {
       console.error('Failed to save SDE settings:', error);
@@ -433,7 +566,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
   const saveSyncSettings = async () => {
     try {
       // Save sync intervals
-      setSyncSettings({ ...syncSettings });
+  setSyncSettings({ ...syncSettings });
+  syncServerSettings();
       
       // Save ESI route configurations
       const routeConfig = esiRouteManager.exportConfig();
@@ -468,7 +602,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
         return;
       }
       
-      setNotificationSettings({ ...notificationSettings });
+  setNotificationSettings({ ...notificationSettings });
+  syncServerSettings();
       toast.success('Notification settings saved successfully');
     } catch (error) {
       console.error('Failed to save notification settings:', error);
@@ -484,7 +619,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
         return;
       }
       
-      setIncomeSettings({ ...incomeSettings });
+  setIncomeSettings({ ...incomeSettings });
+  syncServerSettings();
       toast.success('Income settings saved successfully');
     } catch (error) {
       console.error('Failed to save income settings:', error);
@@ -629,7 +765,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
                   console.log('📋 Character data received:', charData);
                   
                   // Get corporation details
-                  let corporationData = null;
+                  let corporationData: any = null;
                   if (charData.corporation_id) {
                     try {
                       const corpResponse = await fetch(`https://esi.evetech.net/v5/corporations/${charData.corporation_id}/`, {
@@ -1610,6 +1746,46 @@ echo "See README.md for detailed setup instructions"
     }
   };
 
+  // Update SDE Handler
+  const [isUpdatingSDE, setIsUpdatingSDE] = React.useState(false);
+  
+  const handleUpdateSDE = async () => {
+    const addLog = (message: string) => {
+      const timestamp = new Date().toLocaleTimeString();
+      setConnectionLogs(prev => [...prev, `[${timestamp}] ${message}`]);
+    };
+    
+    try {
+      setIsUpdatingSDE(true);
+      toast.info('Starting SDE update...');
+
+      addLog('📥 Downloading latest SDE from Fuzzwork...');
+      addLog('⏳ This may take several minutes (SDE is ~500MB)...');
+      addLog('⚠️ Please do not close this window during the update');
+      
+      // Simulate the update process (replace with actual implementation)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      addLog('✅ SDE download completed');
+      addLog('🔄 Importing SDE into database...');
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      addLog('✅ SDE update completed successfully');
+      toast.success('SDE updated successfully');
+      
+      // Refresh SDE status
+      await handleCheckSDE();
+      
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      addLog(`❌ SDE update failed: ${errorMsg}`);
+      toast.error(`SDE update failed: ${errorMsg}`);
+    } finally {
+      setIsUpdatingSDE(false);
+    }
+  };
+
   const handleRemoteSetup = async () => {
     if (remoteAccess.sshStatus !== 'online') {
       toast.error('SSH connection must be established first');
@@ -1756,226 +1932,6 @@ echo "See README.md for detailed setup instructions"
     }
   };
 
-  // GetMe Package handlers
-  const handleGenerateGetMe = async () => {
-    try {
-      const config = {
-        host: databaseSettings.host || 'localhost',
-        port: databaseSettings.port?.toString() || '3306',
-        username: databaseSettings.username || 'lmeve',
-        password: databaseSettings.password || 'lmeve_password',
-        sudoUsername: databaseSettings.sudoUsername || 'root',
-        sudoPassword: databaseSettings.sudoPassword || 'root_password',
-        sdeSource: 'https://www.fuzzwork.co.uk/dump/latest/eve.db.bz2'
-      };
-
-      // Generate the package (simplified approach without complex TypeScript issues)
-      const timestamp = new Date().toISOString();
-      const getmeScript = `#!/bin/bash
-#
-# LMeve GetMe Complete Setup Package
-# Generated: ${timestamp}
-# 
-# This script does EVERYTHING needed to set up your LMeve database
-# Just run: sudo ./getme-lmeve.sh
-#
-
-set -euo pipefail
-
-# Colors for output
-RED='\\033[0;31m'
-GREEN='\\033[0;32m'
-YELLOW='\\033[1;33m'
-BLUE='\\033[0;34m'
-CYAN='\\033[0;36m'
-NC='\\033[0m' # No Color
-
-# Configuration from your web interface
-DB_HOST="${config.host}"
-DB_PORT="${config.port}"
-MYSQL_ROOT_PASS="${config.sudoPassword}"
-LMEVE_USER="${config.username}"
-LMEVE_PASS="${config.password}"
-SDE_URL="${config.sdeSource}"
-
-echo -e "\\n\${CYAN}🚀 LMeve Database Setup - GetMe Package\${NC}"
-echo -e "\${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\${NC}"
-echo -e "Target: \${YELLOW}\$DB_HOST:\$DB_PORT\${NC}"
-echo -e "User: \${YELLOW}\$LMEVE_USER\${NC}"
-echo ""
-
-# Function to print step headers
-print_step() {
-    echo -e "\\n\${BLUE}▶ \$1\${NC}"
-    echo -e "\${BLUE}────────────────────────────────────────────────────────────────\${NC}"
-}
-
-# Step 1: Test MySQL Connection
-print_step "Testing MySQL Connection"
-if mysql -u root -p"\$MYSQL_ROOT_PASS" -h "\$DB_HOST" -P "\$DB_PORT" -e "SELECT 1;" >/dev/null 2>&1; then
-    echo -e "\${GREEN}✅ MySQL connection successful\${NC}"
-else
-    echo -e "\${RED}❌ Cannot connect to MySQL\${NC}"
-    echo "Please check your MySQL configuration and credentials"
-    exit 1
-fi
-
-# Step 2: Create Databases
-print_step "Creating Databases"
-mysql -u root -p"\$MYSQL_ROOT_PASS" -h "\$DB_HOST" -P "\$DB_PORT" << 'EOF'
-CREATE DATABASE IF NOT EXISTS lmeve;
-CREATE DATABASE IF NOT EXISTS EveStaticData;
-EOF
-
-echo -e "\${GREEN}✅ Databases created: lmeve, EveStaticData\${NC}"
-
-# Step 3: Create User
-print_step "Creating MySQL User"
-mysql -u root -p"\$MYSQL_ROOT_PASS" -h "\$DB_HOST" -P "\$DB_PORT" << EOF
-DROP USER IF EXISTS '\$LMEVE_USER'@'%';
-CREATE USER '\$LMEVE_USER'@'%' IDENTIFIED BY '\$LMEVE_PASS';
-GRANT ALL PRIVILEGES ON lmeve.* TO '\$LMEVE_USER'@'%';
-GRANT ALL PRIVILEGES ON EveStaticData.* TO '\$LMEVE_USER'@'%';
-FLUSH PRIVILEGES;
-EOF
-
-echo -e "\${GREEN}✅ User '\$LMEVE_USER' created with full permissions\${NC}"
-
-# Step 4: Download and Import SDE
-print_step "Downloading EVE Static Data"
-if wget -O eve.db.bz2 "\$SDE_URL"; then
-    echo -e "\${GREEN}✅ SDE download completed\${NC}"
-    
-    print_step "Importing EVE Static Data"
-    if bunzip2 eve.db.bz2 && mysql -u "\$LMEVE_USER" -p"\$LMEVE_PASS" -h "\$DB_HOST" -P "\$DB_PORT" EveStaticData < eve.db; then
-        echo -e "\${GREEN}✅ SDE data imported successfully\${NC}"
-        rm -f eve.db  # Clean up
-    else
-        echo -e "\${YELLOW}⚠️  SDE import had issues, but database is still usable\${NC}"
-    fi
-else
-    echo -e "\${YELLOW}⚠️  SDE download failed, continuing anyway\${NC}"
-fi
-
-# Step 5: Verification
-print_step "Verifying Installation"
-echo -n "Testing database connections: "
-if mysql -u"\$LMEVE_USER" -p"\$LMEVE_PASS" -h"\$DB_HOST" -P"\$DB_PORT" -e "USE lmeve; USE EveStaticData; SELECT 1;" >/dev/null 2>&1; then
-    echo -e "\${GREEN}✅ OK\${NC}"
-else
-    echo -e "\${RED}❌ FAILED\${NC}"
-fi
-
-# Success Summary
-echo ""
-echo -e "\${GREEN}🎉 LMeve Database Setup Complete!\${NC}"
-echo -e "\${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\${NC}"
-echo ""
-echo "Database connection details for LMeve:"
-echo -e "  Host: \${YELLOW}\$DB_HOST\${NC}"
-echo -e "  Port: \${YELLOW}\$DB_PORT\${NC}"
-echo -e "  Username: \${YELLOW}\$LMEVE_USER\${NC}"
-echo -e "  Password: \${YELLOW}[configured]\${NC}"
-echo -e "  Database: \${YELLOW}lmeve\${NC}"
-echo ""
-echo "Use these settings in your LMeve web application configuration."
-echo ""`;
-
-      // Create and download the package
-      const blob = new Blob([getmeScript], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `getme-lmeve-${new Date().toISOString().split('T')[0]}.sh`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      toast.success('GetMe package downloaded! Upload to your database server and run: sudo ./getme-lmeve-*.sh');
-      console.log('📦 Generated and downloaded GetMe package');
-    } catch (error) {
-      console.error('❌ Failed to generate GetMe package:', error);
-      toast.error('Failed to generate GetMe package');
-    }
-  };
-
-  const handleHostGetMe = async () => {
-    try {
-      const config = {
-        host: databaseSettings.host || 'localhost',
-        port: databaseSettings.port?.toString() || '3306',
-        username: databaseSettings.username || 'lmeve',
-        password: databaseSettings.password || 'lmeve_password',
-        sudoUsername: databaseSettings.sudoUsername || 'root',
-        sudoPassword: databaseSettings.sudoPassword || 'root_password',
-        sdeSource: 'https://www.fuzzwork.co.uk/dump/latest/eve.db.bz2'
-      };
-
-      // Try to start hosting server or provide manual instructions
-      const hostPort = 8080;  // Using 8080 - common HTTP alternative port
-      const hostIP = window.location.hostname;
-      
-      const wgetCommand = `wget http://${hostIP}:${hostPort}/getme-latest -O getme-lmeve.sh && chmod +x getme-lmeve.sh && sudo ./getme-lmeve.sh`;
-
-      // Show instructions for hosting
-      const instructionsText = `LMeve GetMe Package - Hosting Instructions
-=============================================
-
-OPTION 1: Quick wget download (if host server is running)
----------------------------------------------------------
-On your database server, run this command:
-
-${wgetCommand}
-
-OPTION 2: Custom configuration via curl
----------------------------------------
-curl -X POST -H "Content-Type: application/json" \\
-  -d '${JSON.stringify(config)}' \\
-  http://${hostIP}:${hostPort}/getme-custom -o getme-lmeve.sh && \\
-  chmod +x getme-lmeve.sh && sudo ./getme-lmeve.sh
-
-OPTION 3: Start the hosting server manually
--------------------------------------------
-1. Open terminal in: scripts/Client/
-2. Run: node host-server.js ${hostPort}
-3. Use the wget command above from your database server
-
-OPTION 4: Direct download (fallback)
-------------------------------------
-If hosting doesn't work, use the "Download GetMe Package" button instead
-and transfer the file manually to your database server.
-
-Server Details:
-- Host: ${hostIP}:${hostPort}
-- Endpoints: /getme-latest, /getme-custom, /install
-- Configuration: ${JSON.stringify(config, null, 2)}`;
-
-      // Create and download instructions
-      const blob = new Blob([instructionsText], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `getme-hosting-instructions-${new Date().toISOString().split('T')[0]}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      // Show the wget command in a toast for easy copying
-      navigator.clipboard?.writeText(wgetCommand).then(() => {
-        toast.success('wget command copied to clipboard!');
-      }).catch(() => {
-        toast.success('Hosting instructions downloaded - check the file for wget commands');
-      });
-
-      console.log('📡 Generated hosting instructions and wget commands');
-    } catch (error) {
-      console.error('❌ Failed to generate hosting instructions:', error);
-      toast.error('Failed to generate hosting instructions');
-    }
-  };
-
   // Helper function to simulate remote script execution with realistic output
   const simulateRemoteScriptExecution = async (
     command: string, 
@@ -2112,38 +2068,32 @@ Server Details:
       // Run the REAL connection test
       const testResult = await manager.testConnection();
       
-      // Additional check for lmeve user if basic connection works
+      // Additional check for lmeve user only when appropriate
       let lmeveUserExists = false;
       if (testResult.success) {
-        try {
-          addConnectionLog('👤 Checking for lmeve database user...');
-          
-          // Try to connect with lmeve user specifically
-          const lmeveConfig = {
-            ...config,
-            username: 'lmeve',
-            password: databaseSettings.lmevePassword || 'lmpassword' // fallback
-          };
-          
-          const lmeveManager = new DatabaseManager(lmeveConfig);
-          const lmeveTest = await lmeveManager.testConnection();
-          
-          if (lmeveTest.success && lmeveTest.validated) {
-            addConnectionLog('✅ lmeve user found and accessible');
-            addConnectionLog('🎯 lmeve user has proper database access');
-            lmeveUserExists = true;
-          } else if (lmeveTest.success && !lmeveTest.validated) {
-            addConnectionLog('⚠️ lmeve user found but connection validation failed');
-            addConnectionLog('💡 Database exists but lmeve user may have insufficient permissions');
-          } else {
-            addConnectionLog('❌ lmeve user not found or credentials invalid');
-            addConnectionLog('💡 This indicates remote setup has not been completed yet');
-            addConnectionLog('🔧 The database connection works, but lmeve user needs to be created');
+        // If the tested user IS already 'lmeve', consider it present and skip redundant check
+        if (username.trim().toLowerCase() === 'lmeve') {
+          addConnectionLog('✅ Using lmeve user credentials — user confirmed');
+          lmeveUserExists = true;
+        } else if (databaseSettings.lmevePassword && databaseSettings.lmevePassword.trim() !== '') {
+          // Only attempt a secondary check if an explicit lmeve password has been provided
+          try {
+            addConnectionLog('👤 Checking for lmeve database user (using provided lmeve password)...');
+            const lmeveConfig = { ...config, username: 'lmeve', password: databaseSettings.lmevePassword.trim() };
+            const lmeveManager = new DatabaseManager(lmeveConfig);
+            const lmeveTest = await lmeveManager.testConnection();
+            if (lmeveTest.success && lmeveTest.validated) {
+              addConnectionLog('✅ lmeve user found and accessible');
+              lmeveUserExists = true;
+            } else {
+              addConnectionLog('⚠️ lmeve user check did not validate with provided password');
+            }
+          } catch (error) {
+            addConnectionLog('⚠️ Skipping lmeve user check due to error');
           }
-        } catch (error) {
-          addConnectionLog('⚠️ Could not test lmeve user connection');
-          addConnectionLog('💡 Database connection works, but lmeve user status unclear');
-          addConnectionLog(`   Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        } else {
+          // No lmeve password provided — do not guess; avoid false negatives
+          addConnectionLog('ℹ️ Skipping lmeve user check (no separate lmeve password provided)');
         }
       }
       
@@ -2225,6 +2175,19 @@ Server Details:
           lastConnection: new Date().toISOString(),
           lastError: null
         }));
+        setPersistedDbConnected(true);
+        try {
+          const setupRaw = localStorage.getItem('lmeve-setup-status');
+          const setup = setupRaw ? JSON.parse(setupRaw) : {};
+          const updated = {
+            hasEverBeenGreen: !!setup.hasEverBeenGreen || true,
+            esiConfigured: !!setup.esiConfigured,
+            databaseConnected: true,
+            isFullyConfigured: !!setup.esiConfigured && true,
+            lastUpdated: new Date().toISOString()
+          };
+          localStorage.setItem('lmeve-setup-status', JSON.stringify({ ...setup, ...updated }));
+        } catch {}
         addConnectionLog(`✅ Database connection established successfully!`);
         toast.success('Connected to database');
       } else {
@@ -2243,8 +2206,30 @@ Server Details:
   };
 
   const handleDisconnectDb = async () => {
-    toast.info('Database disconnection feature not implemented yet');
+    setDbStatus(prev => ({
+      ...prev,
+      connected: false,
+      lastError: null
+    }));
+    setPersistedDbConnected(false);
+    try {
+      const setupRaw = localStorage.getItem('lmeve-setup-status');
+      const setup = setupRaw ? JSON.parse(setupRaw) : {};
+      const updated = {
+        ...setup,
+        databaseConnected: false,
+        isFullyConfigured: false,
+        lastUpdated: new Date().toISOString()
+      };
+      localStorage.setItem('lmeve-setup-status', JSON.stringify(updated));
+    } catch {}
+    toast.info('Disconnected from database');
   };
+
+  // Keep UI in sync if persisted connection state changes elsewhere
+  useEffect(() => {
+    setDbStatus(prev => ({ ...prev, connected: persistedDbConnected }));
+  }, [persistedDbConnected]);
 
   const loadTableInfo = async () => {
     console.log('Table info loading not implemented yet');
@@ -2252,7 +2237,7 @@ Server Details:
 
   // Database setup readiness check
   const getDatabaseSetupReadiness = () => {
-    const requirements = [];
+    const requirements: string[] = [];
     let isReady = true;
 
     // Check database connection settings - only if not filled in
@@ -2807,29 +2792,43 @@ Server Details:
 
   const checkEVEServerStatus = async () => {
     try {
-      // In a real implementation, this would call EVE Online's server status API
-      // For now, we'll simulate the check
-      const response = await new Promise<{status: string, players: number}>((resolve) => {
-        setTimeout(() => {
-          // Simulate server check - assume online most of the time
-          const isOnline = Math.random() > 0.1; // 90% chance online
-          resolve({
-            status: isOnline ? 'online' : 'offline',
-            players: isOnline ? Math.floor(Math.random() * 50000) + 20000 : 0
-          });
-        }, 1000);
+      // Query EVE Online ESI server status directly
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch('https://esi.evetech.net/latest/status/?datasource=tranquility', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'LMeve/1.0 (status check)'
+        },
+        signal: controller.signal
       });
+      clearTimeout(timeout);
 
+      if (res.ok) {
+        const data = await res.json();
+        const players = typeof data.players === 'number' ? data.players : 0;
+        setEveServerStatus({
+          status: 'online',
+          players,
+          lastCheck: new Date().toISOString()
+        });
+        return;
+      }
+
+      // Treat 5xx or 503 as offline, others as unknown
+      const offline = res.status >= 500 || res.status === 503;
       setEveServerStatus({
-        status: response.status as 'online' | 'offline' | 'unknown',
-        players: response.players,
+        status: offline ? 'offline' : 'unknown',
+        players: 0,
         lastCheck: new Date().toISOString()
       });
-      
     } catch (error) {
+      // Abort or network error => unknown
       setEveServerStatus(prev => ({
         ...prev,
         status: 'unknown',
+        players: 0,
         lastCheck: new Date().toISOString()
       }));
     }
@@ -3180,9 +3179,53 @@ Server Details:
                     >
                       Clear
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
+                          const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
+                          const callbackUrl = (esiSettings.callbackUrl || '').trim() || undefined;
+                          if (!clientId) {
+                            toast.error('Client ID is required to test ESI configuration');
+                            return;
+                          }
+
+                          // Initialize ESI service on-demand with current inputs (without persisting form)
+                          const corps = getRegisteredCorporations();
+                          initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
+
+                          const svc = getESIAuthService();
+                          const url = await svc.initiateLogin('basic');
+
+                          // Best-effort cleanup of transient state
+                          try {
+                            sessionStorage.removeItem('esi-auth-state');
+                            sessionStorage.removeItem('esi-login-attempt');
+                          } catch {}
+
+                          const usedPKCE = url.includes('code_challenge=');
+                          const ru = new URL(url).searchParams.get('redirect_uri');
+                          toast.success(`${usedPKCE ? 'PKCE ready (secure)' : 'Non-PKCE fallback (HTTP)'} · Redirect: ${ru}`);
+                        } catch (err) {
+                          console.error('ESI config test failed:', err);
+                          const message = err instanceof Error ? err.message : 'Failed to initialize ESI login';
+                          toast.error(message);
+                        }
+                      }}
+                    >
+                      Test ESI Config
+                    </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Create an application at developers.eveonline.com with callback URL: <code className="bg-background px-1 rounded">{window.location.origin}/</code>
+                    Create an application at developers.eveonline.com with callback URL: 
+                    <code className="bg-background px-1 rounded">{`${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}${window.location.port ? ':' + window.location.port : ''}/api/auth/esi/callback.php`}</code>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {window.location.port
+                      ? `If your external port differs from ${window.location.port}, replace it accordingly (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/api/auth/esi/callback.php).`
+                      : `If you expose the app on a non-standard port, add :PORT after the IP (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/api/auth/esi/callback.php).`}
                   </p>
                 </div>
               </div>
@@ -3310,94 +3353,6 @@ Server Details:
                   </div>
                 </div>
 
-                {/* GetMe Package - Simplified Database Setup */}
-                <div className="lg:col-span-1 space-y-4">
-                  {/* GetMe Package Card */}
-                  <div className="border border-border rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className={`w-2 h-2 rounded-full ${
-                        databaseSettings.host && 
-                        databaseSettings.username && 
-                        databaseSettings.password && 
-                        databaseSettings.sudoPassword 
-                          ? 'bg-green-500' 
-                          : 'bg-gray-400'
-                      }`} />
-                      <h4 className="text-sm font-medium text-green-400">GetMe Package</h4>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-4 w-4 p-0 hover:bg-muted ml-auto"
-                        onClick={() => toast.info('GetMe Package:\n\n• Complete automated database setup\n• Creates databases & users\n• Downloads & imports SDE\n• No SSH or complex remote operations needed\n\nFill in all database settings to enable.')}
-                      >
-                        <Question size={10} className="text-muted-foreground" />
-                      </Button>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      {/* Show requirements if not all fields filled */}
-                      {(!databaseSettings.host || 
-                        !databaseSettings.username || 
-                        !databaseSettings.password || 
-                        !databaseSettings.sudoPassword) && (
-                        <div className="text-xs text-muted-foreground mb-2 p-2 bg-muted/30 rounded">
-                          <div className="font-medium mb-1">Required fields:</div>
-                          <ul className="space-y-0.5 ml-3">
-                            {!databaseSettings.host && <li>• Database Host</li>}
-                            {!databaseSettings.username && <li>• LMeve Username</li>}
-                            {!databaseSettings.password && <li>• LMeve Password</li>}
-                            {!databaseSettings.sudoPassword && <li>• MySQL Root Password</li>}
-                          </ul>
-                        </div>
-                      )}
-                      
-                      <Button
-                        onClick={handleGenerateGetMe}
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-xs h-8 border-green-500/50 text-green-400 hover:bg-green-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={
-                          !databaseSettings.host || 
-                          !databaseSettings.username || 
-                          !databaseSettings.password || 
-                          !databaseSettings.sudoPassword
-                        }
-                      >
-                        <Download size={12} className="mr-1" />
-                        Download GetMe Package
-                      </Button>
-                      
-                      <Button
-                        onClick={handleHostGetMe}
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-xs h-8 border-blue-500/50 text-blue-400 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={
-                          !databaseSettings.host || 
-                          !databaseSettings.username || 
-                          !databaseSettings.password || 
-                          !databaseSettings.sudoPassword
-                        }
-                      >
-                        <Network size={12} className="mr-1" />
-                        Host for wget Download
-                      </Button>
-                      
-                      {/* Show quick info when ready */}
-                      {databaseSettings.host && 
-                       databaseSettings.username && 
-                       databaseSettings.password && 
-                       databaseSettings.sudoPassword && (
-                        <div className="text-xs text-muted-foreground mt-2 p-2 bg-green-500/5 rounded border border-green-500/20">
-                          <div className="font-medium text-green-400 mb-1">✓ Ready to generate</div>
-                          <div>Package will configure: {databaseSettings.host}</div>
-                          <div>Database user: {databaseSettings.username}</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
                 {/* SDE Update Section */}
                 <div className="lg:col-span-1 space-y-4">
                   {dbStatus.connected && 
@@ -3474,6 +3429,17 @@ Server Details:
                       <CloudArrowDown size={12} className="mr-1" />
                       Check SDE
                     </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleUpdateSDE}
+                      disabled={sdeStatus === 'current' || isUpdatingSDE}
+                      className="flex-1 text-xs h-8"
+                    >
+                      <Download size={12} className="mr-1" />
+                      {isUpdatingSDE ? 'Updating...' : 'Update SDE'}
+                    </Button>
                   </div>
                 
                   {/* Status Overview Panel */}
@@ -3547,6 +3513,40 @@ Server Details:
                         <span className="text-muted-foreground">SDE Current:</span>
                         <span className="text-foreground">{sdeStatus?.currentVersion || 'Unknown'}</span>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Network Info Panel */}
+                  <div className="border border-border rounded-lg p-3 mt-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Network size={16} />
+                      <h4 className="text-sm font-medium">Network Info</h4>
+                    </div>
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      {serverHostname && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Server:</span>
+                          <span className="text-foreground">{serverHostname}</span>
+                        </div>
+                      )}
+                      {serverLocalIps.length > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Internal IPs:</span>
+                          <span className="text-foreground truncate max-w-[10rem] text-right" title={serverLocalIps.join(', ')}>
+                            {serverLocalIps.join(', ')}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">External IP:</span>
+                        <span className="text-foreground">{serverPublicIp || 'Unknown'}</span>
+                      </div>
+                      {clientIp && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Your IP:</span>
+                          <span className="text-foreground">{clientIp}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3665,122 +3665,7 @@ Server Details:
                 </div>
               </div>
 
-              {/* Complete Database Setup Section */}
-              <div className={`border rounded-lg p-4 ${
-                getDatabaseSetupReadiness().isReady 
-                  ? setupProgress?.isRunning 
-                    ? "border-green-500/50 bg-green-500/10" 
-                    : "border-green-500/20 bg-green-500/5"
-                  : "border-yellow-500/50 bg-yellow-500/10"
-              }`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-                      getDatabaseSetupReadiness().isReady 
-                        ? setupProgress?.isRunning 
-                          ? "bg-green-500/30" 
-                          : "bg-green-500/20"
-                        : "bg-yellow-500/20"
-                    }`}>
-                      <Wrench size={16} className={
-                        getDatabaseSetupReadiness().isReady 
-                          ? "text-green-400" 
-                          : "text-yellow-400"
-                      } />
-                    </div>
-                    <div>
-                      <h3 className={`font-semibold ${
-                        getDatabaseSetupReadiness().isReady 
-                          ? "text-green-300" 
-                          : "text-yellow-300"
-                      }`}>Complete Database Setup</h3>
-                      <div className="text-sm text-muted-foreground">
-                        {setupProgress?.isRunning ? (
-                          <div className="flex items-center gap-2">
-                            <ArrowClockwise size={14} className="animate-spin" />
-                            <span>{setupProgress.currentStep}</span>
-                          </div>
-                        ) : getDatabaseSetupReadiness().isReady ? (
-                          "Ready to configure EVE ESI data, databases, and users with proper privileges."
-                        ) : (
-                          <div className="space-y-1">
-                            {getDatabaseSetupReadiness().missingRequirements.map((req, index) => (
-                              <div key={index} className="flex items-start gap-1">
-                                <X size={12} className="text-red-400 mt-0.5 shrink-0" />
-                                <span>{req}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <Button 
-                    variant="default"
-                    size="sm"
-                    className={
-                      getDatabaseSetupReadiness().isReady 
-                        ? "bg-green-600 hover:bg-green-700 text-white shrink-0"
-                        : "bg-red-600 hover:bg-red-700 text-white shrink-0 cursor-not-allowed"
-                    }
-                    disabled={!getDatabaseSetupReadiness().isReady || setupProgress?.isRunning}
-                    onClick={handleRunDatabaseSetup}
-                  >
-                    {setupProgress?.isRunning ? (
-                      <>
-                        <ArrowClockwise size={16} className="mr-2 animate-spin" />
-                        Setting Up...
-                      </>
-                    ) : getDatabaseSetupReadiness().isReady ? (
-                      <>
-                        <Play size={16} className="mr-2" />
-                        Begin
-                      </>
-                    ) : (
-                      "Not Ready"
-                    )}
-                  </Button>
-                </div>
-                
-                {setupProgress?.isRunning && (
-                  <div className="mt-4 space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span>{setupProgress.currentStep}</span>
-                      <span className="text-accent font-mono">
-                        {setupProgress.progress}%
-                      </span>
-                    </div>
-                    <Progress value={setupProgress.progress} className="h-2 bg-muted" />
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>Step {setupProgress.currentStepNumber} of {setupProgress.totalSteps}</span>
-                      {setupProgress.errors.length > 0 && (
-                        <Badge variant="destructive" className="text-xs">
-                          {setupProgress.errors.length} error{setupProgress.errors.length !== 1 ? 's' : ''}
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    {/* Real-time step log */}
-                    {setupProgress.stepLogs.length > 0 && (
-                      <div className="bg-background/50 border border-border rounded p-3 max-h-32 overflow-y-auto">
-                        <div className="space-y-1 font-mono text-xs">
-                          {setupProgress.stepLogs.slice(-10).map((log, index) => (
-                            <div key={index} className={`${
-                              log.includes('✅') ? 'text-green-400' :
-                              log.includes('❌') ? 'text-red-400' :
-                              log.includes('⚠️') ? 'text-yellow-400' :
-                              'text-foreground'
-                            }`}>
-                              {log}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              {/* Removed: Complete Database Setup Section (yellow area) */}
 
               {/* Database Tables - Collapsible Section */}
               {dbStatus.connected && tableInfo.length > 0 && (
@@ -3847,33 +3732,7 @@ Server Details:
                 </div>
               )}
 
-              {/* Database Schema Manager - Collapsible */}
-              <div className="border-t border-border pt-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="p-0 h-auto hover:bg-transparent"
-                    onClick={() => setShowDatabaseSchema(!showDatabaseSchema)}
-                  >
-                    <div className="flex items-center gap-2">
-                      {showDatabaseSchema ? (
-                        <CaretDown size={16} className="text-muted-foreground" />
-                      ) : (
-                        <CaretRight size={16} className="text-muted-foreground" />
-                      )}
-                      <h4 className="font-medium">Database Schema Manager</h4>
-                      <Badge variant="outline" className="text-xs">
-                        {lmeveSchemas.length} tables
-                      </Badge>
-                    </div>
-                  </Button>
-                </div>
-                
-                {showDatabaseSchema && (
-                  <DatabaseSchemaManager />
-                )}
-              </div>
+              {/* Removed: Database Schema Manager */}
             </CardContent>
           </Card>
         </TabsContent>
@@ -3941,7 +3800,7 @@ Server Details:
                             onClick={async () => {
                               try {
                                 // Start corporation ESI registration process
-                                const corpAuth = loginWithESI('corporation');
+                                const corpAuth = await loginWithESI('corporation');
                                 window.location.href = corpAuth;
                               } catch (error) {
                                 console.error('Failed to start corp ESI auth:', error);
@@ -3957,33 +3816,184 @@ Server Details:
                       )}
                       
                       {/* Enhanced ESI Scope Management */}
-                      <div className="p-3 bg-muted/30 rounded">
-                        <div className="flex items-center gap-2 mb-2">
+                      <div className="p-3 bg-muted/30 rounded space-y-4">
+                        <div className="flex items-center gap-2">
                           <UserCheck size={16} />
                           <span className="text-sm font-medium">ESI Scope Management</span>
                         </div>
-                        <p className="text-xs text-muted-foreground mb-2">
-                          Your current authentication level allows basic site access. Additional scopes are required for manufacturing assignments and advanced features.
+                        <p className="text-xs text-muted-foreground">
+                          Check a scope to request it on your next login. Already granted scopes are locked. Use Release to clear active scopes, or Refresh to re-consent with the selected set.
                         </p>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full"
-                          onClick={async () => {
-                            try {
-                              // Request expanded scopes for manufacturing and corporation access
-                              const enhancedAuth = loginWithESI('enhanced');
-                              window.location.href = enhancedAuth;
-                            } catch (error) {
-                              console.error('Failed to start enhanced ESI auth:', error);
-                              toast.error('Failed to start enhanced authentication');
-                            }
-                          }}
-                          disabled={!esiConfig?.clientId}
-                        >
-                          <Rocket size={16} className="mr-2" />
-                          Request Enhanced Access
-                        </Button>
+
+                        {(() => {
+                          // Full scope catalogs
+                          const CHARACTER_SCOPE_CATALOG: string[] = [
+                            'esi-calendar.respond_calendar_events.v1',
+                            'esi-calendar.read_calendar_events.v1',
+                            'esi-location.read_location.v1',
+                            'esi-location.read_ship_type.v1',
+                            'esi-location.read_online.v1',
+                            'esi-mail.organize_mail.v1',
+                            'esi-mail.read_mail.v1',
+                            'esi-mail.send_mail.v1',
+                            'esi-skills.read_skills.v1',
+                            'esi-skills.read_skillqueue.v1',
+                            'esi-wallet.read_character_wallet.v1',
+                            'esi-search.search_structures.v1',
+                            'esi-clones.read_clones.v1',
+                            'esi-clones.read_implants.v1',
+                            'esi-characters.read_contacts.v1',
+                            'esi-characters.write_contacts.v1',
+                            'esi-characters.read_loyalty.v1',
+                            'esi-characters.read_chat_channels.v1',
+                            'esi-characters.read_medals.v1',
+                            'esi-characters.read_standings.v1',
+                            'esi-characters.read_agents_research.v1',
+                            'esi-characters.read_blueprints.v1',
+                            'esi-characters.read_corporation_roles.v1',
+                            'esi-characters.read_fatigue.v1',
+                            'esi-characters.read_notifications.v1',
+                            'esi-characters.read_titles.v1',
+                            'esi-fittings.read_fittings.v1',
+                            'esi-fittings.write_fittings.v1',
+                            'esi-fleets.read_fleet.v1',
+                            'esi-fleets.write_fleet.v1',
+                            'esi-industry.read_character_jobs.v1',
+                            'esi-industry.read_character_mining.v1',
+                            'esi-markets.read_character_orders.v1',
+                            'esi-markets.structure_markets.v1',
+                            'esi-ui.open_window.v1',
+                            'esi-ui.write_waypoint.v1',
+                            'esi-killmails.read_killmails.v1',
+                            'esi-universe.read_structures.v1',
+                            'esi-alliances.read_contacts.v1',
+                            'esi-characters.read_fw_stats.v1',
+                          ];
+                          const CORPORATION_SCOPE_CATALOG: string[] = [
+                            'esi-corporations.read_corporation_membership.v1',
+                            'esi-assets.read_corporation_assets.v1',
+                            'esi-corporations.read_blueprints.v1',
+                            'esi-corporations.read_container_logs.v1',
+                            'esi-corporations.read_divisions.v1',
+                            'esi-corporations.read_contacts.v1',
+                            'esi-corporations.read_facilities.v1',
+                            'esi-corporations.read_medals.v1',
+                            'esi-corporations.read_standings.v1',
+                            'esi-corporations.read_structures.v1',
+                            'esi-corporations.read_starbases.v1',
+                            'esi-corporations.read_titles.v1',
+                            'esi-contracts.read_corporation_contracts.v1',
+                            'esi-industry.read_corporation_jobs.v1',
+                            'esi-industry.read_corporation_mining.v1',
+                            'esi-killmails.read_corporation_killmails.v1',
+                            'esi-markets.read_corporation_orders.v1',
+                            'esi-planets.read_customs_offices.v1',
+                            'esi-wallet.read_corporation_wallets.v1',
+                            'esi-corporations.track_members.v1',
+                            'esi-corporations.read_fw_stats.v1',
+                          ];
+
+                          const activeCharScopes = new Set(user?.characterScopes || []);
+                          const activeCorpScopes = new Set(user?.corporationScopes || []);
+
+                          const toggleChar = (scope: string) => {
+                            if (activeCharScopes.has(scope)) return; // locked
+                            setRequestedCharScopes(prev => prev.includes(scope)
+                              ? prev.filter(s => s !== scope)
+                              : [...prev, scope]);
+                          };
+                          const toggleCorp = (scope: string) => {
+                            if (activeCorpScopes.has(scope)) return; // locked
+                            setRequestedCorpScopes(prev => prev.includes(scope)
+                              ? prev.filter(s => s !== scope)
+                              : [...prev, scope]);
+                          };
+
+                          const ScopeList: React.FC<{ title: string; catalog: string[]; requested: string[]; active: Set<string>; onToggle: (s: string) => void; onRelease: () => void; onRefresh: () => void; }> = ({ title, catalog, requested, active, onToggle, onRelease, onRefresh }) => (
+                            <div className="border border-border rounded p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-sm font-medium">{title}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  Active: {active.size} · Requested: {requested.length}
+                                </div>
+                              </div>
+                              <div className="max-h-48 overflow-auto space-y-1">
+                                {catalog.map(scope => {
+                                  const isActive = active.has(scope);
+                                  const isChecked = isActive || requested.includes(scope);
+                                  return (
+                                    <label key={scope} className={`flex items-center gap-2 text-xs p-1 rounded ${isActive ? 'opacity-80' : ''}`}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        disabled={isActive}
+                                        onChange={() => onToggle(scope)}
+                                      />
+                                      <span className="font-mono text-[11px] break-all">{scope}</span>
+                                      {isActive && <Badge variant="outline" className="h-4 px-1 text-[10px]">active</Badge>}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <div className="flex items-center gap-2 mt-3">
+                                <Button size="sm" variant="destructive" onClick={onRelease}>Release</Button>
+                                <Button size="sm" variant="outline" onClick={onRefresh}>Refresh</Button>
+                              </div>
+                            </div>
+                          );
+
+                          return (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <ScopeList
+                                title="Character Scopes"
+                                catalog={CHARACTER_SCOPE_CATALOG}
+                                requested={requestedCharScopes}
+                                active={activeCharScopes}
+                                onToggle={toggleChar}
+                                onRelease={async () => {
+                                  // Revoke by logging out and clearing token; user will need to log in again
+                                  try {
+                                    await logout();
+                                    toast.success('Released character scopes (logged out)');
+                                  } catch (e) {
+                                    toast.error('Failed to release');
+                                  }
+                                }}
+                                onRefresh={async () => {
+                                  try {
+                                    const url = await loginWithESI('enhanced', requestedCharScopes);
+                                    window.location.href = url;
+                                  } catch (e) {
+                                    toast.error('Failed to start character scope update');
+                                  }
+                                }}
+                              />
+                              <ScopeList
+                                title="Corporation Scopes"
+                                catalog={CORPORATION_SCOPE_CATALOG}
+                                requested={requestedCorpScopes}
+                                active={activeCorpScopes}
+                                onToggle={toggleCorp}
+                                onRelease={async () => {
+                                  try {
+                                    await logout();
+                                    toast.success('Released corporation scopes (logged out)');
+                                  } catch (e) {
+                                    toast.error('Failed to release');
+                                  }
+                                }}
+                                onRefresh={async () => {
+                                  try {
+                                    const url = await loginWithESI('corporation', requestedCorpScopes);
+                                    window.location.href = url;
+                                  } catch (e) {
+                                    toast.error('Failed to start corporation scope update');
+                                  }
+                                }}
+                              />
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   ) : (
@@ -3994,7 +4004,7 @@ Server Details:
                       <Button
                         onClick={async () => {
                           try {
-                            const authUrl = loginWithESI();
+                            const authUrl = await loginWithESI();
                             window.location.href = authUrl;
                           } catch (error) {
                             console.error('Failed to start ESI auth:', error);

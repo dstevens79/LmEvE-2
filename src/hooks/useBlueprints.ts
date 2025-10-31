@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 import { eveApi, type ESIBlueprint } from '@/lib/eveApi';
 import { Blueprint } from '@/lib/types';
 import { toast } from 'sonner';

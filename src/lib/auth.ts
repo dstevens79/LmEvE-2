@@ -1,6 +1,6 @@
 // Authentication and ESI OAuth Integration
 import React from 'react';
-import { useKV } from '@github/spark/hooks';
+import { useKV } from '@/lib/kv';
 
 export interface AuthUser {
   characterId: number;
