@@ -2,6 +2,21 @@
 // EVE SSO OAuth callback: exchange code, verify, and store tokens in DB users table
 require_once __DIR__ . '/../../_lib/common.php';
 
+// Frontend-redirect mode: If invoked by CCP as a plain GET with only code/state,
+// forward those params to the SPA so the React app can complete the exchange.
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+  $code = $_GET['code'] ?? null;
+  $state = $_GET['state'] ?? null;
+  // If DB/ESI fields are not supplied, use SPA flow
+  $hasDbFields = isset($_GET['host'], $_GET['username'], $_GET['database']);
+  if ($code && $state && !$hasDbFields) {
+    $qs = http_build_query(['code' => $code, 'state' => $state]);
+    // Redirect to app root with query for the SPA to process
+    header('Location: /?' . $qs, true, 302);
+    exit;
+  }
+}
+
 function http_post_json($url, $headers, $data) {
   $ch = curl_init($url);
   curl_setopt($ch, CURLOPT_POST, true);

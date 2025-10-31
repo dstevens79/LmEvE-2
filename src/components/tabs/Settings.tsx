@@ -3130,20 +3130,6 @@ echo "See README.md for detailed setup instructions"
                     </div>
                   </div>
                   
-                  {/* Callback URL */}
-                  <div className="space-y-2">
-                    <Label htmlFor="callbackUrl">Redirect/Callback URL</Label>
-                    <Input
-                      id="callbackUrl"
-                      value={esiSettings.callbackUrl || ''}
-                      onChange={(e) => updateESISetting('callbackUrl', e.target.value)}
-                      placeholder={`${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || window.location.hostname}${window.location.port ? ':' + window.location.port : ''}/api/auth/esi/callback.php`}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Must match a Redirect URI configured in your EVE developer application exactly. If you want to keep your old path (e.g. /lmeve/wwwroot/ssologin.php), set it here and add it in the dev console.
-                    </p>
-                  </div>
-
                   <div className="flex gap-2">
                     <Button
                       onClick={() => {

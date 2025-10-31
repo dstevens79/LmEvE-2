@@ -185,6 +185,7 @@ export class ESIAuthService {
    */
   async initiateLogin(scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic'): Promise<string> {
     console.log('🚀 Initiating EVE SSO OAuth2 login with scope type:', scopeType);
+    console.log('🔎 Using redirect_uri:', this.redirectUri);
     
   const { verifier, challenge } = await this.generatePKCE();
     const state = this.generateState();
@@ -230,6 +231,7 @@ export class ESIAuthService {
    */
   async initiateLoginWithScopes(scopes: string[]): Promise<string> {
     console.log('🚀 Initiating EVE SSO OAuth2 login with explicit scopes:', scopes.length);
+    console.log('🔎 Using redirect_uri:', this.redirectUri);
 
     const { verifier, challenge } = await this.generatePKCE();
     const state = this.generateState();
