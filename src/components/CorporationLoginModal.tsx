@@ -68,7 +68,7 @@ export function CorporationLoginModal({ open, onOpenChange }: CorporationLoginMo
         return;
       }
 
-      const authUrl = loginWithESI();
+  const authUrl = await loginWithESI();
       window.location.href = authUrl;
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to initiate ESI login');

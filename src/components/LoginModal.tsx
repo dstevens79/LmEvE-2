@@ -48,7 +48,7 @@ export function LoginModal({ open, onOpenChange, onLoginSuccess }: LoginModalPro
     }
   };
 
-  const handleESILogin = () => {
+  const handleESILogin = async () => {
     setError(null);
     console.log('🚀 Starting ESI authentication...');
     
@@ -56,7 +56,7 @@ export function LoginModal({ open, onOpenChange, onLoginSuccess }: LoginModalPro
       // Mark that we're attempting ESI login
       sessionStorage.setItem('esi-login-attempt', 'true');
       
-      const authUrl = loginWithESI();
+      const authUrl = await loginWithESI();
       console.log('🔗 Redirecting to EVE SSO:', authUrl);
       onOpenChange(false); // Close modal before redirect
       window.location.href = authUrl;

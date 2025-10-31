@@ -61,6 +61,7 @@ import {
   RefreshCw
 } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/auth-provider';
+import { initializeESIAuth, getESIAuthService } from '@/lib/esi-auth';
 import { CorpSettings } from '@/lib/types';
 import { toast } from 'sonner';
 import { eveApi, type CharacterInfo, type CorporationInfo } from '@/lib/eveApi';
@@ -3078,6 +3079,42 @@ echo "See README.md for detailed setup instructions"
                       disabled={!esiSettings.clientId && !esiSettings.clientSecret}
                     >
                       Clear
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
+                          const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
+                          if (!clientId) {
+                            toast.error('Client ID is required to test ESI configuration');
+                            return;
+                          }
+
+                          // Initialize ESI service on-demand with current inputs (without persisting form)
+                          const corps = getRegisteredCorporations();
+                          initializeESIAuth(clientId, clientSecret, corps);
+
+                          const svc = getESIAuthService();
+                          const url = await svc.initiateLogin('basic');
+
+                          // Best-effort cleanup of transient state
+                          try {
+                            sessionStorage.removeItem('esi-auth-state');
+                            sessionStorage.removeItem('esi-login-attempt');
+                          } catch {}
+
+                          const usedPKCE = url.includes('code_challenge=');
+                          toast.success(`${usedPKCE ? 'PKCE ready (secure)' : 'Non-PKCE fallback (HTTP)'} · ESI initialized`);
+                        } catch (err) {
+                          console.error('ESI config test failed:', err);
+                          const message = err instanceof Error ? err.message : 'Failed to initialize ESI login';
+                          toast.error(message);
+                        }
+                      }}
+                    >
+                      Test ESI Config
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">

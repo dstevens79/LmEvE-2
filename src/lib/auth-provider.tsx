@@ -180,14 +180,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
     
     try {
-      const esiService = getESIAuthService();
+      let esiService: ReturnType<typeof getESIAuthService>;
+      try {
+        esiService = getESIAuthService();
+      } catch (e) {
+        // Initialize on-demand if not yet initialized
+        console.warn('ESI service not initialized. Initializing now...');
+        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations);
+        esiService = getESIAuthService();
+      }
       const url = await esiService.initiateLogin(scopeType);
       return url;
     } catch (error) {
       console.error('❌ ESI login initiation failed:', error);
       throw error;
     }
-  }, [esiConfiguration]);
+  }, [esiConfiguration, registeredCorporations]);
 
   // Handle ESI callback
   const handleESICallback = useCallback(async (code: string, state: string): Promise<LMeveUser> => {

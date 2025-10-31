@@ -139,25 +139,34 @@ export class ESIAuthService {
   /**
    * Generate PKCE challenge and verifier
    */
-  private async generatePKCE(): Promise<{ verifier: string; challenge: string }> {
-    // Generate code verifier (random string)
-    const array = new Uint8Array(32);
-    crypto.getRandomValues(array);
-    const verifier = btoa(String.fromCharCode.apply(null, Array.from(array)))
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=/g, '');
+  private async generatePKCE(): Promise<{ verifier: string; challenge: string | null }> {
+    try {
+      // Generate code verifier (random string)
+      const array = new Uint8Array(32);
+      crypto.getRandomValues(array);
+      const verifier = btoa(String.fromCharCode.apply(null, Array.from(array)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '');
 
-    // Generate code challenge (SHA256 hash of verifier)
-    const encoder = new TextEncoder();
-    const data = encoder.encode(verifier);
-    const digest = await crypto.subtle.digest('SHA-256', data);
-    const challenge = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(digest))))
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=/g, '');
-
-    return { verifier, challenge };
+      // Generate code challenge (SHA256 hash of verifier)
+      if (crypto?.subtle?.digest) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(verifier);
+        const digest = await crypto.subtle.digest('SHA-256', data);
+        const challenge = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(digest))))
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=/g, '');
+        return { verifier, challenge };
+      } else {
+        console.warn('PKCE SHA-256 not available (insecure context). Falling back to non-PKCE flow.');
+        return { verifier, challenge: null };
+      }
+    } catch (e) {
+      console.warn('PKCE generation failed, falling back to non-PKCE flow:', e);
+      return { verifier: '', challenge: null };
+    }
   }
 
   /**
@@ -179,14 +188,14 @@ export class ESIAuthService {
   async initiateLogin(scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic'): Promise<string> {
     console.log('🚀 Initiating EVE SSO OAuth2 login with scope type:', scopeType);
     
-    const { verifier, challenge } = await this.generatePKCE();
+  const { verifier, challenge } = await this.generatePKCE();
     const state = this.generateState();
     const scopes = SCOPE_SETS[scopeType];
 
     const authState: ESIAuthState = {
       state,
       verifier,
-      challenge,
+      challenge: challenge || undefined as any,
       timestamp: Date.now(),
       scopeType,
       scopes
@@ -200,10 +209,14 @@ export class ESIAuthService {
       redirect_uri: this.redirectUri,
       client_id: this.clientId,
       scope: scopes.join(' '),
-      code_challenge: challenge,
-      code_challenge_method: 'S256',
       state: state
     });
+
+    // Only include PKCE parameters when a challenge is available
+    if (challenge) {
+      params.set('code_challenge', challenge);
+      params.set('code_challenge_method', 'S256');
+    }
 
     const authUrl = `${SSO_AUTH_URL}?${params.toString()}`;
     console.log('🔗 OAuth2 authorization URL generated for', scopeType, 'scopes');
@@ -373,9 +386,12 @@ export class ESIAuthService {
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
       client_id: this.clientId,
-      code: code,
-      code_verifier: verifier
+      code: code
     });
+    // Only include code_verifier when PKCE was used
+    if (verifier) {
+      body.append('code_verifier', verifier);
+    }
 
     if (this.clientSecret) {
       body.append('client_secret', this.clientSecret);
