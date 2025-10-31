@@ -24,7 +24,7 @@ interface AuthContextType {
   
   // Authentication methods
   loginWithCredentials: (username: string, password: string) => Promise<void>;
-  loginWithESI: (scopeType?: 'basic' | 'enhanced' | 'corporation') => string;
+  loginWithESI: (scopeType?: 'basic' | 'enhanced' | 'corporation') => Promise<string>;
   handleESICallback: (code: string, state: string) => Promise<LMeveUser>;
   logout: () => void;
   
@@ -172,7 +172,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [userCredentials, users, setUsers, setCurrentUser, triggerAuthChange]);
 
   // ESI SSO login
-  const loginWithESI = useCallback((scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic') => {
+  const loginWithESI = useCallback(async (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic') => {
     console.log('🚀 Starting ESI login with scope type:', scopeType);
     
     if (!esiConfiguration.clientId) {
@@ -181,7 +181,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
     try {
       const esiService = getESIAuthService();
-      return esiService.initiateLogin(scopeType);
+      const url = await esiService.initiateLogin(scopeType);
+      return url;
     } catch (error) {
       console.error('❌ ESI login initiation failed:', error);
       throw error;

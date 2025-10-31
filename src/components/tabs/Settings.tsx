@@ -344,9 +344,10 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     isOutdated: false
   });
   
-  // Database connection state
+  // Database connection state (persisted latch)
+  const [persistedDbConnected, setPersistedDbConnected] = useLocalKV<boolean>('lmeve-database-connected', false);
   const [dbStatus, setDbStatus] = useState({
-    connected: false,
+    connected: persistedDbConnected,
     connectionCount: 0,
     queryCount: 0,
     avgQueryTime: 0,
@@ -2074,6 +2075,19 @@ echo "See README.md for detailed setup instructions"
           lastConnection: new Date().toISOString(),
           lastError: null
         }));
+        setPersistedDbConnected(true);
+        try {
+          const setupRaw = localStorage.getItem('lmeve-setup-status');
+          const setup = setupRaw ? JSON.parse(setupRaw) : {};
+          const updated = {
+            hasEverBeenGreen: !!setup.hasEverBeenGreen || true,
+            esiConfigured: !!setup.esiConfigured,
+            databaseConnected: true,
+            isFullyConfigured: !!setup.esiConfigured && true,
+            lastUpdated: new Date().toISOString()
+          };
+          localStorage.setItem('lmeve-setup-status', JSON.stringify({ ...setup, ...updated }));
+        } catch {}
         addConnectionLog(`✅ Database connection established successfully!`);
         toast.success('Connected to database');
       } else {
@@ -2092,8 +2106,30 @@ echo "See README.md for detailed setup instructions"
   };
 
   const handleDisconnectDb = async () => {
-    toast.info('Database disconnection feature not implemented yet');
+    setDbStatus(prev => ({
+      ...prev,
+      connected: false,
+      lastError: null
+    }));
+    setPersistedDbConnected(false);
+    try {
+      const setupRaw = localStorage.getItem('lmeve-setup-status');
+      const setup = setupRaw ? JSON.parse(setupRaw) : {};
+      const updated = {
+        ...setup,
+        databaseConnected: false,
+        isFullyConfigured: false,
+        lastUpdated: new Date().toISOString()
+      };
+      localStorage.setItem('lmeve-setup-status', JSON.stringify(updated));
+    } catch {}
+    toast.info('Disconnected from database');
   };
+
+  // Keep UI in sync if persisted connection state changes elsewhere
+  useEffect(() => {
+    setDbStatus(prev => ({ ...prev, connected: persistedDbConnected }));
+  }, [persistedDbConnected]);
 
   const loadTableInfo = async () => {
     console.log('Table info loading not implemented yet');
@@ -2656,29 +2692,43 @@ echo "See README.md for detailed setup instructions"
 
   const checkEVEServerStatus = async () => {
     try {
-      // In a real implementation, this would call EVE Online's server status API
-      // For now, we'll simulate the check
-      const response = await new Promise<{status: string, players: number}>((resolve) => {
-        setTimeout(() => {
-          // Simulate server check - assume online most of the time
-          const isOnline = Math.random() > 0.1; // 90% chance online
-          resolve({
-            status: isOnline ? 'online' : 'offline',
-            players: isOnline ? Math.floor(Math.random() * 50000) + 20000 : 0
-          });
-        }, 1000);
+      // Query EVE Online ESI server status directly
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch('https://esi.evetech.net/latest/status/?datasource=tranquility', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'LMeve/1.0 (status check)'
+        },
+        signal: controller.signal
       });
+      clearTimeout(timeout);
 
+      if (res.ok) {
+        const data = await res.json();
+        const players = typeof data.players === 'number' ? data.players : 0;
+        setEveServerStatus({
+          status: 'online',
+          players,
+          lastCheck: new Date().toISOString()
+        });
+        return;
+      }
+
+      // Treat 5xx or 503 as offline, others as unknown
+      const offline = res.status >= 500 || res.status === 503;
       setEveServerStatus({
-        status: response.status as 'online' | 'offline' | 'unknown',
-        players: response.players,
+        status: offline ? 'offline' : 'unknown',
+        players: 0,
         lastCheck: new Date().toISOString()
       });
-      
     } catch (error) {
+      // Abort or network error => unknown
       setEveServerStatus(prev => ({
         ...prev,
         status: 'unknown',
+        players: 0,
         lastCheck: new Date().toISOString()
       }));
     }
@@ -3606,7 +3656,7 @@ echo "See README.md for detailed setup instructions"
                             onClick={async () => {
                               try {
                                 // Start corporation ESI registration process
-                                const corpAuth = loginWithESI('corporation');
+                                const corpAuth = await loginWithESI('corporation');
                                 window.location.href = corpAuth;
                               } catch (error) {
                                 console.error('Failed to start corp ESI auth:', error);
@@ -3637,7 +3687,7 @@ echo "See README.md for detailed setup instructions"
                           onClick={async () => {
                             try {
                               // Request expanded scopes for manufacturing and corporation access
-                              const enhancedAuth = loginWithESI('enhanced');
+                              const enhancedAuth = await loginWithESI('enhanced');
                               window.location.href = enhancedAuth;
                             } catch (error) {
                               console.error('Failed to start enhanced ESI auth:', error);
@@ -3659,7 +3709,7 @@ echo "See README.md for detailed setup instructions"
                       <Button
                         onClick={async () => {
                           try {
-                            const authUrl = loginWithESI();
+                            const authUrl = await loginWithESI();
                             window.location.href = authUrl;
                           } catch (error) {
                             console.error('Failed to start ESI auth:', error);

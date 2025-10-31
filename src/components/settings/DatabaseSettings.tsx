@@ -24,7 +24,7 @@ import {
   RefreshCw
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
-import { useDatabaseSettings, useSDESettings } from '@/lib/persistenceService';
+import { useDatabaseSettings, useSDESettings, useLocalKV } from '@/lib/persistenceService';
 import { DatabaseManager } from '@/lib/database';
 import { useSDEManager, type SDEDatabaseStats } from '@/lib/sdeService';
 
@@ -59,8 +59,16 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     }));
   };
 
-  // Database connection state
-  const [isConnected, setIsConnected] = useState(false);
+  // Database connection state (persisted)
+  const [isConnected, setIsConnected] = useLocalKV<boolean>('lmeve-database-connected', false);
+
+  // Keep system status indicator in sync with persisted connection state
+  useEffect(() => {
+    setSystemStatus(prev => ({
+      ...prev,
+      databaseConnection: isConnected ? 'online' : 'offline'
+    }));
+  }, [isConnected]);
   const [connectionLogs, setConnectionLogs] = useState<string[]>([]);
   const [testingConnection, setTestingConnection] = useState(false);
   // Removed legacy setup progress/status state
@@ -158,6 +166,18 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
 
       if (result.success) {
         setIsConnected(true);
+        try {
+          const setupRaw = localStorage.getItem('lmeve-setup-status');
+          const setup = setupRaw ? JSON.parse(setupRaw) : {};
+          const updated = {
+            hasEverBeenGreen: !!setup.hasEverBeenGreen,
+            esiConfigured: !!setup.esiConfigured,
+            databaseConnected: true,
+            isFullyConfigured: !!setup.esiConfigured && true,
+            lastUpdated: new Date().toISOString()
+          };
+          localStorage.setItem('lmeve-setup-status', JSON.stringify({ ...setup, ...updated }));
+        } catch {}
         setSystemStatus(prev => ({ ...prev, databaseConnection: 'online' }));
         addConnectionLog('✅ Database connection successful');
         addConnectionLog(`Connected to: ${databaseSettings?.host}:${databaseSettings?.port}`);
@@ -214,6 +234,18 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
 
       if (result.success && result.validated) {
         setIsConnected(true);
+        try {
+          const setupRaw = localStorage.getItem('lmeve-setup-status');
+          const setup = setupRaw ? JSON.parse(setupRaw) : {};
+          const updated = {
+            hasEverBeenGreen: !!setup.hasEverBeenGreen || true,
+            esiConfigured: !!setup.esiConfigured,
+            databaseConnected: true,
+            isFullyConfigured: !!setup.esiConfigured && true,
+            lastUpdated: new Date().toISOString()
+          };
+          localStorage.setItem('lmeve-setup-status', JSON.stringify({ ...setup, ...updated }));
+        } catch {}
         setSystemStatus(prev => ({ ...prev, databaseConnection: 'online' }));
         addConnectionLog('✅ Connected and locked settings');
         toast.success('Connected. Settings locked.');
@@ -232,6 +264,17 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
 
   const handleDisconnect = () => {
     setIsConnected(false);
+    try {
+      const setupRaw = localStorage.getItem('lmeve-setup-status');
+      const setup = setupRaw ? JSON.parse(setupRaw) : {};
+      const updated = {
+        ...setup,
+        databaseConnected: false,
+        isFullyConfigured: false,
+        lastUpdated: new Date().toISOString()
+      };
+      localStorage.setItem('lmeve-setup-status', JSON.stringify(updated));
+    } catch {}
     setSystemStatus(prev => ({ ...prev, databaseConnection: 'offline' }));
     addConnectionLog('🔌 Disconnected. Settings unlocked');
     toast.info('Disconnected. You can edit settings again.');

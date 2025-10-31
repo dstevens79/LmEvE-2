@@ -263,7 +263,7 @@ function AppContent() {
   };
 
   // Handle ESI SSO login
-  const handleESILogin = (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic') => {
+  const handleESILogin = async (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic') => {
     try {
       if (!esiConfig?.clientId) {
         toast.error('ESI authentication is not configured. Please contact your administrator.');
@@ -271,7 +271,7 @@ function AppContent() {
       }
       
       console.log('🚀 Starting ESI SSO login with scope type:', scopeType);
-      const authUrl = loginWithESI(scopeType);
+      const authUrl = await loginWithESI(scopeType);
       
       // Redirect to EVE Online SSO
       window.location.href = authUrl;

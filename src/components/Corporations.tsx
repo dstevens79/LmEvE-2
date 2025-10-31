@@ -205,7 +205,7 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
   const isAdmin = user?.role && ['super_admin', 'admin', 'ceo'].includes(user.role);
   const canEditCorpScopes = user?.role && ['super_admin', 'admin', 'ceo'].includes(user.role);
 
-  const handlePersonalAuth = () => {
+  const handlePersonalAuth = async () => {
     try {
       // All scopes are required - build scope list from all personal scopes
       const allScopes = PERSONAL_ESI_SCOPES.map(s => s.scope);
@@ -214,7 +214,7 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
       sessionStorage.setItem('personal-esi-scopes', JSON.stringify(allScopes));
       
       // Initiate ESI login with all required scopes
-      const authUrl = loginWithESI('enhanced');
+      const authUrl = await loginWithESI('enhanced');
       window.location.href = authUrl;
     } catch (error) {
       console.error('Failed to start personal ESI auth:', error);
@@ -427,7 +427,7 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
                   className="w-full"
                   onClick={async () => {
                     try {
-                      const corpAuth = loginWithESI('corporation');
+                      const corpAuth = await loginWithESI('corporation');
                       window.location.href = corpAuth;
                     } catch (error) {
                       console.error('Failed to start corp ESI auth:', error);

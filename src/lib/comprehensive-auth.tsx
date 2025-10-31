@@ -13,7 +13,7 @@ interface AuthContextType {
   
   // Authentication methods
   loginWithCredentials: (username: string, password: string) => Promise<void>;
-  loginWithESI: () => string;
+  loginWithESI: () => Promise<string>;
   handleESICallback: (code: string, state: string) => Promise<LMeveUser>;
   logout: () => void;
   
@@ -137,7 +137,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [userCredentials, users, setUsers, setCurrentUser, triggerAuthChange]);
 
   // ESI SSO login
-  const loginWithESI = useCallback(() => {
+  const loginWithESI = useCallback(async () => {
     console.log('🚀 Starting ESI login');
     
     if (!esiConfiguration.clientId) {
@@ -146,7 +146,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
     try {
       const esiService = getESIAuthService();
-      return esiService.initiateLogin();
+      const url = await esiService.initiateLogin();
+      return url;
     } catch (error) {
       console.error('❌ ESI login initiation failed:', error);
       throw error;
