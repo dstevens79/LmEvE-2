@@ -198,7 +198,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
           });
         } catch {}
         try {
-          const setupRaw = localStorage.getItem('lmeve-setup-status');
+          const setupRaw = localStorage.getItem('lmeve-setup-status'); 
           const setup = setupRaw ? JSON.parse(setupRaw) : {};
           const updated = {
             hasEverBeenGreen: !!setup.hasEverBeenGreen,
