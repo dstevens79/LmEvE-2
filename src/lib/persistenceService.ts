@@ -54,6 +54,9 @@ export interface DatabaseSettings {
   database: string;
   username: string;
   password: string;
+  // Optional fields used by setup flows
+  rootPassword?: string;
+  lmevePassword?: string;
   ssl: boolean;
   connectionPoolSize: number;
   queryTimeout: number;

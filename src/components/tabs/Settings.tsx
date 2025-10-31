@@ -139,23 +139,16 @@ interface SettingsProps {
 
 export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps) {
   // Use main auth provider for all authentication
-  import { 
-    useGeneralSettings, 
-    useDatabaseSettings, 
-    useESISettings, 
-    useSDESettings, 
-    useSyncSettings, 
-    useNotificationSettings, 
-    useIncomeSettings, 
-    useManualUsers, 
-    useApplicationData, 
-    resetAllSettings,
-    backupSettings,
-    exportAllSettings,
-    importAllSettings,
-    validateSettings,
-    useLocalKV,
-  } from '@/lib/persistenceService';
+  // (moved) imports are already declared at the module top from '@/lib/persistenceService'
+  const {
+    esiConfig,
+    updateESIConfig,
+    adminConfig,
+    updateAdminConfig,
+    getRegisteredCorporations,
+    getAllUsers,
+    deleteUser,
+  } = useAuth();
   
   // Get registered corporations
   const registeredCorps = getRegisteredCorporations();
@@ -772,7 +765,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
                   console.log('📋 Character data received:', charData);
                   
                   // Get corporation details
-                  let corporationData = null;
+                  let corporationData: any = null;
                   if (charData.corporation_id) {
                     try {
                       const corpResponse = await fetch(`https://esi.evetech.net/v5/corporations/${charData.corporation_id}/`, {
