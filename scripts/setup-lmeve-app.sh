@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 # Header
 echo -e "${BLUE}"
 echo "╔════════════════════════════════════════════════════╗"
-echo "║     LMeve-2 Application Setup & Installer        ║"
+echo "║          LmEvEv2 Application Installer            ║"
 echo "╚════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -42,7 +42,138 @@ if [[ ! "$OS" =~ ^(ubuntu|debian)$ ]]; then
     [[ ! "$confirm" =~ ^[Yy]$ ]] && exit 1
 fi
 
-echo -e "\n${GREEN}1. System Update${NC}"
+
+# -----------------------------------------------------
+# Dependency checks (read-only)
+# -----------------------------------------------------
+echo -e "\n${GREEN}1. Pre-flight checks${NC}"
+
+check_dep() {
+    local name="$1"; shift
+    local cmd="$1"; shift
+    local ver_cmd="$1"; shift
+    printf "checking dependancy %-18s .... " "$name"
+    if command -v "$cmd" >/dev/null 2>&1; then
+        local ver
+        if [ -n "$ver_cmd" ]; then
+            ver=$(eval "$ver_cmd" 2>/dev/null | head -n1)
+        fi
+        echo -e "${GREEN}OK${NC}${ver:+  ($ver)}"
+        return 0
+    else
+        echo -e "${YELLOW}MISSING${NC}"
+        return 1
+    fi
+}
+
+MISSING_DEPS=0
+check_dep "curl"    curl   "curl --version" || MISSING_DEPS=$((MISSING_DEPS+1))
+check_dep "git"     git    "git --version"   || MISSING_DEPS=$((MISSING_DEPS+1))
+check_dep "Apache"  apache2 "apache2 -v"     || MISSING_DEPS=$((MISSING_DEPS+1))
+check_dep "PHP"     php    "php -v"          || MISSING_DEPS=$((MISSING_DEPS+1))
+check_dep "Node.js" node   "node -v"         || MISSING_DEPS=$((MISSING_DEPS+1))
+check_dep "npm"     npm    "npm -v"          || MISSING_DEPS=$((MISSING_DEPS+1))
+check_dep "ufw"     ufw    "ufw --version"   || true
+check_dep "certbot" certbot "certbot --version" || true
+
+if [ "$MISSING_DEPS" -gt 0 ]; then
+    echo -e "${YELLOW}Some required components are missing and will be installed.${NC}"
+else
+    echo -e "${GREEN}All required dependencies are present.${NC}"
+fi
+
+# -----------------------------------------------------
+# Upfront configuration menu
+# -----------------------------------------------------
+DEFAULT_DIR="/var/www/html/lmeve2"
+FINAL_DIR="$DEFAULT_DIR"
+ACCESS_METHOD=1 # 1=IP, 2=Domain
+SERVER_NAME=""
+HTTP_PORT=80
+ADMIN_EMAIL="admin@lmeve2.local"
+ENABLE_SSL="N"
+CONFIG_FIREWALL="N"
+
+first_ip() { hostname -I 2>/dev/null | awk '{print $1}' | sed 's/\s.*//' ; }
+
+while true; do
+    echo -e "\n${BLUE}Installer Options${NC}"
+    echo "  1) Access method         : ${ACCESS_METHOD}  (1=IP, 2=Domain)"
+    if [ "$ACCESS_METHOD" -eq 1 ]; then
+        echo "  2) Server name/domain    : [auto] $(first_ip)"
+    else
+        echo "  2) Server name/domain    : ${SERVER_NAME:-lmeve2.local}"
+    fi
+    echo "  3) HTTP port             : ${HTTP_PORT}"
+    echo "  4) Admin email           : ${ADMIN_EMAIL}"
+    echo "  5) Install directory     : ${FINAL_DIR}"
+    echo "  6) Install SSL (certbot) : ${ENABLE_SSL}"
+    echo "  7) Configure UFW firewall: ${CONFIG_FIREWALL}"
+    echo "  P) Proceed with installation"
+    echo "  Q) Quit"
+    read -p "Choose an option to change (1-7), P to proceed, Q to quit: " choice
+    case "${choice^^}" in
+        1)
+            read -p "Select access method [1=IP, 2=Domain]: " am
+            if [ "$am" = "2" ]; then ACCESS_METHOD=2; else ACCESS_METHOD=1; fi
+            ;;
+        2)
+            if [ "$ACCESS_METHOD" -eq 2 ]; then
+                read -p "Enter server name/domain [lmeve2.local]: " sn
+                SERVER_NAME=${sn:-lmeve2.local}
+            else
+                echo "Using IP access; server name is auto-detected."
+            fi
+            ;;
+        3)
+            read -p "Enter HTTP port [80]: " hp
+            HTTP_PORT=${hp:-80}
+            ;;
+        4)
+            read -p "Enter admin email [admin@lmeve2.local]: " ae
+            ADMIN_EMAIL=${ae:-admin@lmeve2.local}
+            ;;
+        5)
+            read -p "Install directory [${DEFAULT_DIR}]: " id
+            FINAL_DIR=${id:-$DEFAULT_DIR}
+            ;;
+        6)
+            read -p "Install SSL with certbot? (Y/N) [${ENABLE_SSL}]: " ss
+            ss=${ss:-$ENABLE_SSL}
+            if [[ "$ss" =~ ^[Yy]$ ]]; then ENABLE_SSL="Y"; else ENABLE_SSL="N"; fi
+            ;;
+        7)
+            read -p "Configure UFW firewall? (Y/N) [${CONFIG_FIREWALL}]: " fw
+            fw=${fw:-$CONFIG_FIREWALL}
+            if [[ "$fw" =~ ^[Yy]$ ]]; then CONFIG_FIREWALL="Y"; else CONFIG_FIREWALL="N"; fi
+            ;;
+        P)
+            break
+            ;;
+        Q)
+            echo "Exiting installer."
+            exit 0
+            ;;
+        *)
+            echo "Invalid option"
+            ;;
+    esac
+done
+
+# Materialize selected options
+if [ "$ACCESS_METHOD" -eq 1 ]; then
+    USE_IP=true
+    SERVER_NAME=$(first_ip)
+else
+    USE_IP=false
+    SERVER_NAME=${SERVER_NAME:-lmeve2.local}
+fi
+
+if [ "$HTTP_PORT" != "80" ]; then
+    echo -e "${YELLOW}Note: You'll access the site at http://${SERVER_NAME}:${HTTP_PORT}${NC}"
+fi
+
+echo -e "\n${GREEN}2. System Update${NC}"
 echo "Updating package lists..."
 apt-get update -qq
 echo "Upgrading packages and removing obsolete ones..."
@@ -51,7 +182,7 @@ apt-get autoremove -y
 apt-get autoclean -y
 echo -e "${GREEN}✓ System updated and cleaned${NC}"
 
-echo -e "\n${GREEN}2. Installing Node.js 20.x${NC}"
+echo -e "\n${GREEN}3. Installing Node.js 20.x${NC}"
 if ! command -v node &> /dev/null || [[ ! "$(node -v)" =~ ^v20 ]]; then
     echo "Installing Node.js 20.x from NodeSource..."
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
@@ -61,7 +192,7 @@ else
     echo -e "${GREEN}✓ Node.js $(node -v) already installed${NC}"
 fi
 
-echo -e "\n${GREEN}3. Installing Apache Web Server${NC}"
+echo -e "\n${GREEN}4. Installing Apache Web Server${NC}"
 if ! command -v apache2 &> /dev/null; then
     apt-get install -y apache2
     systemctl enable apache2
@@ -71,7 +202,7 @@ else
     echo -e "${GREEN}✓ Apache already installed${NC}"
 fi
 
-echo -e "\n${GREEN}3b. Installing PHP for API endpoints${NC}"
+echo -e "\n${GREEN}4b. Installing PHP for API endpoints${NC}"
 if ! command -v php &> /dev/null; then
     apt-get install -y php libapache2-mod-php php-mysql
     systemctl restart apache2
@@ -83,7 +214,7 @@ else
     echo -e "${GREEN}✓ PHP already installed; ensured Apache PHP module and MySQL extension${NC}"
 fi
 
-echo -e "\n${GREEN}4. Installing Git${NC}"
+echo -e "\n${GREEN}5. Installing Git${NC}"
 if ! command -v git &> /dev/null; then
     apt-get install -y git
     echo -e "${GREEN}✓ Git installed${NC}"
@@ -91,64 +222,35 @@ else
     echo -e "${GREEN}✓ Git already installed${NC}"
 fi
 
-# Get final installation directory
-echo -e "\n${BLUE}Installation Directory${NC}"
-read -p "Install directory [/var/www/html/lmeve2]: " FINAL_DIR
-FINAL_DIR=${FINAL_DIR:-/var/www/html/lmeve2}
-
 # Temporary build directory
 BUILD_DIR="/tmp/lmeve2-build-$$"
 
-# Get domain/server name
-echo -e "\n${BLUE}Server Configuration${NC}"
-echo "Access method:"
-echo "  1) IP address (direct access)"
-echo "  2) Domain name (requires DNS)"
-read -p "Select [1]: " access_method
-access_method=${access_method:-1}
+echo -e "\n${BLUE}Selected configuration${NC}"
+echo "  Access method      : $([ "$USE_IP" = true ] && echo IP || echo Domain)"
+echo "  Server name/domain : ${SERVER_NAME}"
+echo "  HTTP port          : ${HTTP_PORT}"
+echo "  Admin email        : ${ADMIN_EMAIL}"
+echo "  Install directory  : ${FINAL_DIR}"
+echo "  SSL (certbot)      : ${ENABLE_SSL}"
+echo "  UFW firewall       : ${CONFIG_FIREWALL}"
 
-if [ "$access_method" == "1" ]; then
-    # IP-based access
-    SERVER_IP=$(hostname -I | awk '{print $1}')
-    SERVER_NAME="${SERVER_IP}"
-    USE_IP=true
-    echo -e "${GREEN}Using IP address: ${SERVER_NAME}${NC}"
-else
-    # Domain-based access
-    read -p "Server name/domain [lmeve2.local]: " SERVER_NAME
-    SERVER_NAME=${SERVER_NAME:-lmeve2.local}
-    USE_IP=false
-fi
-
-# Port selection
-echo -e "\n${BLUE}Port Configuration${NC}"
-read -p "HTTP Port [80]: " HTTP_PORT
-HTTP_PORT=${HTTP_PORT:-80}
-
-if [ "$HTTP_PORT" != "80" ]; then
-    echo -e "${YELLOW}Note: You'll access the site at http://${SERVER_NAME}:${HTTP_PORT}${NC}"
-fi
-
-read -p "Server admin email [admin@lmeve2.local]: " ADMIN_EMAIL
-ADMIN_EMAIL=${ADMIN_EMAIL:-admin@lmeve2.local}
-
-echo -e "\n${GREEN}5. Cloning Repository to Temporary Location${NC}"
+echo -e "\n${GREEN}6. Cloning Repository to Temporary Location${NC}"
 echo "Build directory: ${BUILD_DIR}"
 git clone https://github.com/dstevens79/LmEvE-2.git "$BUILD_DIR"
 echo -e "${GREEN}✓ Repository cloned${NC}"
 
 cd "$BUILD_DIR"
 
-echo -e "\n${GREEN}6. Installing Dependencies${NC}"
+echo -e "\n${GREEN}7. Installing Dependencies${NC}"
 echo "Running npm install (this may take a few minutes)..."
 npm install --silent
 echo -e "${GREEN}✓ Dependencies installed${NC}"
 
-echo -e "\n${GREEN}7. Building Application${NC}"
+echo -e "\n${GREEN}8. Building Application${NC}"
 npm run build
 echo -e "${GREEN}✓ Build complete${NC}"
 
-echo -e "\n${GREEN}8. Deploying Application${NC}"
+echo -e "\n${GREEN}9. Deploying Application${NC}"
 # Change back to safe directory before deleting build dir
 cd /tmp
 
@@ -163,12 +265,12 @@ echo "Moving dist to ${FINAL_DIR}..."
 mv "$BUILD_DIR/dist" "$FINAL_DIR"
 echo -e "${GREEN}✓ Application deployed${NC}"
 
-echo -e "\n${GREEN}9. Cleaning Up Build Files${NC}"
+echo -e "\n${GREEN}10. Cleaning Up Build Files${NC}"
 echo "Removing temporary build directory..."
 rm -rf "$BUILD_DIR"
 echo -e "${GREEN}✓ Build files cleaned (saved ~500MB)${NC}"
 
-echo -e "\n${GREEN}10. Configuring Apache${NC}"
+echo -e "\n${GREEN}11. Configuring Apache${NC}"
 
 # Enable required modules
 a2enmod rewrite
@@ -273,9 +375,7 @@ systemctl restart apache2
 echo -e "${GREEN}✓ Apache configured and restarted${NC}"
 
 # SSL Setup (optional)
-echo -e "\n${BLUE}SSL Configuration (Optional)${NC}"
-read -p "Install SSL certificate with Certbot? (y/N): " ssl_confirm
-if [[ "$ssl_confirm" =~ ^[Yy]$ ]]; then
+if [[ "$ENABLE_SSL" =~ ^[Yy]$ ]]; then
     if ! command -v certbot &> /dev/null; then
         apt-get install -y certbot python3-certbot-apache
     fi
@@ -288,9 +388,7 @@ if [[ "$ssl_confirm" =~ ^[Yy]$ ]]; then
 fi
 
 # Firewall setup
-echo -e "\n${BLUE}Firewall Configuration${NC}"
-read -p "Configure UFW firewall? (y/N): " firewall_confirm
-if [[ "$firewall_confirm" =~ ^[Yy]$ ]]; then
+if [[ "$CONFIG_FIREWALL" =~ ^[Yy]$ ]]; then
     if ! command -v ufw &> /dev/null; then
         apt-get install -y ufw
     fi
@@ -339,9 +437,9 @@ echo -e "${YELLOW}Important:${NC}"
 echo "  • Database must be set up first (use setup-lmeve-db.sh)"
 echo "  • Create ESI app at: https://developers.eveonline.com"
 if [ "$HTTP_PORT" == "80" ]; then
-    echo "  • Callback URL: http://${SERVER_NAME}/auth/callback"
+    echo "  • Callback URL: http://${SERVER_NAME}/api/auth/esi/callback.php"
 else
-    echo "  • Callback URL: http://${SERVER_NAME}:${HTTP_PORT}/auth/callback"
+    echo "  • Callback URL: http://${SERVER_NAME}:${HTTP_PORT}/api/auth/esi/callback.php"
 fi
 echo ""
 echo -e "${BLUE}Logs:${NC}"
