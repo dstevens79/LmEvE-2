@@ -41,29 +41,6 @@ function api_expect(array $payload, array $required): void {
     }
 }
 
-function api_connect(array $payload): mysqli {
-    mysqli_report(MYSQLI_REPORT_OFF);
-    $mysqli = @mysqli_init();
-    if (!$mysqli) {
-        api_fail(500, 'Failed to initialize MySQL client');
-    }
-    @$mysqli->options(MYSQLI_OPT_CONNECT_TIMEOUT, 10);
-
-    $host = (string)($payload['host'] ?? 'localhost');
-    $port = (int)($payload['port'] ?? 3306);
-    $user = (string)($payload['username'] ?? '');
-    $pass = (string)($payload['password'] ?? '');
-
-    $ok = @$mysqli->real_connect($host, $user, $pass, null, $port);
-    if (!$ok) {
-        api_fail(200, 'MySQL connect failed', [
-            'mysqlError' => $mysqli->connect_error,
-            'mysqlErrno' => $mysqli->connect_errno,
-        ]);
-    }
-    return $mysqli;
-}
-
 function api_select_db(mysqli $mysqli, string $db): void {
     if (!@$mysqli->select_db($db)) {
         api_fail(200, 'Database not found or permission denied', [ 'database' => $db ]);
