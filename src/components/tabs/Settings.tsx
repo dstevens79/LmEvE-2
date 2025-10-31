@@ -3792,7 +3792,7 @@ echo "See README.md for detailed setup instructions"
                       </div>
                       
                       {/* Corporation Director/CEO Actions */}
-                      {user.role && ['director', 'ceo'].includes(user.role.toLowerCase()) && (
+                      {user.role && ['super_admin','corp_admin','corp_director'].includes(user.role as any) && (
                         <div className="p-3 bg-accent/10 border border-accent/30 rounded">
                           <div className="flex items-center gap-2 mb-2">
                             <Shield size={16} className="text-accent" />
