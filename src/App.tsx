@@ -488,40 +488,9 @@ function AppContent() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-3">
-                  {/* Character and Corporation images for ESI users */}
-                  {currentUser && currentUser.authMethod === 'esi' && (
-                    <div className="flex items-center gap-2">
-                      {/* Character portrait */}
-                      {currentUser.characterId && (
-                        <img 
-                          src={`https://images.evetech.net/characters/${currentUser.characterId}/portrait?size=64`}
-                          alt={currentUser.characterName || 'Character'}
-                          className="w-8 h-8 rounded-full border-2 border-accent/30"
-                          onError={(e) => {
-                            // Fallback to default avatar on error
-                            (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTYiIGZpbGw9IiMzMzMiLz4KPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSI4IiB5PSI4Ij4KPHBhdGggZD0iTTggMTBDNi45IDEwIDYgOS4xIDYgOEM2IDYuOSA2LjkgNiA4IDZDOS4xIDYgMTAgNi45IDEwIDhDMTAgOS4xIDkuMSAxMCA4IDEwWiIgZmlsbD0iIzk5OSIvPgo8cGF0aCBkPSJNOCAxMkM1LjggMTIgNCA5LjggNCA4QzQgNi4yIDUuOCA0IDggNEM5LjggNCA4IDUuOCA4IDhDOCA5LjggOS44IDEyIDggMTJaIiBmaWxsPSIjOTk5Ii8+Cjwvc3ZnPgo8L3N2Zz4K';
-                          }}
-                        />
-                      )}
-                      
-                      {/* Corporation logo */}
-                      {currentUser.corporationId && (
-                        <img 
-                          src={`https://images.evetech.net/corporations/${currentUser.corporationId}/logo?size=64`}
-                          alt={currentUser.corporationName || 'Corporation'}
-                          className="w-8 h-8 rounded border border-accent/30"
-                          onError={(e) => {
-                            // Fallback to default corp logo on error
-                            (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiBmaWxsPSIjMjIyIi8+CjxwYXRoIGQ9Ik0xNiA4TDI0IDE2TDE2IDI0TDggMTZMMTYgOFoiIGZpbGw9IiM2NjYiLz4KPC9zdmc+';
-                          }}
-                        />
-                      )}
-                    </div>
-                  )}
-                  
                   <Rocket size={28} className="text-accent" />
                   <div>
-                    <h1 className="text-2xl font-bold text-foreground">LMeve</h1>
+                    <h1 className="text-2xl font-bold text-foreground">LmEvEv2</h1>
                     <p className="text-sm text-muted-foreground">Corporation Management</p>
                   </div>
                 </div>
@@ -536,13 +505,25 @@ function AppContent() {
                 {currentUser ? (
                   // Authenticated user section
                   <>
-                    <div className="text-right hidden sm:block">
-                      <p className="text-sm font-medium">{currentUser.characterName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {(currentUser as any).role?.replace('_', ' ').toUpperCase() || 'MEMBER'}
-                        {currentUser.authMethod === 'esi' && ' • ESI'}
-                      </p>
-                    </div>
+                    {/* ESI user panel: portrait + pilot and corp names (only for SSO users) */}
+                    {currentUser.authMethod === 'esi' && (
+                      <div className="flex items-center gap-2">
+                        {currentUser.characterId && (
+                          <img
+                            src={`https://images.evetech.net/characters/${currentUser.characterId}/portrait?size=64`}
+                            alt={currentUser.characterName || 'Character'}
+                            className="w-10 h-10 rounded-full border-2 border-accent/30"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTYiIGZpbGw9IiMzMzMiLz4KPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSI4IiB5PSI4Ij4KPHBhdGggZD0iTTggMTBDNi45IDEwIDYgOS4xIDYgOEM2IDYuOSA2LjkgNiA4IDZDOS4xIDYgMTAgNi45IDEwIDhDMTAgOS4xIDkuMSAxMCA4IDEwWiIgZmlsbD0iIzk5OSIvPgo8cGF0aCBkPSJNOCAxMkM1LjggMTIgNCA5LjggNCA4QzQgNi4yIDUuOCA0IDggNEM5LjggNCA4IDUuOCA4IDhDOCA5LjggOS44IDEyIDggMTJaIiBmaWxsPSIjOTk5Ii8+Cjwvc3ZnPgo8L3N2Zz4K';
+                            }}
+                          />
+                        )}
+                        <div className="leading-tight">
+                          <p className="text-sm font-semibold">{currentUser.characterName}</p>
+                          <p className="text-xs text-muted-foreground">{currentUser.corporationName || 'Unknown Corporation'}</p>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2">
                       {/* Test Login Button - Development Only */}
                       {process.env.NODE_ENV === 'development' && (
