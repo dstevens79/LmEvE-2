@@ -311,6 +311,18 @@ export class ESIAuthService {
 
   const validation = validateESIUser(characterData, corporationRoles, corporations);
       
+      // Determine effective role with explicit CEO detection via corporation ceo_id
+      let effectiveRole = validation.suggestedRole;
+      try {
+        const corpInfo = await this.getCorporationInfo(characterData.corporation_id);
+        if (corpInfo && typeof corpInfo.ceo_id === 'number' && corpInfo.ceo_id === characterData.character_id) {
+          console.log('👑 CEO detected via corporation info ceo_id match');
+          effectiveRole = 'corp_admin';
+        }
+      } catch (e) {
+        console.warn('Failed to fetch corporation info for CEO check, continuing with suggested role:', e);
+      }
+      
       // In simplified model, validation is always allowed; propagate reason only for logs
       if (!validation.isValid) {
         console.warn('Validation reported isValid=false, continuing per simplified policy:', validation.reason);
@@ -327,7 +339,7 @@ export class ESIAuthService {
       const scopeValidation = validateRequiredScopes(
         userScopes,
         validation.corporationConfig,
-        validation.suggestedRole
+        effectiveRole
       );
       
       if (!scopeValidation.isValid) {
@@ -386,7 +398,7 @@ export class ESIAuthService {
         corporationScopes: corpOnlyScopes
       };
 
-      const user = createUserWithRole(userData, validation.suggestedRole);
+      const user = createUserWithRole(userData, effectiveRole);
 
       console.log('✅ ESI authentication successful:', {
         characterName: user.characterName,
@@ -640,6 +652,26 @@ export class ESIAuthService {
       console.warn('Error getting character roles:', error);
       return [];
     }
+  }
+
+  /**
+   * Get corporation info (for CEO detection and more)
+   */
+  private async getCorporationInfo(corporationId: number): Promise<any> {
+    const response = await fetch(
+      `${ESI_BASE_URL}/latest/corporations/${corporationId}/`,
+      {
+        headers: {
+          'User-Agent': 'LMeve/1.0 (https://github.com/dstevens79/lmeve)'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to get corporation info: ${response.status}`);
+    }
+
+    return await response.json();
   }
 
   /**
