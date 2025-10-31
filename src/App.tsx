@@ -202,10 +202,10 @@ function AppContent() {
     const esiLoginAttempt = sessionStorage.getItem('esi-login-attempt');
     
     // Only process ESI callback if:
-    // 1. We have code and state parameters 
-    // 2. We have stored ESI auth state
-    // 3. There was an explicit ESI login attempt
-    if (code && state && esiLoginAttempt) {
+    // 1. We have code and state parameters
+    // 2. We have stored ESI auth state (required for CSRF protection)
+    // Note: Do NOT require 'esi-login-attempt' since it can be lost across some navigations
+    if (code && state) {
       const storedStateData = sessionStorage.getItem('esi-auth-state');
       if (storedStateData) {
         console.log('🔗 Detected valid ESI callback - showing ESI processor');

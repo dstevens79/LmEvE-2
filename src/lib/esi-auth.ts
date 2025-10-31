@@ -309,10 +309,11 @@ export class ESIAuthService {
         tokenResponse.access_token
       );
 
-      const validation = validateESIUser(characterData, corporationRoles, corporations);
+  const validation = validateESIUser(characterData, corporationRoles, corporations);
       
+      // In simplified model, validation is always allowed; propagate reason only for logs
       if (!validation.isValid) {
-        throw new Error(validation.reason || 'Corporation validation failed');
+        console.warn('Validation reported isValid=false, continuing per simplified policy:', validation.reason);
       }
 
       const userScopes = tokenResponse.scope?.split(' ') || characterData.scopes;
@@ -324,7 +325,7 @@ export class ESIAuthService {
       );
       
       const scopeValidation = validateRequiredScopes(
-        userScopes, 
+        userScopes,
         validation.corporationConfig,
         validation.suggestedRole
       );
@@ -394,15 +395,7 @@ export class ESIAuthService {
         validationReason: validation.reason
       });
 
-      if (!validation.corporationConfig && validation.suggestedRole === 'corp_admin') {
-        console.log('🏢 New corporation self-registration detected');
-        
-        (user as any)._requiresCorporationRegistration = {
-          corporationId: characterData.corporation_id,
-          corporationName,
-          characterId: characterData.character_id
-        };
-      }
+      // No auto-registration flow; corp is always derived from SSO and used for data only
 
       sessionStorage.removeItem('esi-auth-state');
       sessionStorage.removeItem('esi-login-attempt');

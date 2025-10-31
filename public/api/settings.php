@@ -12,6 +12,40 @@ if (!is_dir($storeDir)) {
   @mkdir($storeDir, 0775, true);
 }
 
+// Helper: resolve root 'settings' object from various shapes
+function resolve_settings_root(array $json): array {
+  if (isset($json['settings']) && is_array($json['settings'])) {
+    return $json['settings'];
+  }
+  return $json;
+}
+
+// Helper: merge incoming into existing with secret preservation
+function merge_settings(array $existing, array $incoming): array {
+  $merged = $existing;
+  foreach ($incoming as $key => $value) {
+    if (is_array($value)) {
+      $existingChild = isset($existing[$key]) && is_array($existing[$key]) ? $existing[$key] : [];
+      // Secret fields preservation
+      foreach (['password','clientSecret','sudoPassword','smtpPassword'] as $secretKey) {
+        if (isset($value[$secretKey])) {
+          $v = $value[$secretKey];
+          if ($v === '***' || $v === '' || $v === null) {
+            // Keep existing if present
+            if (isset($existingChild[$secretKey]) && $existingChild[$secretKey] !== '') {
+              $value[$secretKey] = $existingChild[$secretKey];
+            }
+          }
+        }
+      }
+      $merged[$key] = merge_settings($existingChild, $value);
+    } else {
+      $merged[$key] = $value;
+    }
+  }
+  return $merged;
+}
+
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 if ($method === 'GET') {
@@ -31,8 +65,39 @@ if ($method === 'GET') {
 
 if ($method === 'POST') {
   $payload = api_read_json();
-  // Persist whatever the client sends (exportAllSettings() shape expected)
-  $ok = @file_put_contents($storeFile, json_encode($payload, JSON_PRETTY_PRINT));
+
+  // Load existing (any shape)
+  $existing = [];
+  if (file_exists($storeFile)) {
+    $raw = @file_get_contents($storeFile);
+    if ($raw !== false) {
+      $cur = json_decode($raw, true);
+      if (is_array($cur)) $existing = $cur;
+    }
+  }
+
+  // Determine the shapes
+  $existingRoot = resolve_settings_root($existing);
+  $incomingRoot = resolve_settings_root($payload);
+
+  // Merge incoming into existing
+  $mergedRoot = merge_settings($existingRoot, $incomingRoot);
+
+  // Preserve wrapper if original had one, otherwise store root-only
+  if (isset($existing['settings']) && is_array($existing['settings'])) {
+    $toStore = $existing;
+    $toStore['settings'] = $mergedRoot;
+  } else {
+    // If incoming contains wrapper, honor it; else store root
+    if (isset($payload['settings']) && is_array($payload['settings'])) {
+      $toStore = $payload;
+      $toStore['settings'] = $mergedRoot;
+    } else {
+      $toStore = $mergedRoot;
+    }
+  }
+
+  $ok = @file_put_contents($storeFile, json_encode($toStore, JSON_PRETTY_PRINT));
   if ($ok === false) {
     api_fail(500, 'Failed to write settings file');
   }

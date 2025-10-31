@@ -231,29 +231,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const esiService = getESIAuthService();
       const esiUser = await esiService.handleCallback(code, state, registeredCorporations);
       
-      // Check if this requires corporation registration
-      const requiresCorpRegistration = (esiUser as any)._requiresCorporationRegistration;
-      if (requiresCorpRegistration) {
-        console.log('🏢 Auto-registering new corporation');
-        
-        const corpConfig = createDefaultCorporationConfig(
-          requiresCorpRegistration.corporationId,
-          requiresCorpRegistration.corporationName,
-          requiresCorpRegistration.characterId
-        );
-        
-        // Register the corporation
-        setRegisteredCorporations(prev => [...prev, corpConfig]);
-        
-        // Clean up the temporary flag
-        delete (esiUser as any)._requiresCorporationRegistration;
-        
-        toast.success(`Corporation "${corpConfig.corporationName}" has been registered automatically.`);
-      }
-      
       // Store token in token manager
-      const tokenManager = CorporationTokenManager.getInstance();
-      await tokenManager.storeToken(esiUser);
+  const tokenManager = CorporationTokenManager.getInstance();
+  await tokenManager.storeToken(esiUser);
       
       // Check if this replaces an existing manual login
       if (currentUser && currentUser.authMethod === 'manual') {

@@ -584,7 +584,7 @@ export const exportAllSettings = async () => {
     notifications: (await safeKVGet<NotificationSettings>('lmeve-settings-notifications')) ?? defaultNotificationSettings,
     income: (await safeKVGet<IncomeSettings>('lmeve-settings-income')) ?? defaultIncomeSettings,
     users: (await safeKVGet<ManualUser[]>('lmeve-manual-users')) ?? [],
-    application: (await safeKVGet<ApplicationData>('lmeve-application-data')) ?? defaultApplicationData,
+    application: (await safeKVGet<ApplicationData>('lmeve-application-data')) ?? defaultApplicationData
   };
 
   return {
@@ -658,8 +658,19 @@ export const loadSettingsFromServer = async (): Promise<boolean> => {
     const resp = await fetch('/api/settings.php', { method: 'GET' });
     if (!resp.ok) return false;
     const data = await resp.json();
-    if (!data || !data.settings) return false;
-    await importAllSettings(data.settings);
+    if (!data) return false;
+    // Accept both shapes:
+    // 1) { ok, settings: { general, database, ... } }
+    // 2) { ok, settings: { version, exportDate, settings: { ... } } }
+    // 3) Fallback legacy: { ok, settings: { database: {...} } }
+    const settingsPayload = data.settings;
+    if (!settingsPayload) return false;
+    // If the payload already has a 'settings' key, pass the whole object
+    // Otherwise, wrap it so importAllSettings receives expected shape
+    const importObj = settingsPayload.settings
+      ? settingsPayload
+      : { settings: settingsPayload };
+    await importAllSettings(importObj);
     return true;
   } catch {
     return false;

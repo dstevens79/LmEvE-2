@@ -298,7 +298,9 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     lastCheck: null as string | null
   });
 
-  const [corporationESIStatus, setCorporationESIStatus] = useLocalKV('corporation-esi-status', {
+  // Scope corporation ESI status per-corporation so multiple corps don't collide
+  const corpStatusKey = user?.corporationId ? `corporation-esi-status:${user.corporationId}` : 'corporation-esi-status';
+  const [corporationESIStatus, setCorporationESIStatus] = useLocalKV(corpStatusKey, {
     hasActiveCorporation: false,
     corporationCount: 0,
     hasCEODirectorAuth: false,

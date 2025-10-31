@@ -48,40 +48,16 @@ export function validateESIUser(
   suggestedRole: UserRole;
   corporationConfig?: CorporationConfig;
 } {
-  // Check if corporation is registered
-  const corpConfig = getCorporationConfig(characterData.corporation_id, registeredCorps);
-  
-  if (!corpConfig) {
-    // Check if user has director/CEO roles that would allow self-registration
-    const hasManagementRole = corporationRoles.some(role => 
-      ['Director', 'CEO', 'Personnel_Manager'].includes(role)
-    );
-    
-    if (hasManagementRole) {
-      return {
-        isValid: true,
-        reason: 'Corporation director/CEO can self-register corporation',
-        suggestedRole: 'corp_admin', // Directors can manage their corp
-        corporationConfig: undefined
-      };
-    } else {
-      return {
-        isValid: false,
-        reason: 'Corporation is not registered. Contact your corporation leadership to register with LMeve.',
-        suggestedRole: 'guest',
-        corporationConfig: undefined
-      };
-    }
-  }
+  // Simplified model: no registration required; corp derived from SSO.
+  // Determine suggested role based solely on EVE roles.
+  const corpConfig = getCorporationConfig(characterData.corporation_id, registeredCorps) || undefined;
 
-  // Corporation is registered - determine role based on EVE roles
   let suggestedRole: UserRole = 'corp_member';
-  
   if (corporationRoles.includes('CEO')) {
     suggestedRole = 'corp_admin';
   } else if (corporationRoles.includes('Director')) {
     suggestedRole = 'corp_director';
-  } else if (corporationRoles.some(role => 
+  } else if (corporationRoles.some(role =>
     ['Personnel_Manager', 'Factory_Manager', 'Station_Manager', 'Accountant'].includes(role)
   )) {
     suggestedRole = 'corp_manager';
@@ -89,7 +65,7 @@ export function validateESIUser(
 
   return {
     isValid: true,
-    reason: 'Valid corporation member',
+    reason: corpConfig ? 'Valid corporation member' : 'Unregistered corporation allowed by site policy',
     suggestedRole,
     corporationConfig: corpConfig
   };
