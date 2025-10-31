@@ -24,7 +24,7 @@ interface AuthContextType {
   
   // Authentication methods
   loginWithCredentials: (username: string, password: string) => Promise<void>;
-  loginWithESI: (scopeType?: 'basic' | 'enhanced' | 'corporation') => Promise<string>;
+  loginWithESI: (scopeType?: 'basic' | 'enhanced' | 'corporation', scopesOverride?: string[]) => Promise<string>;
   handleESICallback: (code: string, state: string) => Promise<LMeveUser>;
   logout: () => void;
   
@@ -172,7 +172,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [userCredentials, users, setUsers, setCurrentUser, triggerAuthChange]);
 
   // ESI SSO login
-  const loginWithESI = useCallback(async (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic') => {
+  const loginWithESI = useCallback(async (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic', scopesOverride?: string[]) => {
     console.log('🚀 Starting ESI login with scope type:', scopeType);
     
     if (!esiConfiguration.clientId) {
@@ -189,7 +189,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations);
         esiService = getESIAuthService();
       }
-      const url = await esiService.initiateLogin(scopeType);
+      const url = scopesOverride && scopesOverride.length > 0
+        ? await esiService.initiateLoginWithScopes(scopesOverride)
+        : await esiService.initiateLogin(scopeType);
       return url;
     } catch (error) {
       console.error('❌ ESI login initiation failed:', error);
@@ -321,36 +323,69 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // Parse and separate scopes
       const userScopes = tokenResponse.scope?.split(' ') || currentUser.scopes || [];
       const CHARACTER_SCOPES_LIST = [
-        'esi-characters.read_character_info.v1',
-        'esi-characters.read_corporation_roles.v1',
-        'esi-industry.read_character_jobs.v1',
+        'esi-calendar.respond_calendar_events.v1',
+        'esi-calendar.read_calendar_events.v1',
+        'esi-location.read_location.v1',
+        'esi-location.read_ship_type.v1',
+        'esi-location.read_online.v1',
+        'esi-mail.organize_mail.v1',
+        'esi-mail.read_mail.v1',
+        'esi-mail.send_mail.v1',
+        'esi-skills.read_skills.v1',
+        'esi-skills.read_skillqueue.v1',
         'esi-wallet.read_character_wallet.v1',
-        'esi-assets.read_assets.v1',
+        'esi-search.search_structures.v1',
+        'esi-clones.read_clones.v1',
+        'esi-clones.read_implants.v1',
+        'esi-characters.read_contacts.v1',
+        'esi-characters.write_contacts.v1',
+        'esi-characters.read_loyalty.v1',
+        'esi-characters.read_chat_channels.v1',
+        'esi-characters.read_medals.v1',
+        'esi-characters.read_standings.v1',
+        'esi-characters.read_agents_research.v1',
         'esi-characters.read_blueprints.v1',
+        'esi-characters.read_corporation_roles.v1',
+        'esi-characters.read_fatigue.v1',
         'esi-characters.read_notifications.v1',
-        'esi-planets.manage_planets.v1',
-        'esi-skills.read_skills.v1'
+        'esi-characters.read_titles.v1',
+        'esi-fittings.read_fittings.v1',
+        'esi-fittings.write_fittings.v1',
+        'esi-fleets.read_fleet.v1',
+        'esi-fleets.write_fleet.v1',
+        'esi-industry.read_character_jobs.v1',
+        'esi-industry.read_character_mining.v1',
+        'esi-markets.read_character_orders.v1',
+        'esi-markets.structure_markets.v1',
+        'esi-ui.open_window.v1',
+        'esi-ui.write_waypoint.v1',
+        'esi-killmails.read_killmails.v1',
+        'esi-universe.read_structures.v1',
+        'esi-alliances.read_contacts.v1',
+        'esi-characters.read_fw_stats.v1',
       ];
       const CORP_SCOPES_LIST = [
         'esi-corporations.read_corporation_membership.v1',
-        'esi-corporations.read_titles.v1',
         'esi-assets.read_corporation_assets.v1',
-        'esi-industry.read_corporation_jobs.v1',
-        'esi-wallet.read_corporation_wallets.v1',
-        'esi-killmails.read_corporation_killmails.v1',
-        'esi-universe.read_structures.v1',
-        'esi-markets.read_corporation_orders.v1',
-        'esi-contracts.read_corporation_contracts.v1',
-        'esi-industry.read_corporation_mining.v1',
-        'esi-planets.read_customs_offices.v1',
         'esi-corporations.read_blueprints.v1',
-        'esi-corporations.read_containers_logs.v1',
+        'esi-corporations.read_container_logs.v1',
         'esi-corporations.read_divisions.v1',
+        'esi-corporations.read_contacts.v1',
         'esi-corporations.read_facilities.v1',
         'esi-corporations.read_medals.v1',
-        'esi-corporations.read_outposts.v1',
         'esi-corporations.read_standings.v1',
-        'esi-corporations.track_members.v1'
+        'esi-corporations.read_structures.v1',
+        'esi-corporations.read_starbases.v1',
+        'esi-corporations.read_titles.v1',
+        'esi-contracts.read_corporation_contracts.v1',
+        'esi-industry.read_corporation_jobs.v1',
+        'esi-industry.read_corporation_mining.v1',
+        'esi-killmails.read_corporation_killmails.v1',
+        'esi-markets.read_corporation_orders.v1',
+        'esi-planets.read_customs_offices.v1',
+        'esi-wallet.read_corporation_wallets.v1',
+        'esi-corporations.track_members.v1',
+        'esi-corporations.read_fw_stats.v1',
       ];
       
       const characterOnlyScopes = userScopes.filter(scope => CHARACTER_SCOPES_LIST.includes(scope));

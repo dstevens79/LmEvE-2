@@ -153,7 +153,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     createManualUser,
     updateUserRole,
     deleteUser,
-    loginWithESI
+    loginWithESI,
+    logout
   } = useAuth();
   
   // Get registered corporations
@@ -182,6 +183,92 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
   const [applicationData, setApplicationData] = useApplicationData();
   const [manualUsers, setManualUsers] = useManualUsers();
   const [corporationData, setCorporationData] = useCorporationData();
+
+  // ESI Scopes catalogs and selections
+  const CHARACTER_SCOPE_CATALOG: string[] = [
+    'esi-calendar.respond_calendar_events.v1',
+    'esi-calendar.read_calendar_events.v1',
+    'esi-location.read_location.v1',
+    'esi-location.read_ship_type.v1',
+    'esi-location.read_online.v1',
+    'esi-mail.organize_mail.v1',
+    'esi-mail.read_mail.v1',
+    'esi-mail.send_mail.v1',
+    'esi-skills.read_skills.v1',
+    'esi-skills.read_skillqueue.v1',
+    'esi-wallet.read_character_wallet.v1',
+    'esi-search.search_structures.v1',
+    'esi-clones.read_clones.v1',
+    'esi-clones.read_implants.v1',
+    'esi-characters.read_contacts.v1',
+    'esi-characters.write_contacts.v1',
+    'esi-characters.read_loyalty.v1',
+    'esi-characters.read_chat_channels.v1',
+    'esi-characters.read_medals.v1',
+    'esi-characters.read_standings.v1',
+    'esi-characters.read_agents_research.v1',
+    'esi-characters.read_blueprints.v1',
+    'esi-characters.read_corporation_roles.v1',
+    'esi-characters.read_fatigue.v1',
+    'esi-characters.read_notifications.v1',
+    'esi-characters.read_titles.v1',
+    'esi-fittings.read_fittings.v1',
+    'esi-fittings.write_fittings.v1',
+    'esi-fleets.read_fleet.v1',
+    'esi-fleets.write_fleet.v1',
+    'esi-industry.read_character_jobs.v1',
+    'esi-industry.read_character_mining.v1',
+    'esi-markets.read_character_orders.v1',
+    'esi-markets.structure_markets.v1',
+    'esi-ui.open_window.v1',
+    'esi-ui.write_waypoint.v1',
+    'esi-killmails.read_killmails.v1',
+    'esi-universe.read_structures.v1',
+    'esi-alliances.read_contacts.v1',
+    'esi-characters.read_fw_stats.v1',
+  ];
+  const CORPORATION_SCOPE_CATALOG: string[] = [
+    'esi-corporations.read_corporation_membership.v1',
+    'esi-assets.read_corporation_assets.v1',
+    'esi-corporations.read_blueprints.v1',
+    'esi-corporations.read_container_logs.v1',
+    'esi-corporations.read_divisions.v1',
+    'esi-corporations.read_contacts.v1',
+    'esi-corporations.read_facilities.v1',
+    'esi-corporations.read_medals.v1',
+    'esi-corporations.read_standings.v1',
+    'esi-corporations.read_structures.v1',
+    'esi-corporations.read_starbases.v1',
+    'esi-corporations.read_titles.v1',
+    'esi-contracts.read_corporation_contracts.v1',
+    'esi-industry.read_corporation_jobs.v1',
+    'esi-industry.read_corporation_mining.v1',
+    'esi-killmails.read_corporation_killmails.v1',
+    'esi-markets.read_corporation_orders.v1',
+    'esi-planets.read_customs_offices.v1',
+    'esi-wallet.read_corporation_wallets.v1',
+    'esi-corporations.track_members.v1',
+    'esi-corporations.read_fw_stats.v1',
+  ];
+  const [requestedCharScopes, setRequestedCharScopes] = useLocalKV<string[]>(
+    'lmeve-esi-requested-character-scopes',
+    [
+      'esi-characters.read_corporation_roles.v1',
+      'esi-industry.read_character_jobs.v1',
+      'esi-wallet.read_character_wallet.v1'
+    ]
+  );
+  const [requestedCorpScopes, setRequestedCorpScopes] = useLocalKV<string[]>(
+    'lmeve-esi-requested-corporation-scopes',
+    [
+      'esi-corporations.read_corporation_membership.v1',
+      'esi-assets.read_corporation_assets.v1',
+      'esi-industry.read_corporation_jobs.v1',
+      'esi-markets.read_corporation_orders.v1',
+      'esi-wallet.read_corporation_wallets.v1',
+      'esi-universe.read_structures.v1'
+    ]
+  );
 
   // Remote access and SSH state
   const [remoteAccess, setRemoteAccess] = useLocalKV<{
@@ -3709,33 +3796,184 @@ echo "See README.md for detailed setup instructions"
                       )}
                       
                       {/* Enhanced ESI Scope Management */}
-                      <div className="p-3 bg-muted/30 rounded">
-                        <div className="flex items-center gap-2 mb-2">
+                      <div className="p-3 bg-muted/30 rounded space-y-4">
+                        <div className="flex items-center gap-2">
                           <UserCheck size={16} />
                           <span className="text-sm font-medium">ESI Scope Management</span>
                         </div>
-                        <p className="text-xs text-muted-foreground mb-2">
-                          Your current authentication level allows basic site access. Additional scopes are required for manufacturing assignments and advanced features.
+                        <p className="text-xs text-muted-foreground">
+                          Check a scope to request it on your next login. Already granted scopes are locked. Use Release to clear active scopes, or Refresh to re-consent with the selected set.
                         </p>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full"
-                          onClick={async () => {
-                            try {
-                              // Request expanded scopes for manufacturing and corporation access
-                              const enhancedAuth = await loginWithESI('enhanced');
-                              window.location.href = enhancedAuth;
-                            } catch (error) {
-                              console.error('Failed to start enhanced ESI auth:', error);
-                              toast.error('Failed to start enhanced authentication');
-                            }
-                          }}
-                          disabled={!esiConfig?.clientId}
-                        >
-                          <Rocket size={16} className="mr-2" />
-                          Request Enhanced Access
-                        </Button>
+
+                        {(() => {
+                          // Full scope catalogs
+                          const CHARACTER_SCOPE_CATALOG: string[] = [
+                            'esi-calendar.respond_calendar_events.v1',
+                            'esi-calendar.read_calendar_events.v1',
+                            'esi-location.read_location.v1',
+                            'esi-location.read_ship_type.v1',
+                            'esi-location.read_online.v1',
+                            'esi-mail.organize_mail.v1',
+                            'esi-mail.read_mail.v1',
+                            'esi-mail.send_mail.v1',
+                            'esi-skills.read_skills.v1',
+                            'esi-skills.read_skillqueue.v1',
+                            'esi-wallet.read_character_wallet.v1',
+                            'esi-search.search_structures.v1',
+                            'esi-clones.read_clones.v1',
+                            'esi-clones.read_implants.v1',
+                            'esi-characters.read_contacts.v1',
+                            'esi-characters.write_contacts.v1',
+                            'esi-characters.read_loyalty.v1',
+                            'esi-characters.read_chat_channels.v1',
+                            'esi-characters.read_medals.v1',
+                            'esi-characters.read_standings.v1',
+                            'esi-characters.read_agents_research.v1',
+                            'esi-characters.read_blueprints.v1',
+                            'esi-characters.read_corporation_roles.v1',
+                            'esi-characters.read_fatigue.v1',
+                            'esi-characters.read_notifications.v1',
+                            'esi-characters.read_titles.v1',
+                            'esi-fittings.read_fittings.v1',
+                            'esi-fittings.write_fittings.v1',
+                            'esi-fleets.read_fleet.v1',
+                            'esi-fleets.write_fleet.v1',
+                            'esi-industry.read_character_jobs.v1',
+                            'esi-industry.read_character_mining.v1',
+                            'esi-markets.read_character_orders.v1',
+                            'esi-markets.structure_markets.v1',
+                            'esi-ui.open_window.v1',
+                            'esi-ui.write_waypoint.v1',
+                            'esi-killmails.read_killmails.v1',
+                            'esi-universe.read_structures.v1',
+                            'esi-alliances.read_contacts.v1',
+                            'esi-characters.read_fw_stats.v1',
+                          ];
+                          const CORPORATION_SCOPE_CATALOG: string[] = [
+                            'esi-corporations.read_corporation_membership.v1',
+                            'esi-assets.read_corporation_assets.v1',
+                            'esi-corporations.read_blueprints.v1',
+                            'esi-corporations.read_container_logs.v1',
+                            'esi-corporations.read_divisions.v1',
+                            'esi-corporations.read_contacts.v1',
+                            'esi-corporations.read_facilities.v1',
+                            'esi-corporations.read_medals.v1',
+                            'esi-corporations.read_standings.v1',
+                            'esi-corporations.read_structures.v1',
+                            'esi-corporations.read_starbases.v1',
+                            'esi-corporations.read_titles.v1',
+                            'esi-contracts.read_corporation_contracts.v1',
+                            'esi-industry.read_corporation_jobs.v1',
+                            'esi-industry.read_corporation_mining.v1',
+                            'esi-killmails.read_corporation_killmails.v1',
+                            'esi-markets.read_corporation_orders.v1',
+                            'esi-planets.read_customs_offices.v1',
+                            'esi-wallet.read_corporation_wallets.v1',
+                            'esi-corporations.track_members.v1',
+                            'esi-corporations.read_fw_stats.v1',
+                          ];
+
+                          const activeCharScopes = new Set(user?.characterScopes || []);
+                          const activeCorpScopes = new Set(user?.corporationScopes || []);
+
+                          const toggleChar = (scope: string) => {
+                            if (activeCharScopes.has(scope)) return; // locked
+                            setRequestedCharScopes(prev => prev.includes(scope)
+                              ? prev.filter(s => s !== scope)
+                              : [...prev, scope]);
+                          };
+                          const toggleCorp = (scope: string) => {
+                            if (activeCorpScopes.has(scope)) return; // locked
+                            setRequestedCorpScopes(prev => prev.includes(scope)
+                              ? prev.filter(s => s !== scope)
+                              : [...prev, scope]);
+                          };
+
+                          const ScopeList: React.FC<{ title: string; catalog: string[]; requested: string[]; active: Set<string>; onToggle: (s: string) => void; onRelease: () => void; onRefresh: () => void; }> = ({ title, catalog, requested, active, onToggle, onRelease, onRefresh }) => (
+                            <div className="border border-border rounded p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-sm font-medium">{title}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  Active: {active.size} · Requested: {requested.length}
+                                </div>
+                              </div>
+                              <div className="max-h-48 overflow-auto space-y-1">
+                                {catalog.map(scope => {
+                                  const isActive = active.has(scope);
+                                  const isChecked = isActive || requested.includes(scope);
+                                  return (
+                                    <label key={scope} className={`flex items-center gap-2 text-xs p-1 rounded ${isActive ? 'opacity-80' : ''}`}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        disabled={isActive}
+                                        onChange={() => onToggle(scope)}
+                                      />
+                                      <span className="font-mono text-[11px] break-all">{scope}</span>
+                                      {isActive && <Badge variant="outline" className="h-4 px-1 text-[10px]">active</Badge>}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <div className="flex items-center gap-2 mt-3">
+                                <Button size="sm" variant="destructive" onClick={onRelease}>Release</Button>
+                                <Button size="sm" variant="outline" onClick={onRefresh}>Refresh</Button>
+                              </div>
+                            </div>
+                          );
+
+                          return (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <ScopeList
+                                title="Character Scopes"
+                                catalog={CHARACTER_SCOPE_CATALOG}
+                                requested={requestedCharScopes}
+                                active={activeCharScopes}
+                                onToggle={toggleChar}
+                                onRelease={async () => {
+                                  // Revoke by logging out and clearing token; user will need to log in again
+                                  try {
+                                    await logout();
+                                    toast.success('Released character scopes (logged out)');
+                                  } catch (e) {
+                                    toast.error('Failed to release');
+                                  }
+                                }}
+                                onRefresh={async () => {
+                                  try {
+                                    const url = await loginWithESI('enhanced', requestedCharScopes);
+                                    window.location.href = url;
+                                  } catch (e) {
+                                    toast.error('Failed to start character scope update');
+                                  }
+                                }}
+                              />
+                              <ScopeList
+                                title="Corporation Scopes"
+                                catalog={CORPORATION_SCOPE_CATALOG}
+                                requested={requestedCorpScopes}
+                                active={activeCorpScopes}
+                                onToggle={toggleCorp}
+                                onRelease={async () => {
+                                  try {
+                                    await logout();
+                                    toast.success('Released corporation scopes (logged out)');
+                                  } catch (e) {
+                                    toast.error('Failed to release');
+                                  }
+                                }}
+                                onRefresh={async () => {
+                                  try {
+                                    const url = await loginWithESI('corporation', requestedCorpScopes);
+                                    window.location.href = url;
+                                  } catch (e) {
+                                    toast.error('Failed to start corporation scope update');
+                                  }
+                                }}
+                              />
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   ) : (

@@ -51,8 +51,8 @@ const SSO_REVOKE_URL = `${SSO_BASE_URL}/v2/oauth/revoke`;
 const SSO_JWKS_URL = `${SSO_BASE_URL}/oauth/jwks`;
 
 // Character-specific scopes (do not require corporation roles)
+// Note: There is no 'esi-characters.read_character_info.v1' scope; basic identity requires no scope.
 const CHARACTER_SCOPES = [
-  'esi-characters.read_character_info.v1',
   'esi-characters.read_corporation_roles.v1',
   'esi-industry.read_character_jobs.v1',
   'esi-wallet.read_character_wallet.v1',
@@ -87,10 +87,8 @@ const CORPORATION_SCOPES = [
 ];
 
 // Required scopes for different authentication levels
-const BASIC_SCOPES = [
-  'esi-characters.read_character_info.v1',
-  'esi-characters.read_corporation_roles.v1'
-];
+// Basic login requires no scopes (identity comes from the token verify endpoint)
+const BASIC_SCOPES: string[] = [];
 
 const ENHANCED_SCOPES = [
   ...BASIC_SCOPES,
@@ -190,7 +188,7 @@ export class ESIAuthService {
     
   const { verifier, challenge } = await this.generatePKCE();
     const state = this.generateState();
-    const scopes = SCOPE_SETS[scopeType];
+  const scopes = SCOPE_SETS[scopeType];
 
     const authState: ESIAuthState = {
       state,
@@ -208,9 +206,11 @@ export class ESIAuthService {
       response_type: 'code',
       redirect_uri: this.redirectUri,
       client_id: this.clientId,
-      scope: scopes.join(' '),
       state: state
     });
+    if (scopes && scopes.length > 0) {
+      params.set('scope', scopes.join(' '));
+    }
 
     // Only include PKCE parameters when a challenge is available
     if (challenge) {
@@ -222,6 +222,47 @@ export class ESIAuthService {
     console.log('🔗 OAuth2 authorization URL generated for', scopeType, 'scopes');
     console.log('📋 Scopes requested:', scopes.length, 'scopes');
     
+    return authUrl;
+  }
+
+  /**
+   * Initiate login with an explicit set of scopes (overrides presets)
+   */
+  async initiateLoginWithScopes(scopes: string[]): Promise<string> {
+    console.log('🚀 Initiating EVE SSO OAuth2 login with explicit scopes:', scopes.length);
+
+    const { verifier, challenge } = await this.generatePKCE();
+    const state = this.generateState();
+
+    const authState: ESIAuthState = {
+      state,
+      verifier,
+      challenge: challenge || undefined as any,
+      timestamp: Date.now(),
+      scopeType: scopes.length > 0 ? 'enhanced' : 'basic',
+      scopes
+    };
+
+    sessionStorage.setItem('esi-auth-state', JSON.stringify(authState));
+    sessionStorage.setItem('esi-login-attempt', 'true');
+
+    const params = new URLSearchParams({
+      response_type: 'code',
+      redirect_uri: this.redirectUri,
+      client_id: this.clientId,
+      state: state
+    });
+    if (scopes && scopes.length > 0) {
+      params.set('scope', scopes.join(' '));
+    }
+
+    if (challenge) {
+      params.set('code_challenge', challenge);
+      params.set('code_challenge_method', 'S256');
+    }
+
+    const authUrl = `${SSO_AUTH_URL}?${params.toString()}`;
+    console.log('🔗 OAuth2 authorization URL generated with explicit scopes');
     return authUrl;
   }
 
