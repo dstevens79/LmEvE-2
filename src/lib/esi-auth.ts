@@ -122,6 +122,19 @@ export class ESIAuthService {
     this.clientId = clientId;
     this.clientSecret = clientSecret;
     this.redirectUri = redirectUri && redirectUri.trim().length > 0 ? redirectUri : `${window.location.origin}/`;
+    // Dev convenience: if configured callback is the PHP endpoint but we're on localhost without PHP,
+    // prefer SPA root so the app can process the callback directly.
+    try {
+      const ru = new URL(this.redirectUri, window.location.origin);
+      const isLocalHost = /(^|\.)localhost$/.test(ru.hostname) || ru.hostname === '127.0.0.1';
+      const isPhpCallback = /\/api\/auth\/esi\/callback\.php$/.test(ru.pathname);
+      if (isLocalHost && isPhpCallback) {
+        console.warn('Detected localhost with PHP callback configured; falling back to SPA root for redirect_uri');
+        this.redirectUri = `${window.location.origin}/`;
+      }
+    } catch {
+      // ignore URL parsing issues
+    }
     this.registeredCorporations = registeredCorps;
   }
 
