@@ -85,6 +85,38 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
   }, []);
 
+  // Session-only token state (in-memory) with sessionStorage backup for reloads during the same session
+  const [sessionTokens, setSessionTokens] = useState<{
+    accessToken?: string;
+    refreshToken?: string;
+    tokenExpiry?: string;
+  } | null>(null);
+
+  // Load session tokens on mount
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('lmeve-session-tokens');
+      if (raw) {
+        setSessionTokens(JSON.parse(raw));
+      }
+    } catch {}
+  }, []);
+
+  const setAndPersistSessionTokens = useCallback((tokens: {
+    accessToken?: string;
+    refreshToken?: string;
+    tokenExpiry?: string;
+  } | null) => {
+    setSessionTokens(tokens);
+    try {
+      if (tokens) {
+        sessionStorage.setItem('lmeve-session-tokens', JSON.stringify(tokens));
+      } else {
+        sessionStorage.removeItem('lmeve-session-tokens');
+      }
+    } catch {}
+  }, []);
+
   // Initialize with default admin user
   useEffect(() => {
     if (users.length === 0) {
@@ -143,16 +175,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Check if token is expired (must be defined before used in effects)
   const isTokenExpired = useCallback(() => {
-    if (!currentUser || currentUser.authMethod !== 'esi' || !currentUser.tokenExpiry) {
+    const expiry = sessionTokens?.tokenExpiry || currentUser?.tokenExpiry;
+    if (!currentUser || currentUser.authMethod !== 'esi' || !expiry) {
       return false;
     }
-    
-    const expiryTime = new Date(currentUser.tokenExpiry).getTime();
+
+    const expiryTime = new Date(expiry).getTime();
     const now = Date.now();
     const fiveMinutes = 5 * 60 * 1000;
     
     return expiryTime - now < fiveMinutes;
-  }, [currentUser]);
+  }, [currentUser, sessionTokens]);
 
   // Manual login with username/password
   const loginWithCredentials = useCallback(async (username: string, password: string) => {
@@ -240,11 +273,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
     try {
       const esiService = getESIAuthService();
-      const esiUser = await esiService.handleCallback(code, state, registeredCorporations);
-      
-      // Store token in token manager
-  const tokenManager = CorporationTokenManager.getInstance();
-  await tokenManager.storeToken(esiUser);
+    const esiUser = await esiService.handleCallback(code, state, registeredCorporations);
+
+    // Store token in token manager
+    const tokenManager = CorporationTokenManager.getInstance();
+    await tokenManager.storeToken(esiUser);
       
       // Check if this replaces an existing manual login
       if (currentUser && currentUser.authMethod === 'manual') {
@@ -258,9 +291,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
           updatedBy: currentUser.id
         };
         
-  // Update in users list without tokens
-  setUsers(prev => prev.map(u => u.id === currentUser.id ? sanitizeUserForPersistence(updatedUser) : u));
-        setCurrentUser(updatedUser);
+        // Update in users list without tokens and persist current user sanitized
+        setUsers(prev => prev.map(u => u.id === currentUser.id ? sanitizeUserForPersistence(updatedUser) : u));
+        setCurrentUser(sanitizeUserForPersistence(updatedUser));
+        // Keep tokens session-only
+        setAndPersistSessionTokens({
+          accessToken: updatedUser.accessToken,
+          refreshToken: updatedUser.refreshToken,
+          tokenExpiry: updatedUser.tokenExpiry,
+        });
         
         console.log('✅ Manual login replaced with ESI login');
         triggerAuthChange();
@@ -278,18 +317,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
             createdDate: existingUser.createdDate
           });
           
-          // Persist without tokens
+          // Persist without tokens and keep current user sanitized
           setUsers(prev => prev.map(u => u.id === existingUser.id ? sanitizeUserForPersistence(updatedUser) : u));
-          setCurrentUser(updatedUser);
+          setCurrentUser(sanitizeUserForPersistence(updatedUser));
+          setAndPersistSessionTokens({
+            accessToken: updatedUser.accessToken,
+            refreshToken: updatedUser.refreshToken,
+            tokenExpiry: updatedUser.tokenExpiry,
+          });
           
           console.log('✅ Existing ESI user updated');
           triggerAuthChange();
           return updatedUser;
         } else {
           // Create new ESI user
-          // Persist without tokens
+          // Persist without tokens and keep current user sanitized
           setUsers(prev => [...prev, sanitizeUserForPersistence(esiUser)]);
-          setCurrentUser(esiUser);
+          setCurrentUser(sanitizeUserForPersistence(esiUser));
+          setAndPersistSessionTokens({
+            accessToken: esiUser.accessToken,
+            refreshToken: esiUser.refreshToken,
+            tokenExpiry: esiUser.tokenExpiry,
+          });
           
           console.log('✅ New ESI user created');
           triggerAuthChange();
@@ -309,10 +358,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     console.log('🚪 Logging out user');
     
     // Revoke ESI tokens if present (access + refresh)
-    if (currentUser?.authMethod === 'esi' && (currentUser.accessToken || currentUser.refreshToken)) {
+    const acc = sessionTokens?.accessToken || currentUser?.accessToken;
+    const ref = sessionTokens?.refreshToken || currentUser?.refreshToken;
+    if (currentUser?.authMethod === 'esi' && (acc || ref)) {
       try {
         const esiService = getESIAuthService();
-        await esiService.revokeTokens(currentUser.accessToken, currentUser.refreshToken);
+        await esiService.revokeTokens(acc, ref);
       } catch (error) {
         console.warn('Failed to revoke ESI tokens:', error);
       }
@@ -322,6 +373,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       sessionStorage.removeItem('esi-auth-state');
       sessionStorage.removeItem('esi-login-attempt');
+      sessionStorage.removeItem('lmeve-session-tokens');
     } catch {}
 
     // Scrub tokens from stored users (minimize retention after logout)
@@ -334,7 +386,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } : u));
     }
 
-    setCurrentUser(null);
+  setCurrentUser(null);
+  setAndPersistSessionTokens(null);
     triggerAuthChange();
     
     console.log('✅ User logged out');
@@ -342,15 +395,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Refresh ESI token
   const refreshUserToken = useCallback(async () => {
-    if (!currentUser || !currentUser.refreshToken || currentUser.authMethod !== 'esi') {
+    const refreshToken = sessionTokens?.refreshToken || currentUser?.refreshToken;
+    if (!currentUser || !refreshToken || currentUser.authMethod !== 'esi') {
       return;
     }
     
     console.log('🔄 Refreshing user token');
     
     try {
-      const esiService = getESIAuthService();
-      const tokenResponse = await esiService.refreshToken(currentUser.refreshToken);
+  const esiService = getESIAuthService();
+  const tokenResponse = await esiService.refreshToken(refreshToken);
       
       // Parse and separate scopes
       const userScopes = tokenResponse.scope?.split(' ') || currentUser.scopes || [];
@@ -425,17 +479,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       const updatedUser = refreshUserSession({
         ...currentUser,
-        accessToken: tokenResponse.access_token,
-        refreshToken: tokenResponse.refresh_token || currentUser.refreshToken,
-        tokenExpiry: new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString(),
         scopes: userScopes,
         characterScopes: characterOnlyScopes,
         corporationScopes: corpOnlyScopes
       });
-      
-      // Persist without tokens
+
+      // Persist without tokens and keep tokens in session-only state
       setUsers(prev => prev.map(u => u.id === currentUser.id ? sanitizeUserForPersistence(updatedUser) : u));
-      setCurrentUser(updatedUser);
+      setCurrentUser(sanitizeUserForPersistence(updatedUser));
+      setAndPersistSessionTokens({
+        accessToken: tokenResponse.access_token,
+        refreshToken: tokenResponse.refresh_token || refreshToken,
+        tokenExpiry: new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString(),
+      });
       
       console.log('✅ Token refreshed successfully', {
         totalScopes: userScopes.length,
@@ -454,7 +510,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Auto-refresh token when it's about to expire
   useEffect(() => {
-    if (!currentUser || currentUser.authMethod !== 'esi' || !currentUser.refreshToken) {
+    const refreshToken = sessionTokens?.refreshToken || currentUser?.refreshToken;
+    if (!currentUser || currentUser.authMethod !== 'esi' || !refreshToken) {
       return;
     }
     
@@ -477,7 +534,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
     
     return () => clearInterval(intervalId);
-  }, [currentUser, isTokenExpired, refreshUserToken]);
+  }, [currentUser, sessionTokens, isTokenExpired, refreshUserToken]);
 
   // Create manual user
   const createManualUser = useCallback(async (username: string, password: string, role: UserRole, characterInfo?: CharacterInfo): Promise<LMeveUser> => {
@@ -747,9 +804,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
     console.log('✅ Admin configuration updated');
   }, [setAdminConfig, setUserCredentials]);
 
+  // Merge persisted user with session-only tokens for runtime context
+  const mergedUser: LMeveUser | null = currentUser
+    ? {
+        ...currentUser,
+        accessToken: sessionTokens?.accessToken,
+        refreshToken: sessionTokens?.refreshToken,
+        tokenExpiry: sessionTokens?.tokenExpiry,
+      }
+    : null;
+
   const contextValue: AuthContextType = {
     // Current user state
-    user: currentUser,
+    user: mergedUser,
     isAuthenticated: !!currentUser && isSessionValid(currentUser),
     isLoading,
     
