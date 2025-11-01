@@ -14,13 +14,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Header
-clear 2>/dev/null || tput clear 2>/dev/null || true
-echo -e "${BLUE}"
-echo "╔════════════════════════════════════════════════════╗"
-echo "║          LmEvEv2 Application Installer             ║"
-echo "╚════════════════════════════════════════════════════╝"
-echo -e "${NC}"
+# (Header removed to make room for left pre-flight checks beside right panel)
 
 # Utility: terminal width
 term_cols() {
@@ -102,7 +96,8 @@ check_dep() {
     local name="$1"; shift
     local cmd="$1"; shift
     local ver_cmd="$1"; shift
-    printf "checking dependancy %-18s .... " "$name"
+    # Compact line: " - name : OK (ver)" or " - name : MISSING"
+    printf " - %-10s : " "$name"
     if command -v "$cmd" >/dev/null 2>&1; then
         local ver
         if [ -n "$ver_cmd" ]; then
@@ -120,7 +115,7 @@ check_dep() {
                 ver=$(echo "$ver" | sed 's/^Server version: //')
                 ;;
         esac
-        echo -e "${GREEN}OK${NC}${ver:+  ($ver)}"
+        echo -e "${GREEN}OK${NC}${ver:+ ($ver)}"
         return 0
     else
         echo -e "${YELLOW}MISSING${NC}"
@@ -141,7 +136,7 @@ draw_preflight() {
     check_dep "certbot" certbot "certbot --version" || true
 
     if [ "$MISSING_DEPS" -gt 0 ]; then
-        echo -e "${YELLOW}Some required components are missing and will be installed.${NC}"
+        echo -e "${YELLOW}Some components are missing and will be installed.${NC}"
     else
         echo -e "${GREEN}All required dependencies are present.${NC}"
     fi
@@ -167,11 +162,6 @@ first_ip() { hostname -I 2>/dev/null | awk '{print $1}' | sed 's/\s.*//' ; }
 
 draw_menu() {
     clear 2>/dev/null || tput clear 2>/dev/null || true
-    echo -e "${BLUE}"
-    echo "╔════════════════════════════════════════════════════╗"
-    echo "║          LmEvEv2 Application Installer            ║"
-    echo "╚════════════════════════════════════════════════════╝"
-    echo -e "${NC}"
     # Draw large right-side moniker
     draw_right_panel
     # Show pre-flight dependency checks above the menu (read-only)
