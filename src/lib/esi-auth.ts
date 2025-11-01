@@ -248,7 +248,8 @@ export class ESIAuthService {
       challenge: challenge || undefined as any,
       timestamp: Date.now(),
       scopeType: scopes.length > 0 ? 'enhanced' : 'basic',
-      scopes
+      scopes,
+      allowPartialScopes: true
     };
 
   // Persist state in sessionStorage and also in localStorage as a resilience fallback
@@ -310,7 +311,7 @@ export class ESIAuthService {
       throw new Error('No stored authentication state found - possible session timeout');
     }
 
-    const authState: ESIAuthState = JSON.parse(storedStateData);
+  const authState: ESIAuthState = JSON.parse(storedStateData);
     
     if (state !== authState.state) {
       console.error('❌ State mismatch - CSRF attack detected');
@@ -372,7 +373,8 @@ export class ESIAuthService {
           missingScopes: scopeValidation.missingScopes
         });
         
-        if (['corp_director', 'corp_admin'].includes(validation.suggestedRole) && 
+        if (!authState.allowPartialScopes &&
+            ['corp_director', 'corp_admin'].includes(validation.suggestedRole) && 
             scopeValidation.missingScopes.some(scope => CORPORATION_SCOPES.includes(scope))) {
           throw new Error(
             `Missing required corporation scopes for ${validation.suggestedRole} role. ` +

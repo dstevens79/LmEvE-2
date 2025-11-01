@@ -832,6 +832,8 @@ export interface ESIAuthState {
   corporationId?: number;
   scopeType?: 'basic' | 'enhanced' | 'corporation';
   scopes?: string[];
+  // When true, relax strict scope validation to allow testing limited scope sets
+  allowPartialScopes?: boolean;
 }
 
 export interface ESIConfig {

@@ -3191,6 +3191,36 @@ echo "See README.md for detailed setup instructions"
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={async () => {
+                        try {
+                          const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
+                          const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
+                          const callbackUrl = (esiSettings.callbackUrl || '').trim() || undefined;
+                          if (!clientId) {
+                            toast.error('Client ID is required to start ESI login');
+                            return;
+                          }
+
+                          // Initialize ESI service with current inputs (do not persist here)
+                          const corps = getRegisteredCorporations();
+                          initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
+                          const svc = getESIAuthService();
+                          const singleScope = ['esi-corporations.read_divisions.v1'];
+                          const url = await svc.initiateLoginWithScopes(singleScope);
+                          // Navigate to CCP SSO to perform a single-scope test (divisions)
+                          window.location.href = url;
+                        } catch (err) {
+                          console.error('Single-scope ESI login failed:', err);
+                          const message = err instanceof Error ? err.message : 'Failed to initiate single-scope ESI login';
+                          toast.error(message);
+                        }
+                      }}
+                    >
+                      Test Single Scope (Divisions)
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => {
                         setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
                         toast.info('Form cleared');
