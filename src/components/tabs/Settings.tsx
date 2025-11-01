@@ -2434,10 +2434,12 @@ echo "See README.md for detailed setup instructions"
     loadSDEStats();
   }, [sdeStatus.isInstalled, getDatabaseStats]);
 
-  // Check for SDE updates on mount
+  // Check for SDE updates on mount (throttled in service)
   useEffect(() => {
     checkForUpdates();
-  }, [checkForUpdates]);
+    // Intentionally run once on mount; the service itself throttles subsequent checks
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Simplified database manager effect
   useEffect(() => {

@@ -1,5 +1,6 @@
 // EVE Online Static Data Export (SDE) Management Service
 import { useKV } from '@/lib/kv';
+import * as React from 'react';
 
 export interface SDEInfo {
   version: string;
@@ -46,7 +47,13 @@ class SDEService {
     try {
       // In a real implementation, this would check the Fuzzwork API
       // For now, we'll simulate the response
-      const response = await fetch(`${this.SDE_VERSION_URL}version.txt`);
+      const response = await fetch(`${this.SDE_VERSION_URL}version.txt`, {
+        // Be nice to remote servers; avoid sending credentials, simple GET only
+        method: 'GET',
+        cache: 'no-cache',
+        // mode left default (cors) so we can read the response body
+        redirect: 'follow'
+      });
       
       if (!response.ok) {
         // Fallback to simulated data if the API is not available
@@ -177,8 +184,9 @@ class SDEService {
     // In a real implementation, this would query the database
     // For now, return simulated stats
     return {
-      tables: 47,
-      totalRows: 2456789,
+      isConnected: true,
+      tableCount: 47,
+      totalRecords: 2456789,
       totalSize: '485 MB',
       lastUpdate: new Date().toISOString()
     };
@@ -207,8 +215,47 @@ export function useSDEManager() {
     isUpdating: false
   });
 
-  const checkForUpdates = async (): Promise<void> => {
+  // Cooldown/backoff controls persisted separately to avoid tight polling
+  const [cooldown, setCooldown] = useKV<{ lastChecked?: string; nextAllowed?: string }>(
+    'sde-check-cooldown',
+    { lastChecked: undefined, nextAllowed: undefined }
+  );
+
+  // Use refs to avoid recreating callbacks on each render due to state deps
+  const nextAllowedRef = React.useRef<number | undefined>(
+    cooldown?.nextAllowed ? Date.parse(cooldown.nextAllowed) : undefined
+  );
+  const lastCheckedRef = React.useRef<number | undefined>(
+    sdeStatus?.lastChecked ? Date.parse(sdeStatus.lastChecked) : (cooldown?.lastChecked ? Date.parse(cooldown.lastChecked) : undefined)
+  );
+
+  React.useEffect(() => {
+    nextAllowedRef.current = cooldown?.nextAllowed ? Date.parse(cooldown.nextAllowed) : undefined;
+  }, [cooldown?.nextAllowed]);
+
+  React.useEffect(() => {
+    lastCheckedRef.current = sdeStatus?.lastChecked ? Date.parse(sdeStatus.lastChecked) : lastCheckedRef.current;
+  }, [sdeStatus?.lastChecked]);
+
+  // Minimum interval between remote checks (24h)
+  const MIN_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+  const checkForUpdates = React.useCallback(async (options?: { force?: boolean }): Promise<void> => {
     try {
+      const now = Date.now();
+      const force = options?.force === true;
+      const nextAllowed = nextAllowedRef.current;
+      const last = lastCheckedRef.current;
+
+      // Skip if we're within cooldown and not forced
+      if (!force && typeof nextAllowed === 'number' && now < nextAllowed) {
+        return;
+      }
+      // Also skip if we checked recently (< 24h)
+      if (!force && typeof last === 'number' && now - last < MIN_CHECK_INTERVAL_MS) {
+        return;
+      }
+
       const latestInfo = await sdeService.checkLatestVersion();
       const isUpdateAvailable = sdeStatus.currentVersion 
         ? sdeService.compareVersions(sdeStatus.currentVersion, latestInfo.version)
@@ -226,7 +273,22 @@ export function useSDEManager() {
         downloadProgress: current?.downloadProgress,
         error: undefined
       }));
+
+      // Reset cooldown on success
+      const lastCheckedIso = new Date().toISOString();
+      setCooldown({ lastChecked: lastCheckedIso, nextAllowed: new Date(now + MIN_CHECK_INTERVAL_MS).toISOString() });
+      nextAllowedRef.current = now + MIN_CHECK_INTERVAL_MS;
+      lastCheckedRef.current = now;
     } catch (error) {
+      // If we fail (network/CORS/429), set a modest backoff to avoid hammering
+      const now = Date.now();
+      const backoffMs = 6 * 60 * 60 * 1000; // 6h backoff on failure
+      setCooldown({
+        lastChecked: new Date().toISOString(),
+        nextAllowed: new Date(now + backoffMs).toISOString()
+      });
+      nextAllowedRef.current = now + backoffMs;
+
       setSDEStatus(current => ({
         isInstalled: current?.isInstalled || false,
         isUpdateAvailable: current?.isUpdateAvailable || false,
@@ -240,9 +302,9 @@ export function useSDEManager() {
         error: error instanceof Error ? error.message : 'Failed to check for updates'
       }));
     }
-  };
+  }, [setSDEStatus, setCooldown]);
 
-  const downloadSDE = async (): Promise<void> => {
+  const downloadSDE = React.useCallback(async (): Promise<void> => {
     setSDEStatus(current => ({
       isInstalled: current?.isInstalled || false,
       isUpdateAvailable: current?.isUpdateAvailable || false,
@@ -290,9 +352,9 @@ export function useSDEManager() {
         error: result.error
       }));
     }
-  };
+  }, [setSDEStatus]);
 
-  const updateDatabase = async (): Promise<void> => {
+  const updateDatabase = React.useCallback(async (): Promise<void> => {
     setSDEStatus(current => ({
       isInstalled: current?.isInstalled || false,
       isUpdateAvailable: current?.isUpdateAvailable || false,
@@ -342,9 +404,9 @@ export function useSDEManager() {
         error: result.error
       }));
     }
-  };
+  }, [setSDEStatus]);
 
-  const getDatabaseStats = async (): Promise<SDEDatabaseStats | null> => {
+  const getDatabaseStats = React.useCallback(async (): Promise<SDEDatabaseStats | null> => {
     if (!sdeStatus || !sdeStatus.isInstalled) return null;
     
     try {
@@ -353,7 +415,7 @@ export function useSDEManager() {
       console.error('Failed to get database stats:', error);
       return null;
     }
-  };
+  }, [sdeStatus?.isInstalled]);
 
   return {
     sdeStatus,
