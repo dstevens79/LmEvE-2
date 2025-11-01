@@ -54,7 +54,7 @@ draw_right_panel() {
 "│        LmEvE v2 • Database Installer               │"
 "│                                                    │"
 "│  ⛭  1–6 edit fields   ↵  Enter to start   Q  quit  │"
-"│                                                    │"
+"│                                                    │" 
 "└────────────────────────────────────────────────────┘"
     )
 
