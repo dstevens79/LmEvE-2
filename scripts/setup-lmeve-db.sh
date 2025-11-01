@@ -108,12 +108,7 @@ fi
 
 if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
     echo -e "${YELLOW}⚠️  Warning: This script is designed for Ubuntu/Debian.${NC}"
-    echo -e "${YELLOW}    It may work on $PRETTY_NAME but is not tested.${NC}"
-    read -p "Continue anyway? [y/N]: " CONTINUE
-    if [[ ! "$CONTINUE" =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}Installation cancelled.${NC}"
-        exit 0
-    fi
+    echo -e "${YELLOW}    Proceeding on $PRETTY_NAME (untested).${NC}"
 fi
 
 # -----------------------------------------------------
