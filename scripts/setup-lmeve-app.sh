@@ -18,7 +18,7 @@ NC='\033[0m' # No Color
 clear 2>/dev/null || tput clear 2>/dev/null || true
 echo -e "${BLUE}"
 echo "╔════════════════════════════════════════════════════╗"
-echo "║          LmEvEv2 Application Installer            ║"
+echo "║          LmEvEv2 Application Installer             ║"
 echo "╚════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -43,7 +43,7 @@ draw_right_panel() {
 "│                                                    │" 
 "│          LmEvE v2 • Application Installer          │"
 "│                                                    │"
-"│  ⛭  1–7 edit fields   ↵  Enter to start  Q  quit  │"
+"│  ⛭  1–7 edit fields   ↵  Enter to start  Q  quit   │"
 "│                                                    │"
 "└────────────────────────────────────────────────────┘"
     )
