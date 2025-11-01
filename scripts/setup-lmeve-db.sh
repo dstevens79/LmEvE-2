@@ -58,7 +58,7 @@ draw_right_panel() {
 "│                                                    │"
 "└────────────────────────────────────────────────────┘"
     )
-
+ 
     local cols=$(term_cols)
     local art_width=52
     local art=(
