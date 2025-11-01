@@ -329,7 +329,8 @@ export class ESIAuthService {
     console.log('✅ State validation passed');
 
     try {
-      const tokenResponse = await this.exchangeCodeForToken(code, authState.verifier);
+  const usedPkce = !!authState.challenge;
+  const tokenResponse = await this.exchangeCodeForToken(code, usedPkce ? authState.verifier : undefined, usedPkce);
       
       const characterData = await this.getCharacterInfo(tokenResponse.access_token);
       
@@ -460,17 +461,19 @@ export class ESIAuthService {
    * Exchange authorization code for access token using PKCE
    * Implements OAuth2 token endpoint specification
    */
-  private async exchangeCodeForToken(code: string, verifier: string): Promise<ESITokenResponse> {
+  private async exchangeCodeForToken(code: string, verifier?: string, usePkce?: boolean): Promise<ESITokenResponse> {
     console.log('🔄 Exchanging authorization code for access token (server proxy)');
 
-    const payload = {
+    const payload: any = {
       grant_type: 'authorization_code',
       client_id: this.clientId,
       client_secret: this.clientSecret,
       code,
       redirect_uri: this.redirectUri,
-      code_verifier: verifier
-    } as any;
+    };
+    if (usePkce && verifier) {
+      payload.code_verifier = verifier;
+    }
 
     const response = await fetch('/api/esi-token.php', {
       method: 'POST',
