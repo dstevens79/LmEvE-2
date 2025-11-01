@@ -223,17 +223,6 @@ detect_db_existence() {
     [ -d "${datadir}/${SDE_DB}" ] && SDE_DB_PRESENT="Y"
 }
 
-# Silently install pv in background so SDE import can show progress
-#ensure_pv_background() {
- #       if command -v pv >/dev/null 2>&1; then return; fi
- #       # Only attempt on Debian/Ubuntu with apt-get available
- #       if [ -x "/usr/bin/apt-get" ] || command -v apt-get >/dev/null 2>&1; then
- #               (
- #                   apt-get update -qq >/dev/null 2>&1 || true
- #                   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pv >/dev/null 2>&1 || true
- #               ) &
- #       fi
-#} 
 
 draw_preflight_header() {
     local title_left="${BLUE}LmEvE v2${NC}"
