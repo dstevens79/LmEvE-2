@@ -64,6 +64,9 @@ draw_right_panel() {
     local start_col=$(( cols - art_width - margin ))
     if [ "$start_col" -lt 68 ]; then start_col=68; fi
     local start_row=1
+    # expose geometry for other draw routines
+    RIGHT_PANEL_COL=$start_col
+    RIGHT_PANEL_ROW=$start_row
 
     if command -v tput >/dev/null 2>&1; then
         local i=0
@@ -72,9 +75,11 @@ draw_right_panel() {
             echo -e "${BLUE}${line}${NC}"
             i=$((i+1))
         done
+        RIGHT_PANEL_HEIGHT=$i
     else
         local pad=""; local n=$start_col; while [ $n -gt 0 ]; do pad+=" "; n=$((n-1)); done
         for line in "${art[@]}"; do echo -e "${pad}${BLUE}${line}${NC}"; done
+        RIGHT_PANEL_HEIGHT=${#art[@]}
     fi
 }
 
@@ -189,6 +194,50 @@ draw_preflight() {
     printf "Schemas : %s=%s, %s=%s\n" "${LMEVE_DB}" "$([ "$LMEVE_DB_PRESENT" = Y ] && echo Yes || echo No)" "${SDE_DB}" "$([ "$SDE_DB_PRESENT" = Y ] && echo Yes || echo No)"
 }
 
+# Draw the Database setup (new) block under the right-side art
+draw_setup_block_right() {
+    # Fallback if no positioning available
+    if ! command -v tput >/dev/null 2>&1 || [ -z "${RIGHT_PANEL_COL:-}" ] || [ -z "${RIGHT_PANEL_ROW:-}" ]; then
+        echo ""
+        echo -e "${BLUE}Database setup (new)${NC}"
+        printf "  7) DB host                : %s\n" "$DB_HOST"
+        printf "  8) LMeve DB name          : %s\n" "$LMEVE_DB"
+        printf "  9) SDE DB name            : %s\n" "$SDE_DB"
+        printf " 10) App DB username        : %s\n" "$LMEVE_USER"
+        local pass_disp="[not set]"; [ -n "$LMEVE_PASS" ] && pass_disp="[set]"
+        printf " 11) App DB password        : %s\n" "$pass_disp"
+        # Superadmin display: if not fresh, we don't know the current value -> mask
+        local sadmin_line="[default]"
+        detect_db_server; detect_db_existence
+        if [ "$DB_SERVER_PRESENT" = "Y" ] && [ "$REMOVE_EXISTING" != "Y" ]; then
+            sadmin_line="********"
+        elif [ -n "$SUPERADMIN_PASS" ]; then
+            sadmin_line="[custom]"
+        fi
+        printf " 12) Superadmin password    : %s\n" "$sadmin_line"
+        return
+    fi
+    # Position block directly under art
+    local col=$RIGHT_PANEL_COL
+    local row=$(( RIGHT_PANEL_ROW + RIGHT_PANEL_HEIGHT + 1 ))
+    local i=0
+    tput cup $((row + i)) $col 2>/dev/null || true; echo -e "${BLUE}Database setup (new)${NC}"; i=$((i+1))
+    tput cup $((row + i)) $col 2>/dev/null || true; printf "  7) DB host                : %s" "$DB_HOST"; i=$((i+1))
+    tput cup $((row + i)) $col 2>/dev/null || true; printf "  8) LMeve DB name          : %s" "$LMEVE_DB"; i=$((i+1))
+    tput cup $((row + i)) $col 2>/dev/null || true; printf "  9) SDE DB name            : %s" "$SDE_DB"; i=$((i+1))
+    tput cup $((row + i)) $col 2>/dev/null || true; printf " 10) App DB username        : %s" "$LMEVE_USER"; i=$((i+1))
+    local pass_disp="[not set]"; [ -n "$LMEVE_PASS" ] && pass_disp="[set]"
+    tput cup $((row + i)) $col 2>/dev/null || true; printf " 11) App DB password        : %s" "$pass_disp"; i=$((i+1))
+    local sadmin_line="[default]"
+    detect_db_server; detect_db_existence
+    if [ "$DB_SERVER_PRESENT" = "Y" ] && [ "$REMOVE_EXISTING" != "Y" ]; then
+        sadmin_line="********"
+    elif [ -n "$SUPERADMIN_PASS" ]; then
+        sadmin_line="[custom]"
+    fi
+    tput cup $((row + i)) $col 2>/dev/null || true; printf " 12) Superadmin password    : %s" "$sadmin_line"; i=$((i+1))
+}
+
 # -----------------------------------------------------
 # Upfront configuration menu (static redraw)
 #  - Number press on Yes/No or 2-choice fields toggles immediately
@@ -208,6 +257,8 @@ LMEVE_DB=lmeve2
 SDE_DB=EveStaticData
 LMEVE_USER=lmeve
 LMEVE_PASS=""
+# Leave superadmin password empty by default; on fresh installs we default to 12345 later
+SUPERADMIN_PASS=""
 
 need_setup_fields() {
     detect_db_server
@@ -242,15 +293,9 @@ draw_menu() {
 
     MENU_MAX=6
     if need_setup_fields; then
-        echo ""
-        echo -e "${BLUE}Database setup (new)${NC}"
-        printf "  7) DB host                : %s\n" "$DB_HOST"
-        printf "  8) LMeve DB name          : %s\n" "$LMEVE_DB"
-        printf "  9) SDE DB name            : %s\n" "$SDE_DB"
-        printf " 10) App DB username        : %s\n" "$LMEVE_USER"
-        local pass_disp="[not set]"; [ -n "$LMEVE_PASS" ] && pass_disp="[set]"
-        printf " 11) App DB password        : %s\n" "$pass_disp"
-        MENU_MAX=11
+        MENU_MAX=12
+        # draw this block under the right panel for a balanced layout
+        draw_setup_block_right
     fi
     echo ""
     # expose MENU_MAX to main loop
@@ -311,6 +356,20 @@ while true; do
                 read -rsp "App DB password: " ans; echo ""; LMEVE_PASS="$ans"
             fi
             ;;
+        12)
+            if need_setup_fields; then
+                read -rsp "Superadmin password: " ans; echo "";
+                if [ -n "$ans" ]; then
+                    read -rsp "Confirm superadmin password: " conf; echo "";
+                    if [ "$ans" = "$conf" ]; then
+                        SUPERADMIN_PASS="$ans"
+                        echo -e "${GREEN}Superadmin password set${NC}"; sleep 0.6
+                    else
+                        echo -e "${YELLOW}Passwords did not match. Superadmin password unchanged.${NC}"; sleep 1.2
+                    fi
+                fi
+            fi
+            ;;
         Q)
             echo "Exiting installer."
             exit 0
@@ -319,6 +378,13 @@ while true; do
             ;;
     esac
 done
+
+# Determine if this is a fresh install intent (used for defaults and admin creation)
+FRESH_INSTALL=0
+detect_db_server; detect_db_existence
+if [ "$DB_SERVER_PRESENT" = "N" ] || [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]]; then
+    FRESH_INSTALL=1
+fi
 
 # Step 1: System Update
 print_step "System Update"
@@ -1042,12 +1108,26 @@ fi
 
 # Create default admin user if not present (password will be upgraded to bcrypt on first login)
 print_step "Creating default admin user (if missing)"
-mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${LMEVE_DB} << 'ADMIN_EOF'
+# Decide default behavior: for fresh installs, default to 12345 if not set; for post-install, skip if not set
+if [ -z "$SUPERADMIN_PASS" ]; then
+    if [ "${FRESH_INSTALL}" -eq 1 ]; then
+        SUPERADMIN_PASS="12345"
+        echo -e "${CYAN}Using default superadmin password (will be upgraded on first login)${NC}"
+    else
+        echo -e "${YELLOW}Skipping admin password step (unchanged)${NC}"
+    fi
+fi
+
+if [ -n "$SUPERADMIN_PASS" ]; then
+    # Escape single quotes for SQL (' -> '')
+    SUPERADMIN_PASS_SQL=$(printf "%s" "$SUPERADMIN_PASS" | sed "s/'/''/g")
+    mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${LMEVE_DB} << ADMIN_EOF
 INSERT INTO users (username, password, role, auth_method, is_active, created_date, updated_date)
-SELECT 'admin', '12345', 'super_admin', 'manual', TRUE, NOW(), NOW()
+SELECT 'admin', '${SUPERADMIN_PASS_SQL}', 'super_admin', 'manual', TRUE, NOW(), NOW()
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='admin');
 ADMIN_EOF
-echo -e "${GREEN}✅ Ensured default admin user exists (username: admin)${NC}"
+    echo -e "${GREEN}✅ Ensured default admin user exists (username: admin)${NC}"
+fi
 
 # Step 5: Download and Import SDE (if requested)
 if [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]]; then
