@@ -226,6 +226,18 @@ detect_db_existence() {
     [ -d "${datadir}/${SDE_DB}" ] && SDE_DB_PRESENT="Y"
 }
 
+# Silently install pv in background so SDE import can show progress
+ensure_pv_background() {
+        if command -v pv >/dev/null 2>&1; then return; fi
+        # Only attempt on Debian/Ubuntu with apt-get available
+        if [ -x "/usr/bin/apt-get" ] || command -v apt-get >/dev/null 2>&1; then
+                (
+                    apt-get update -qq >/dev/null 2>&1 || true
+                    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pv >/dev/null 2>&1 || true
+                ) &
+        fi
+}
+
 draw_preflight_header() {
     local title_left="${BLUE}LmEvE v2${NC}"
     local title_right="${GREEN}System snapshot${NC}"
@@ -292,6 +304,8 @@ draw_setup_block_right() {
         sadmin_line="[custom]"
     fi
     tput cup $((row + i)) $col 2>/dev/null || true; printf " 12) Superadmin password    : %s" "$sadmin_line"; i=$((i+1))
+    local root_disp="[not set]"; [ -n "$MYSQL_ROOT_PASS" ] && root_disp="[set]"
+    tput cup $((row + i)) $col 2>/dev/null || true; printf " 13) MySQL root password    : %s" "$root_disp"; i=$((i+1))
 }
 
 # -----------------------------------------------------
@@ -318,7 +332,10 @@ SUPERADMIN_PASS=""
 
 need_setup_fields() {
     # Use one-time snapshot to avoid flapping during menu redraws
-    if [ "${DB_SERVER_PRESENT_SNAPSHOT}" = "N" ] || [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]]; then
+    if [ "${DB_SERVER_PRESENT_SNAPSHOT}" = "N" ] || \
+       [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]] || \
+       [ "${LMEVE_DB_PRESENT_SNAPSHOT}" != "Y" ] || \
+       [ "${SDE_DB_PRESENT_SNAPSHOT}" != "Y" ]; then
         return 0
     fi
     return 1
@@ -348,13 +365,16 @@ draw_menu() {
 
     MENU_MAX=6
     if need_setup_fields; then
-        MENU_MAX=12
+        MENU_MAX=13
         # draw this block under the right panel for a balanced layout
         draw_setup_block_right
     fi
     echo ""
     # expose MENU_MAX to main loop
 }
+
+# Start background install of pv (if missing) before first menu draw
+ensure_pv_background
 
 # Take a one-time snapshot before menu to avoid flapping detection
 detect_db_server
@@ -431,6 +451,20 @@ while true; do
                         echo -e "${GREEN}Superadmin password set${NC}"; sleep 0.6
                     else
                         echo -e "${YELLOW}Passwords did not match. Superadmin password unchanged.${NC}"; sleep 1.2
+                    fi
+                fi
+            fi
+            ;;
+        13)
+            if need_setup_fields; then
+                read -rsp "MySQL root password: " ans; echo "";
+                if [ -n "$ans" ]; then
+                    read -rsp "Confirm MySQL root password: " conf; echo "";
+                    if [ "$ans" = "$conf" ]; then
+                        MYSQL_ROOT_PASS="$ans"
+                        echo -e "${GREEN}MySQL root password set${NC}"; sleep 0.6
+                    else
+                        echo -e "${YELLOW}Passwords did not match. Root password unchanged.${NC}"; sleep 1.2
                     fi
                 fi
             fi
@@ -725,9 +759,12 @@ if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
-# Step 1: Test MySQL Connection
+# Step 1: Test MySQL Connection (root)
 print_step "Testing MySQL Connection"
-if mysql -u root -p"$MYSQL_ROOT_PASS" -h "$DB_HOST" -P "$DB_PORT" -e "SELECT 1;" >/dev/null 2>&1; then
+# Build auth args depending on whether the root password was provided
+MYSQL_AUTH_ARGS=(-u root -h "$DB_HOST" -P "$DB_PORT")
+if [ -n "$MYSQL_ROOT_PASS" ]; then MYSQL_AUTH_ARGS+=(-p"$MYSQL_ROOT_PASS"); fi
+if mysql "${MYSQL_AUTH_ARGS[@]}" -e "SELECT 1;" >/dev/null 2>&1; then
     echo -e "${GREEN}✅ MySQL connection successful${NC}"
 else
     echo -e "${RED}❌ Cannot connect to MySQL${NC}"
@@ -737,7 +774,7 @@ fi
 
 # Step 2: Create Databases
 print_step "Creating Databases"
-mysql -u root -p"$MYSQL_ROOT_PASS" -h "$DB_HOST" -P "$DB_PORT" << SQLEOF
+mysql "${MYSQL_AUTH_ARGS[@]}" << SQLEOF
 CREATE DATABASE IF NOT EXISTS ${LMEVE_DB} DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS ${SDE_DB} DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 SQLEOF
@@ -757,7 +794,7 @@ SERVER_IP=$(hostname -I | awk '{print $1}')
 echo -e "${CYAN}Server IP detected: ${SERVER_IP}${NC}"
 echo -e "${CYAN}Creating user for: %, localhost, and ${SERVER_IP}${NC}"
 
-mysql -u root -p"$MYSQL_ROOT_PASS" -h "$DB_HOST" -P "$DB_PORT" << SQLEOF
+mysql "${MYSQL_AUTH_ARGS[@]}" << SQLEOF
 DROP USER IF EXISTS '${LMEVE_USER}'@'%';
 DROP USER IF EXISTS '${LMEVE_USER}'@'localhost';
 DROP USER IF EXISTS '${LMEVE_USER}'@'${SERVER_IP}';
@@ -1224,17 +1261,36 @@ if [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]]; then
                 echo -e "${CYAN}Found SQL file: $(basename $SQL_FILE)${NC}"
                 
                 print_step "Importing EVE Static Data"
-                echo -e "${CYAN}This will take 10-15 minutes...${NC}"
+                echo -e "${CYAN}This may take several minutes...${NC}"
                 echo -e "${CYAN}Importing SDE into ${SDE_DB} database...${NC}\n"
-                
-                # Import the SQL file directly into MySQL
-                if mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} < "$SQL_FILE" 2>&1 | tee import.log; then
+
+                # Import with progress if pv is available; otherwise show a spinner
+                IMPORT_OK=0
+                if command -v pv >/dev/null 2>&1; then
+                    # pv will display progress on stderr
+                    if pv -pteb "$SQL_FILE" | mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} 2>&1 | tee import.log; then
+                        IMPORT_OK=1
+                    fi
+                else
+                    echo -n "${CYAN}Importing (no pv installed): ${NC}"
+                    (mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} < "$SQL_FILE" 2>&1 | tee import.log) &
+                    imp_pid=$!
+                    # simple spinner
+                    sp='|/-\\'
+                    i=0
+                    while kill -0 $imp_pid 2>/dev/null; do
+                        printf "\r${CYAN}Importing: %s${NC}" "${sp:i++%${#sp}:1}"
+                        sleep 0.2
+                    done
+                    wait $imp_pid && IMPORT_OK=1
+                    printf "\r"
+                fi
+
+                if [ $IMPORT_OK -eq 1 ]; then
                     echo -e "\n${GREEN}✅ SDE data imported successfully${NC}"
                 else
                     echo -e "\n${YELLOW}⚠️  Import completed with warnings (check import.log)${NC}"
                     echo -e "${CYAN}This is usually normal - checking for errors...${NC}"
-                    
-                    # Check if there are actual errors (not just warnings)
                     if grep -i "ERROR" import.log > /dev/null 2>&1; then
                         echo -e "${RED}❌ Import had errors${NC}"
                         tail -20 import.log
