@@ -51,24 +51,23 @@ draw_right_panel() {
 "│   L      M   M  E        V    E           /        │"
 "│   LLLLL  M   M  EEEEE    V    EEEEE      /____     │"
 "│                                                    │"
-"│                                                    │" 
-"│          LmEvE v2 • Database Installer             │"
+"│        LmEvE v2 • Database Installer               │"
 "│                                                    │"
-"│  ⛭  1–7 edit fields   ↵  Enter to start  Q  quit   │"
+"│  ⛭  1–6 edit fields   ↵  Enter to start   Q  quit  │"
 "│                                                    │"
 "└────────────────────────────────────────────────────┘"
     )
- 
+
     local cols=$(term_cols)
     local art_width=52
-    local art=(
+    local margin=6
     local start_col=$(( cols - art_width - margin ))
     if [ "$start_col" -lt 68 ]; then start_col=68; fi
-"│     L      M   M  EEEEE  V   V  EEEEE        -  2222│"
-"│     L      MM MM  E      V   V  E                 2 │"
-"│     L      M M M  EEEE    V V   EEEE              2 │"
-"│     L      M   M  E        V    E               2  2│"
-"│     LLLLL  M   M  EEEEE    V    EEEEE          2222 │"
+    local start_row=1
+
+    if command -v tput >/dev/null 2>&1; then
+        local i=0
+        for line in "${art[@]}"; do
             tput cup $((start_row + i)) "$start_col" 2>/dev/null || true
             echo -e "${BLUE}${line}${NC}"
             i=$((i+1))
