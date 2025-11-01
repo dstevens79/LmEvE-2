@@ -329,6 +329,8 @@ LMEVE_USER=lmeve
 LMEVE_PASS=""
 # Leave superadmin password empty by default; on fresh installs we default to 12345 later
 SUPERADMIN_PASS=""
+# Initialize to avoid nounset errors; set via menu (option 13) when needed
+MYSQL_ROOT_PASS=""
 
 need_setup_fields() {
     # Use one-time snapshot to avoid flapping during menu redraws
