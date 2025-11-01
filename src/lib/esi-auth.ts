@@ -122,19 +122,6 @@ export class ESIAuthService {
     this.clientId = clientId;
     this.clientSecret = clientSecret;
     this.redirectUri = redirectUri && redirectUri.trim().length > 0 ? redirectUri : `${window.location.origin}/`;
-    // Note: The redirect_uri must exactly match an allowed callback in your EVE developer app.
-    // If you're developing locally and using a PHP callback, ensure a PHP server is running and
-    // the exact URL is whitelisted. Otherwise, switch to SPA root and whitelist that URL.
-    try {
-      const ru = new URL(this.redirectUri, window.location.origin);
-      const isLocalHost = /(^|\.)localhost$/.test(ru.hostname) || ru.hostname === '127.0.0.1';
-      const isPhpCallback = /\/api\/auth\/esi\/callback\.php$/.test(ru.pathname);
-      if (isLocalHost && isPhpCallback) {
-        console.warn('Localhost with PHP callback configured. Ensure a PHP server is running and the callback URL is whitelisted in the EVE developer app.');
-      }
-    } catch {
-      // ignore URL parsing issues
-    }
     this.registeredCorporations = registeredCorps;
   }
 
