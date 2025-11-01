@@ -77,7 +77,7 @@ const CORPORATION_SCOPES = [
   'esi-industry.read_corporation_mining.v1',
   'esi-planets.read_customs_offices.v1',
   'esi-corporations.read_blueprints.v1',
-  'esi-corporations.read_containers_logs.v1',
+  'esi-corporations.read_container_logs.v1',
   'esi-corporations.read_divisions.v1',
   'esi-corporations.read_facilities.v1',
   'esi-corporations.read_medals.v1',
