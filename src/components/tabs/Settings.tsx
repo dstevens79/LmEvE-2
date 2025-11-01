@@ -2320,14 +2320,26 @@ echo "See README.md for detailed setup instructions"
     'esi-contracts.read_corporation_contracts.v1'
   ];
 
-  // Generate OAuth authorization URL
+  // Generate OAuth authorization URL for testing from Settings
+  // Use the saved callback URL (PHP endpoint or SPA root) to match the actual app configuration
   const generateAuthUrl = () => {
     const state = Math.random().toString(36).substring(2, 15);
     const scopes = ESI_SCOPES.join(' ');
+    // Prefer saved ESI settings callbackUrl; fallback to origin root
+    let redirectUri: string = `${window.location.origin}/`;
+    try {
+      const raw = localStorage.getItem('lmeve-settings-esi');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.callbackUrl && typeof parsed.callbackUrl === 'string' && parsed.callbackUrl.trim().length > 0) {
+          redirectUri = parsed.callbackUrl.trim();
+        }
+      }
+    } catch {}
     
     const authUrl = `https://login.eveonline.com/v2/oauth/authorize/?` +
       `response_type=code&` +
-      `redirect_uri=${encodeURIComponent(window.location.origin)}&` +
+      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
       `client_id=${esiConfig?.clientId || ''}&` +
       `scope=${encodeURIComponent(scopes)}&` +
       `state=${state}`;
