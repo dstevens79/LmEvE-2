@@ -32,16 +32,51 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# Banner
-clear 2>/dev/null || tput clear 2>/dev/null || true
-echo -e "\n${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║                                                            ║${NC}"
-echo -e "${CYAN}║    LMeve Complete Database Server - All-in-One Installer  ║${NC}"
-echo -e "${CYAN}║                                                            ║${NC}"
-echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}\n"
+# (Removed large banner to make room for a dynamic right-side panel and left pre-flight block)
 
-echo -e "${YELLOW}This script will set up a complete LMeve database server${NC}"
-echo -e "${YELLOW}on a fresh Ubuntu/Debian installation.${NC}\n"
+# Utility: terminal width
+term_cols() {
+    if [ -n "$COLUMNS" ]; then echo "$COLUMNS"; return; fi
+    if command -v tput >/dev/null 2>&1; then tput cols 2>/dev/null || echo 120; else echo 120; fi
+}
+
+# Right-side banner art (drawn with cursor positioning)
+draw_right_panel() {
+    local art=(
+"┌────────────────────────────────────────────────────┐"
+"│                                                    │"
+"│   L      M   M  EEEEE  V   V  EEEEE       -   2222 │"
+"│   L      MM MM  E      V   V  E                2  2│"
+"│   L      M M M  EEEE    V V   EEEE             2  2│"
+"│   L      M   M  E        V    E               2  2 │"
+"│   LLLLL  M   M  EEEEE    V    EEEEE           2222 │"
+"│                                                    │"
+"│        LmEvE v2 • Database Installer               │"
+"│                                                    │"
+"│  ⛭  1–6 edit fields   ↵  Enter to start   Q  quit  │"
+"│                                                    │"
+"└────────────────────────────────────────────────────┘"
+    )
+
+    local cols=$(term_cols)
+    local art_width=52
+    local margin=2
+    local start_col=$(( cols - art_width - margin ))
+    if [ "$start_col" -lt 56 ]; then start_col=56; fi
+    local start_row=1
+
+    if command -v tput >/dev/null 2>&1; then
+        local i=0
+        for line in "${art[@]}"; do
+            tput cup $((start_row + i)) "$start_col" 2>/dev/null || true
+            echo -e "${BLUE}${line}${NC}"
+            i=$((i+1))
+        done
+    else
+        local pad=""; local n=$start_col; while [ $n -gt 0 ]; do pad+=" "; n=$((n-1)); done
+        for line in "${art[@]}"; do echo -e "${pad}${BLUE}${line}${NC}"; done
+    fi
+}
 
 # Function to print step headers
 print_step() {
@@ -79,13 +114,12 @@ fi
 # -----------------------------------------------------
 # Pre-flight dependency checks (read-only)
 # -----------------------------------------------------
-print_step "Pre-flight checks"
-
 check_dep() {
     local name="$1"; shift
     local cmd="$1"; shift
     local ver_cmd="$1"; shift
-    printf "checking dependancy %-18s .... " "$name"
+    # Tight spacing to sit beside the right panel
+    printf "checking dependency %-10s .. " "$name"
     if command -v "$cmd" >/dev/null 2>&1; then
         local ver
         if [ -n "$ver_cmd" ]; then
@@ -102,7 +136,7 @@ check_dep() {
                 ver=$(echo "$ver" | awk '{print $1" "$2" "$3}')
                 ;;
         esac
-        echo -e "${GREEN}OK${NC}${ver:+  ($ver)}"
+        echo -e "${GREEN}OK${NC}${ver:+ ($ver)}"
         return 0
     else
         echo -e "${YELLOW}MISSING${NC}"
@@ -110,22 +144,39 @@ check_dep() {
     fi
 }
 
-MISSING_DEPS=0
-check_dep "curl"    curl   "curl --version"         || MISSING_DEPS=$((MISSING_DEPS+1))
-check_dep "wget"    wget   "wget --version"         || MISSING_DEPS=$((MISSING_DEPS+1))
-check_dep "bzip2"   bzip2  "bzip2 --version"        || MISSING_DEPS=$((MISSING_DEPS+1))
-check_dep "git"     git    "git --version"          || MISSING_DEPS=$((MISSING_DEPS+1))
-check_dep "ufw"     ufw    "ufw --version"          || true
-check_dep "mysql"   mysql  "mysql --version"        || true
+draw_preflight_header() {
+    local title_left="${BLUE}LmEvE v2${NC}"
+    local title_right="${GREEN}Pre-flight checks${NC}"
+    local line_top="┌───────────────────────────────────────────────┐"
+    local line_mid="│ ${title_left} , ${title_right} │"
+    local line_bot="└───────────────────────────────────────────────┘"
+    echo -e "${BLUE}${line_top}${NC}"
+    echo -e "${line_mid}"
+    echo -e "${BLUE}${line_bot}${NC}"
+}
 
-if [ "$MISSING_DEPS" -gt 0 ]; then
-    echo -e "${YELLOW}Some required components are missing and will be installed.${NC}"
-else
-    echo -e "${GREEN}All required dependencies are present.${NC}"
-fi
+draw_preflight() {
+    draw_preflight_header
+    local MISSING_DEPS=0
+    check_dep "curl"    curl   "curl --version"         || MISSING_DEPS=$((MISSING_DEPS+1))
+    check_dep "wget"    wget   "wget --version"         || MISSING_DEPS=$((MISSING_DEPS+1))
+    check_dep "bzip2"   bzip2  "bzip2 --version"        || MISSING_DEPS=$((MISSING_DEPS+1))
+    check_dep "git"     git    "git --version"          || MISSING_DEPS=$((MISSING_DEPS+1))
+    check_dep "ufw"     ufw    "ufw --version"          || true
+    check_dep "mysql"   mysql  "mysql --version"        || true
+
+    if [ "$MISSING_DEPS" -gt 0 ]; then
+        echo -e "${YELLOW}Some components are missing and will be installed.${NC}"
+    else
+        echo -e "${GREEN}All required dependencies are present.${NC}"
+    fi
+}
 
 # -----------------------------------------------------
-# Upfront configuration menu
+# Upfront configuration menu (static redraw)
+#  - Number press on Yes/No or 2-choice fields toggles immediately
+#  - Number press on text fields prompts for new text
+#  - Enter on an empty line starts installation; Q quits
 # -----------------------------------------------------
 DB_PORT=3306
 CONFIG_FIREWALL=N
@@ -134,55 +185,59 @@ REMOVE_EXISTING=N
 INSTALL_WEBMIN=N
 DOWNLOAD_SDE=N
 
+draw_menu() {
+    clear 2>/dev/null || tput clear 2>/dev/null || true
+    # Right-side panel first
+    draw_right_panel
+    # Move cursor back to top-left then draw pre-flight
+    if command -v tput >/dev/null 2>&1; then tput cup 0 0 2>/dev/null || true; fi
+    draw_preflight
+    echo ""
+    echo -e "${BLUE}Installer Options (press 1-6 to edit, Enter=Start, Q=Quit)${NC}"
+    echo ""
+    printf "  1) Database server        : %s\n" "$([[ "$DB_CHOICE" -eq 2 ]] && echo MariaDB || echo MySQL)"
+    printf "  2) Database port          : %s\n" "$DB_PORT"
+    printf "  3) Configure UFW firewall : %s\n" "$([[ "$CONFIG_FIREWALL" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+    printf "  4) Remove existing DB     : %s\n" "$([[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+    printf "  5) Install Webmin         : %s\n" "$([[ "$INSTALL_WEBMIN" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+    printf "  6) Download & import SDE  : %s\n" "$([[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+    echo ""
+}
+
 while true; do
-    echo -e "\n${BLUE}Installer Options${NC}"
-    echo "  1) Database server        : $([[ \"$DB_CHOICE\" -eq 2 ]] && echo MariaDB || echo MySQL)"
-    echo "  2) Database port           : ${DB_PORT}"
-    echo "  3) Configure UFW firewall  : $([[ \"$CONFIG_FIREWALL\" =~ ^[Yy]$ ]] && echo Yes || echo No)"
-    echo "  4) Remove existing DB      : $([[ \"$REMOVE_EXISTING\" =~ ^[Yy]$ ]] && echo Yes || echo No)"
-    echo "  5) Install Webmin          : $([[ \"$INSTALL_WEBMIN\" =~ ^[Yy]$ ]] && echo Yes || echo No)"
-    echo "  6) Download & import SDE   : $([[ \"$DOWNLOAD_SDE\" =~ ^[Yy]$ ]] && echo Yes || echo No)"
-    echo ""
-    echo ""
-    read -p "Choose an option to change (1-6), P to proceed, Q to quit: " choice
-    case "${choice^^}" in
+    draw_menu
+    read -r -p "Select [1-6], Enter=Start, Q=Quit: " choice || true; echo ""
+    choice_clean="${choice//[[:space:]]/}"
+    if [ -z "$choice_clean" ]; then
+        break
+    fi
+    case "${choice_clean^^}" in
         1)
-            read -p "Select database server [1=MySQL, 2=MariaDB]: " dc
-            DB_CHOICE=${dc:-$DB_CHOICE}
+            # Toggle MySQL/MariaDB
+            if [ "$DB_CHOICE" -eq 1 ]; then DB_CHOICE=2; else DB_CHOICE=1; fi
             ;;
         2)
-            read -p "Enter database port [${DB_PORT}]: " dp
-            DB_PORT=${dp:-$DB_PORT}
+            read -r -p "Enter database port [${DB_PORT}]: " dp
+            dp=${dp:-$DB_PORT}
+            if [[ "$dp" =~ ^[0-9]{2,5}$ ]]; then DB_PORT=$dp; else echo -e "${YELLOW}Invalid port. Keeping ${DB_PORT}.${NC}"; sleep 1; fi
             ;;
         3)
-            read -p "Configure UFW firewall for DB port? (Y/N) [${CONFIG_FIREWALL}]: " fw
-            fw=${fw:-$CONFIG_FIREWALL}
-            if [[ "$fw" =~ ^[Yy]$ ]]; then CONFIG_FIREWALL=Y; else CONFIG_FIREWALL=N; fi
+            if [[ "$CONFIG_FIREWALL" =~ ^[Yy]$ ]]; then CONFIG_FIREWALL=N; else CONFIG_FIREWALL=Y; fi
             ;;
         4)
-            read -p "Remove existing DB server if detected? (Y/N) [${REMOVE_EXISTING}]: " rm
-            rm=${rm:-$REMOVE_EXISTING}
-            if [[ "$rm" =~ ^[Yy]$ ]]; then REMOVE_EXISTING=Y; else REMOVE_EXISTING=N; fi
+            if [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]]; then REMOVE_EXISTING=N; else REMOVE_EXISTING=Y; fi
             ;;
         5)
-            read -p "Install Webmin? (Y/N) [${INSTALL_WEBMIN}]: " wb
-            wb=${wb:-$INSTALL_WEBMIN}
-            if [[ "$wb" =~ ^[Yy]$ ]]; then INSTALL_WEBMIN=Y; else INSTALL_WEBMIN=N; fi
+            if [[ "$INSTALL_WEBMIN" =~ ^[Yy]$ ]]; then INSTALL_WEBMIN=N; else INSTALL_WEBMIN=Y; fi
             ;;
         6)
-            read -p "Download and import SDE now? (Y/N) [${DOWNLOAD_SDE}]: " sd
-            sd=${sd:-$DOWNLOAD_SDE}
-            if [[ "$sd" =~ ^[Yy]$ ]]; then DOWNLOAD_SDE=Y; else DOWNLOAD_SDE=N; fi
-            ;;
-        P)
-            break
+            if [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]]; then DOWNLOAD_SDE=N; else DOWNLOAD_SDE=Y; fi
             ;;
         Q)
             echo "Exiting installer."
             exit 0
             ;;
         *)
-            echo "Invalid option"
             ;;
     esac
 done
