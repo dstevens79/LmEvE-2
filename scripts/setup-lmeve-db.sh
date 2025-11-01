@@ -178,20 +178,18 @@ draw_preflight_header() {
 }
 
 draw_preflight() {
-    detect_db_server
-    detect_db_existence
-
     draw_preflight_header
     printf "CPU     : %s\n" "$(get_cpu_model)"
     printf "RAM     : %s\n" "$(get_mem_total)"
     printf "Linux   : %s\n" "${PRETTY_NAME}"
-    if [ "$DB_SERVER_PRESENT" = "Y" ]; then
-        local active="$(systemctl is-active ${DB_SERVICE_UNIT} 2>/dev/null || echo inactive)"
-        printf "DB      : %s (%s)\n" "$DB_SERVER_NAME" "$active"
+    if [ "${DB_SERVER_PRESENT_SNAPSHOT}" = "Y" ]; then
+        printf "DB      : %s (%s)\n" "${DB_SERVER_NAME_SNAPSHOT}" "${DB_ACTIVE_SNAPSHOT}"
     else
         printf "DB      : none detected\n"
     fi
-    printf "Schemas : %s=%s, %s=%s\n" "${LMEVE_DB}" "$([ "$LMEVE_DB_PRESENT" = Y ] && echo Yes || echo No)" "${SDE_DB}" "$([ "$SDE_DB_PRESENT" = Y ] && echo Yes || echo No)"
+    printf "Schemas : %s=%s, %s=%s\n" \
+        "${LMEVE_DB}" "$([ "${LMEVE_DB_PRESENT_SNAPSHOT}" = Y ] && echo Yes || echo No)" \
+        "${SDE_DB}" "$([ "${SDE_DB_PRESENT_SNAPSHOT}" = Y ] && echo Yes || echo No)"
 }
 
 # Draw the Database setup (new) block under the right-side art
@@ -208,8 +206,7 @@ draw_setup_block_right() {
         printf " 11) App DB password        : %s\n" "$pass_disp"
         # Superadmin display: if not fresh, we don't know the current value -> mask
         local sadmin_line="[default]"
-        detect_db_server; detect_db_existence
-        if [ "$DB_SERVER_PRESENT" = "Y" ] && [ "$REMOVE_EXISTING" != "Y" ]; then
+        if [ "${DB_SERVER_PRESENT_SNAPSHOT}" = "Y" ] && [ "$REMOVE_EXISTING" != "Y" ]; then
             sadmin_line="********"
         elif [ -n "$SUPERADMIN_PASS" ]; then
             sadmin_line="[custom]"
@@ -229,8 +226,7 @@ draw_setup_block_right() {
     local pass_disp="[not set]"; [ -n "$LMEVE_PASS" ] && pass_disp="[set]"
     tput cup $((row + i)) $col 2>/dev/null || true; printf " 11) App DB password        : %s" "$pass_disp"; i=$((i+1))
     local sadmin_line="[default]"
-    detect_db_server; detect_db_existence
-    if [ "$DB_SERVER_PRESENT" = "Y" ] && [ "$REMOVE_EXISTING" != "Y" ]; then
+    if [ "${DB_SERVER_PRESENT_SNAPSHOT}" = "Y" ] && [ "$REMOVE_EXISTING" != "Y" ]; then
         sadmin_line="********"
     elif [ -n "$SUPERADMIN_PASS" ]; then
         sadmin_line="[custom]"
@@ -261,8 +257,8 @@ LMEVE_PASS=""
 SUPERADMIN_PASS=""
 
 need_setup_fields() {
-    detect_db_server
-    if [ "$DB_SERVER_PRESENT" = "N" ] || [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]]; then
+    # Use one-time snapshot to avoid flapping during menu redraws
+    if [ "${DB_SERVER_PRESENT_SNAPSHOT}" = "N" ] || [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]]; then
         return 0
     fi
     return 1
@@ -279,10 +275,9 @@ draw_menu() {
     echo ""
     echo -e "${BLUE}Installer Options"
     echo ""
-    # Update detection for dynamic labels
-    detect_db_existence
+    # Use snapshot for dynamic label
     local sde_label="Download & import SDE"
-    [ "$SDE_DB_PRESENT" = "Y" ] && sde_label="Download & update SDE"
+    [ "${SDE_DB_PRESENT_SNAPSHOT}" = "Y" ] && sde_label="Download & update SDE"
 
     printf "  1) Database server        : %s\n" "$( [[ "$DB_CHOICE" -eq 2 ]] && echo MariaDB || echo MySQL)"
     printf "  2) Database port          : %s\n" "$DB_PORT"
@@ -300,6 +295,20 @@ draw_menu() {
     echo ""
     # expose MENU_MAX to main loop
 }
+
+# Take a one-time snapshot before menu to avoid flapping detection
+detect_db_server
+detect_db_existence
+DB_SERVER_PRESENT_SNAPSHOT="$DB_SERVER_PRESENT"
+DB_SERVER_NAME_SNAPSHOT="$DB_SERVER_NAME"
+DB_SERVICE_UNIT_SNAPSHOT="$DB_SERVICE_UNIT"
+LMEVE_DB_PRESENT_SNAPSHOT="$LMEVE_DB_PRESENT"
+SDE_DB_PRESENT_SNAPSHOT="$SDE_DB_PRESENT"
+if [ "$DB_SERVER_PRESENT_SNAPSHOT" = "Y" ] && [ -n "$DB_SERVICE_UNIT_SNAPSHOT" ]; then
+    DB_ACTIVE_SNAPSHOT="$(systemctl is-active ${DB_SERVICE_UNIT_SNAPSHOT} 2>/dev/null || echo inactive)"
+else
+    DB_ACTIVE_SNAPSHOT="inactive"
+fi
 
 while true; do
     draw_menu
@@ -381,8 +390,7 @@ done
 
 # Determine if this is a fresh install intent (used for defaults and admin creation)
 FRESH_INSTALL=0
-detect_db_server; detect_db_existence
-if [ "$DB_SERVER_PRESENT" = "N" ] || [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]]; then
+if [ "${DB_SERVER_PRESENT_SNAPSHOT}" = "N" ] || [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]]; then
     FRESH_INSTALL=1
 fi
 
