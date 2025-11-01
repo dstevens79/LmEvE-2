@@ -149,7 +149,7 @@ detect_db_server() {
     DB_SERVER_PRESENT="N"
     DB_SERVER_NAME="None"
     DB_SERVICE_UNIT=""
-    DB_ACTIVE="inactive"
+    DB_ACTIVE="inactive"  
 
     local binary_present="N"
     command -v mysql >/dev/null 2>&1 && binary_present="Y"
