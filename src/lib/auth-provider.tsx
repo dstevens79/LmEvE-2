@@ -135,24 +135,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [users, setUsers, setUserCredentials]);
 
-  // Initialize ESI service when configuration changes
+  // Initialize ESI service when configuration changes (SPA-only callback)
   useEffect(() => {
     if (esiConfiguration.clientId) {
       try {
-        // Try to read callback URL from ESI settings if present
-        let redirectUri: string | undefined = undefined;
-        try {
-          const raw = localStorage.getItem('lmeve-settings-esi');
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed?.callbackUrl && typeof parsed.callbackUrl === 'string') {
-              redirectUri = parsed.callbackUrl;
-            }
-          }
-        } catch {}
-
-        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, redirectUri);
-        console.log('✅ ESI Auth initialized with configuration', { redirectUri });
+        const spaRedirect = `${window.location.origin}/`;
+        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, spaRedirect);
+        console.log('✅ ESI Auth initialized (SPA mode)', { redirectUri: spaRedirect });
       } catch (error) {
         console.error('❌ Failed to initialize ESI Auth:', error);
       }
@@ -236,19 +225,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
     
     try {
-      // Always ensure the ESI service is initialized with the latest saved callback URL
-      // This avoids stale redirect_uri values if settings were changed or hydrated after initial load
-      let redirectUri: string | undefined = undefined;
-      try {
-        const raw = localStorage.getItem('lmeve-settings-esi');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.callbackUrl && typeof parsed.callbackUrl === 'string' && parsed.callbackUrl.trim().length > 0) {
-            redirectUri = parsed.callbackUrl.trim();
-          }
-        }
-      } catch {}
-      initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, redirectUri);
+      // SPA-only redirect to current origin root to keep state in same tab
+      const spaRedirect = `${window.location.origin}/`;
+      initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, spaRedirect);
       const esiService = getESIAuthService();
       const url = scopesOverride && scopesOverride.length > 0
         ? await esiService.initiateLoginWithScopes(scopesOverride)
@@ -765,27 +744,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
     // Initialize ESI service with new config
     try {
-      // Respect current callbackUrl if saved in settings
-      let redirectUri: string | undefined = undefined;
-      try {
-        const raw = localStorage.getItem('lmeve-settings-esi');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.callbackUrl && typeof parsed.callbackUrl === 'string') {
-            // Auto-migrate old PHP callback URLs to SPA root
-            if (parsed.callbackUrl.includes('/api/auth/esi/callback.php')) {
-              const origin = new URL(parsed.callbackUrl).origin;
-              redirectUri = `${origin}/`;
-              parsed.callbackUrl = redirectUri;
-              localStorage.setItem('lmeve-settings-esi', JSON.stringify(parsed));
-            } else {
-              redirectUri = parsed.callbackUrl;
-            }
-          }
-        }
-      } catch {}
-      initializeESIAuth(clientId, clientSecret, registeredCorporations, redirectUri);
-      console.log('✅ ESI configuration updated');
+      const spaRedirect = `${window.location.origin}/`;
+      initializeESIAuth(clientId, clientSecret, registeredCorporations, spaRedirect);
+      console.log('✅ ESI configuration updated (SPA mode)');
     } catch (error) {
       console.error('❌ Failed to update ESI configuration:', error);
       throw error;

@@ -74,8 +74,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     if (esiConfiguration.clientId) {
       try {
-        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret);
-        console.log('✅ ESI Auth initialized with configuration');
+        const spaRedirect = `${window.location.origin}/`;
+        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, undefined, spaRedirect);
+        console.log('✅ ESI Auth initialized with configuration (SPA mode)');
       } catch (error) {
         console.error('❌ Failed to initialize ESI Auth:', error);
       }
@@ -227,7 +228,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // Revoke ESI token if present
       try {
         const esiService = getESIAuthService();
-        await esiService.revokeToken(currentUser.accessToken);
+        await esiService.revokeTokens(currentUser.accessToken, currentUser.refreshToken || undefined);
       } catch (error) {
         console.warn('Failed to revoke ESI token:', error);
       }
@@ -385,8 +386,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
     // Initialize ESI service with new config
     try {
-      initializeESIAuth(clientId, clientSecret);
-      console.log('✅ ESI configuration updated');
+      const spaRedirect = `${window.location.origin}/`;
+      initializeESIAuth(clientId, clientSecret, undefined, spaRedirect);
+      console.log('✅ ESI configuration updated (SPA mode)');
     } catch (error) {
       console.error('❌ Failed to update ESI configuration:', error);
       throw error;

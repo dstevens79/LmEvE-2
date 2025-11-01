@@ -2321,21 +2321,11 @@ echo "See README.md for detailed setup instructions"
   ];
 
   // Generate OAuth authorization URL for testing from Settings
-  // Use the saved callback URL (PHP endpoint or SPA root) to match the actual app configuration
+  // SPA-only: always use the current origin root as redirect_uri
   const generateAuthUrl = () => {
     const state = Math.random().toString(36).substring(2, 15);
     const scopes = ESI_SCOPES.join(' ');
-    // Prefer saved ESI settings callbackUrl; fallback to origin root
-    let redirectUri: string = `${window.location.origin}/`;
-    try {
-      const raw = localStorage.getItem('lmeve-settings-esi');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed?.callbackUrl && typeof parsed.callbackUrl === 'string' && parsed.callbackUrl.trim().length > 0) {
-          redirectUri = parsed.callbackUrl.trim();
-        }
-      }
-    } catch {}
+    const redirectUri: string = `${window.location.origin}/`;
     
     const authUrl = `https://login.eveonline.com/v2/oauth/authorize/?` +
       `response_type=code&` +
@@ -2354,8 +2344,8 @@ echo "See README.md for detailed setup instructions"
     }
     
     const authUrl = generateAuthUrl();
-    window.open(authUrl, '_blank', 'width=600,height=700');
-    toast.info('Complete authorization in the opened window');
+    toast.info('Redirecting to EVE SSO...');
+    window.location.href = authUrl;
   };
 
   const handleCopyAuthUrl = () => {
@@ -3195,7 +3185,7 @@ echo "See README.md for detailed setup instructions"
                         try {
                           const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
                           const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
-                          const callbackUrl = (esiSettings.callbackUrl || '').trim() || undefined;
+                          const callbackUrl = `${window.location.origin}/`;
                           if (!clientId) {
                             toast.error('Client ID is required to start ESI login');
                             return;
@@ -3236,7 +3226,7 @@ echo "See README.md for detailed setup instructions"
                         try {
                           const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
                           const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
-                          const callbackUrl = (esiSettings.callbackUrl || '').trim() || undefined;
+                          const callbackUrl = `${window.location.origin}/`;
                           if (!clientId) {
                             toast.error('Client ID is required to test ESI configuration');
                             return;
@@ -3248,16 +3238,9 @@ echo "See README.md for detailed setup instructions"
 
                           const svc = getESIAuthService();
                           const url = await svc.initiateLogin('basic');
-
-                          // Best-effort cleanup of transient state
-                          try {
-                            sessionStorage.removeItem('esi-auth-state');
-                            sessionStorage.removeItem('esi-login-attempt');
-                          } catch {}
-
-                          const usedPKCE = url.includes('code_challenge=');
-                          const ru = new URL(url).searchParams.get('redirect_uri');
-                          toast.success(`${usedPKCE ? 'PKCE ready (secure)' : 'Non-PKCE fallback (HTTP)'} · Redirect: ${ru}`);
+                          // Redirect same-tab to preserve state reliably
+                          toast.info('Redirecting to EVE SSO for basic test...');
+                          window.location.href = url;
                         } catch (err) {
                           console.error('ESI config test failed:', err);
                           const message = err instanceof Error ? err.message : 'Failed to initialize ESI login';
@@ -3270,12 +3253,12 @@ echo "See README.md for detailed setup instructions"
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Create an application at developers.eveonline.com with callback URL: 
-                    <code className="bg-background px-1 rounded">{`${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}${window.location.port ? ':' + window.location.port : ''}/api/auth/esi/callback.php`}</code>
+                    <code className="bg-background px-1 rounded">{`${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}${window.location.port ? ':' + window.location.port : ''}/`}</code>
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {window.location.port
-                      ? `If your external port differs from ${window.location.port}, replace it accordingly (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/api/auth/esi/callback.php).`
-                      : `If you expose the app on a non-standard port, add :PORT after the IP (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/api/auth/esi/callback.php).`}
+                      ? `If your external port differs from ${window.location.port}, replace it accordingly (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/).`
+                      : `If you expose the app on a non-standard port, add :PORT after the IP (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/).`}
                   </p>
                 </div>
               </div>
