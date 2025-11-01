@@ -697,69 +697,9 @@ else
     fi
 fi
 
-# Prompt for database configuration
-print_step "LMeve Database Configuration"
-echo -e "${YELLOW}Now let's configure your LMeve databases${NC}\n"
-
-# Database host
-read -p "Database Host [${DB_HOST}]: " ans; DB_HOST=${ans:-$DB_HOST}
-
-# Port was already configured earlier
-echo -e "${CYAN}Using Database Port: ${DB_PORT}${NC}"
-
-# MySQL root password
-echo -e "\n${YELLOW}MySQL root credentials (for creating databases):${NC}"
-read -sp "MySQL Root Password: " MYSQL_ROOT_PASS
-echo
-
-# LMeve username
-echo -e "\n${YELLOW}LMeve database user (will be created):${NC}"
-read -p "LMeve Username [${LMEVE_USER}]: " ans; LMEVE_USER=${ans:-$LMEVE_USER}
-
-# LMeve password (skip prompt if already set in menu)
-if [ -z "$LMEVE_PASS" ]; then
-    read -sp "LMeve Password: " LMEVE_PASS
-    echo
-    read -sp "Confirm LMeve Password: " LMEVE_PASS_CONFIRM
-    echo
-    if [[ "$LMEVE_PASS" != "$LMEVE_PASS_CONFIRM" ]]; then
-        echo -e "\n${RED}❌ Passwords do not match!${NC}"
-        exit 1
-    fi
-else
-    echo -e "${CYAN}Using LMeve password provided in menu${NC}"
-fi
-
-# Database names
-echo -e "\n${YELLOW}Database Names:${NC}"
-read -p "Main database name [${LMEVE_DB}]: " ans; LMEVE_DB=${ans:-$LMEVE_DB}
-read -p "SDE database name [${SDE_DB}]: " ans; SDE_DB=${ans:-$SDE_DB}
-
-# SDE download option
-echo -e "\n${YELLOW}EVE Static Data Export (SDE):${NC}"
-echo -e "${CYAN}SDE provides item names, types, and other static EVE data.${NC}"
-echo -e "${CYAN}Note: SDE import can take 10+ minutes and is optional.${NC}"
-echo -e "${CYAN}You can import it later from the LMeve web interface.${NC}"
-
-# Configuration summary
-echo -e "\n${CYAN}═══════════════════════════════════════════════════════════${NC}"
-echo -e "${CYAN}Configuration Summary:${NC}"
-echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
-echo -e "  Database Host: ${YELLOW}$DB_HOST:$DB_PORT${NC}"
-echo -e "  Main Database: ${YELLOW}$LMEVE_DB${NC}"
-echo -e "  SDE Database: ${YELLOW}$SDE_DB${NC}"
-echo -e "  LMeve Username: ${YELLOW}$LMEVE_USER${NC}"
-echo -e "  LMeve Password: ${YELLOW}[hidden]${NC}"
-echo -e "  Download SDE: ${YELLOW}${DOWNLOAD_SDE}${NC}"
-echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}\n"
-
-read -p "Proceed with installation? [Y/n]: " CONFIRM
-CONFIRM=${CONFIRM:-Y}
-
-if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}Installation cancelled.${NC}"
-    exit 0
-fi
+# Use menu-provided values without further prompts
+print_step "Configuring your LmEvE-2 Database data"
+echo -e "Host: ${YELLOW}${DB_HOST}:${DB_PORT}${NC}  User: ${YELLOW}${LMEVE_USER}${NC}  DBs: ${YELLOW}${LMEVE_DB}${NC}, ${YELLOW}${SDE_DB}${NC}"
 
 # Step 1: Test MySQL Connection (root)
 print_step "Testing MySQL Connection"
@@ -828,7 +768,10 @@ fi
 
 # Step 4: Test new user connection
 print_step "Testing User Connection"
-if mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" -e "SELECT 1;" >/dev/null 2>&1; then
+# Build app auth args without prompting if password is empty
+APP_AUTH_ARGS=(-u "$LMEVE_USER" -h "$DB_HOST" -P "$DB_PORT")
+[ -n "$LMEVE_PASS" ] && APP_AUTH_ARGS+=(-p"$LMEVE_PASS")
+if mysql "${APP_AUTH_ARGS[@]}" -e "SELECT 1;" >/dev/null 2>&1; then
     echo -e "${GREEN}✅ User connection successful${NC}"
 else
     echo -e "${RED}❌ User connection failed${NC}"
@@ -839,7 +782,7 @@ fi
 print_step "Creating LMeve Database Schema"
 echo -e "${CYAN}Setting up core tables in ${LMEVE_DB}...${NC}"
 
-mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${LMEVE_DB} << 'SCHEMA_EOF'
+mysql "${APP_AUTH_ARGS[@]}" ${LMEVE_DB} << 'SCHEMA_EOF'
 -- Users table
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -1270,12 +1213,14 @@ if [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]]; then
                 IMPORT_OK=0
                 if command -v pv >/dev/null 2>&1; then
                     # pv will display progress on stderr
-                    if pv -pteb "$SQL_FILE" | mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} 2>&1 | tee import.log; then
+                    # Rebuild app auth args in case they changed
+                    APP_AUTH_ARGS=(-u "$LMEVE_USER" -h "$DB_HOST" -P "$DB_PORT"); [ -n "$LMEVE_PASS" ] && APP_AUTH_ARGS+=(-p"$LMEVE_PASS")
+                    if pv -pteb "$SQL_FILE" | mysql "${APP_AUTH_ARGS[@]}" ${SDE_DB} 2>&1 | tee import.log; then
                         IMPORT_OK=1
                     fi
                 else
                     echo -n "${CYAN}Importing (no pv installed): ${NC}"
-                    (mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${SDE_DB} < "$SQL_FILE" 2>&1 | tee import.log) &
+                        (APP_AUTH_ARGS=(-u "$LMEVE_USER" -h "$DB_HOST" -P "$DB_PORT"); [ -n "$LMEVE_PASS" ] && APP_AUTH_ARGS+=(-p"$LMEVE_PASS"); mysql "${APP_AUTH_ARGS[@]}" ${SDE_DB} < "$SQL_FILE" 2>&1 | tee import.log) &
                     imp_pid=$!
                     # simple spinner
                     sp='|/-\\'
