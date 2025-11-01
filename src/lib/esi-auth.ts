@@ -796,26 +796,51 @@ export class ESIAuthService {
   }
 
   /**
-   * Revoke access token (OAuth2 token revocation)
+   * OAuth2 token revocation per RFC 7009.
+   * Uses HTTP Basic with client credentials when available; falls back to public client mode.
    */
-  async revokeToken(accessToken: string): Promise<void> {
+  private async revokeTokenWithHint(token: string, hint: 'access_token' | 'refresh_token'): Promise<void> {
     try {
-      await fetch(SSO_REVOKE_URL, {
+      const params = new URLSearchParams({ token: token, token_type_hint: hint });
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'LMeve/1.0 (https://github.com/dstevens79/lmeve)'
+      };
+
+      // Prefer confidential client auth when we have a secret
+      if (this.clientSecret) {
+        const basic = btoa(`${this.clientId}:${this.clientSecret}`);
+        headers['Authorization'] = `Basic ${basic}`;
+      } else {
+        // Some providers also accept client_id in body for public clients
+        params.append('client_id', this.clientId);
+      }
+
+      const resp = await fetch(SSO_REVOKE_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': `Bearer ${accessToken}`,
-          'User-Agent': 'LMeve/1.0 (https://github.com/dstevens79/lmeve)'
-        },
-        body: new URLSearchParams({
-          token_type_hint: 'access_token',
-          token: accessToken
-        }).toString()
+        headers,
+        body: params.toString()
       });
-      
-      console.log('✅ Token revoked successfully');
+
+      if (!resp.ok) {
+        const txt = await resp.text();
+        console.warn(`Token revocation (${hint}) responded ${resp.status}:`, txt);
+      } else {
+        console.log(`✅ ${hint} revoked successfully`);
+      }
     } catch (error) {
-      console.warn('Failed to revoke token:', error);
+      console.warn(`Failed to revoke ${hint}:`, error);
+    }
+  }
+
+  /** Revoke both tokens when available */
+  async revokeTokens(accessToken?: string, refreshToken?: string): Promise<void> {
+    if (accessToken) {
+      await this.revokeTokenWithHint(accessToken, 'access_token');
+    }
+    if (refreshToken) {
+      await this.revokeTokenWithHint(refreshToken, 'refresh_token');
     }
   }
 }

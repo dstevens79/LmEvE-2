@@ -74,6 +74,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [authTrigger, setAuthTrigger] = useState(0);
 
+  // Ensure we never persist tokens in the users[] list (local storage collection)
+  const sanitizeUserForPersistence = useCallback((u: LMeveUser): LMeveUser => {
+    const { accessToken, refreshToken, tokenExpiry, ...rest } = u as any;
+    return {
+      ...(rest as LMeveUser),
+      accessToken: undefined as any,
+      refreshToken: undefined as any,
+      tokenExpiry: undefined as any,
+    };
+  }, []);
+
   // Initialize with default admin user
   useEffect(() => {
     if (users.length === 0) {
@@ -247,8 +258,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
           updatedBy: currentUser.id
         };
         
-        // Update in users list
-        setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
+  // Update in users list without tokens
+  setUsers(prev => prev.map(u => u.id === currentUser.id ? sanitizeUserForPersistence(updatedUser) : u));
         setCurrentUser(updatedUser);
         
         console.log('✅ Manual login replaced with ESI login');
@@ -267,7 +278,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             createdDate: existingUser.createdDate
           });
           
-          setUsers(prev => prev.map(u => u.id === existingUser.id ? updatedUser : u));
+          // Persist without tokens
+          setUsers(prev => prev.map(u => u.id === existingUser.id ? sanitizeUserForPersistence(updatedUser) : u));
           setCurrentUser(updatedUser);
           
           console.log('✅ Existing ESI user updated');
@@ -275,7 +287,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
           return updatedUser;
         } else {
           // Create new ESI user
-          setUsers(prev => [...prev, esiUser]);
+          // Persist without tokens
+          setUsers(prev => [...prev, sanitizeUserForPersistence(esiUser)]);
           setCurrentUser(esiUser);
           
           console.log('✅ New ESI user created');
@@ -295,16 +308,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = useCallback(async () => {
     console.log('🚪 Logging out user');
     
-    if (currentUser?.accessToken) {
-      // Revoke ESI token if present
+    // Revoke ESI tokens if present (access + refresh)
+    if (currentUser?.authMethod === 'esi' && (currentUser.accessToken || currentUser.refreshToken)) {
       try {
         const esiService = getESIAuthService();
-        await esiService.revokeToken(currentUser.accessToken);
+        await esiService.revokeTokens(currentUser.accessToken, currentUser.refreshToken);
       } catch (error) {
-        console.warn('Failed to revoke ESI token:', error);
+        console.warn('Failed to revoke ESI tokens:', error);
       }
     }
     
+    // Clear session artifacts
+    try {
+      sessionStorage.removeItem('esi-auth-state');
+      sessionStorage.removeItem('esi-login-attempt');
+    } catch {}
+
+    // Scrub tokens from stored users (minimize retention after logout)
+    if (currentUser) {
+      setUsers(prev => prev.map(u => u.id === currentUser.id ? {
+        ...u,
+        accessToken: undefined as any,
+        refreshToken: undefined as any,
+        tokenExpiry: undefined as any
+      } : u));
+    }
+
     setCurrentUser(null);
     triggerAuthChange();
     
@@ -404,7 +433,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         corporationScopes: corpOnlyScopes
       });
       
-      setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
+      // Persist without tokens
+      setUsers(prev => prev.map(u => u.id === currentUser.id ? sanitizeUserForPersistence(updatedUser) : u));
       setCurrentUser(updatedUser);
       
       console.log('✅ Token refreshed successfully', {
