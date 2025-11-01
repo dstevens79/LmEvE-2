@@ -349,7 +349,7 @@ export const defaultDatabaseSettings: DatabaseSettings = {
 export const defaultESISettings: ESISettings = {
   clientId: '',
   clientSecret: '',
-  callbackUrl: `${window.location.origin}/`,
+  callbackUrl: `${window.location.origin}/api/auth/esi/callback.php`,
   userAgent: 'LMeve Corporation Management Tool',
   scopes: [
     'esi-corporations.read_corporation_membership.v1',

@@ -146,17 +146,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed?.callbackUrl && typeof parsed.callbackUrl === 'string') {
-              // Auto-migrate old PHP callback URLs to SPA root
-              if (parsed.callbackUrl.includes('/api/auth/esi/callback.php')) {
-                const origin = new URL(parsed.callbackUrl).origin;
-                redirectUri = `${origin}/`;
-                console.log('🔄 Migrating callback URL from PHP endpoint to SPA root:', redirectUri);
-                // Update stored settings
-                parsed.callbackUrl = redirectUri;
-                localStorage.setItem('lmeve-settings-esi', JSON.stringify(parsed));
-              } else {
-                redirectUri = parsed.callbackUrl;
-              }
+              redirectUri = parsed.callbackUrl;
             }
           }
         } catch {}
@@ -259,15 +249,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed?.callbackUrl && typeof parsed.callbackUrl === 'string') {
-              // Auto-migrate old PHP callback URLs to SPA root
-              if (parsed.callbackUrl.includes('/api/auth/esi/callback.php')) {
-                const origin = new URL(parsed.callbackUrl).origin;
-                redirectUri = `${origin}/`;
-                parsed.callbackUrl = redirectUri;
-                localStorage.setItem('lmeve-settings-esi', JSON.stringify(parsed));
-              } else {
-                redirectUri = parsed.callbackUrl;
-              }
+              redirectUri = parsed.callbackUrl;
             }
           }
         } catch {}
