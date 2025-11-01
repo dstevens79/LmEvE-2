@@ -97,7 +97,8 @@ check_dep() {
     local cmd="$1"; shift
     local ver_cmd="$1"; shift
     # Styled like: checking dependency <name> .... OK (ver)
-    printf "checking dependency %-12s .... " "$name"
+    # Tight spacing to avoid overlap with right panel
+    printf "checking dependency %-8s .... " "$name"
     if command -v "$cmd" >/dev/null 2>&1; then
         local ver
         if [ -n "$ver_cmd" ]; then
@@ -115,7 +116,7 @@ check_dep() {
                 ver=$(echo "$ver" | sed 's/^Server version: //')
                 ;;
         esac
-        echo -e "${GREEN}OK${NC}${ver:+  ($ver)}"
+    echo -e "${GREEN}OK${NC}${ver:+ ($ver)}"
         return 0
     else
         echo -e "${YELLOW}MISSING${NC}"
@@ -180,6 +181,7 @@ draw_menu() {
     # Draw large right-side moniker
     draw_right_panel
     # Show pre-flight dependency checks above the menu (read-only)
+    if command -v tput >/dev/null 2>&1; then tput cup 0 0 2>/dev/null || true; fi
     draw_preflight
     echo ""
     echo -e "${BLUE}Installer Options (press 1-7 to edit, Enter=Start, Q=Quit)${NC}"
