@@ -190,6 +190,15 @@ export class ESIAuthService {
     const state = this.generateState();
   const scopes = SCOPE_SETS[scopeType];
 
+    // Mark corp-consent mode when initiating a corporation flow so the callback doesn't switch current user
+    try {
+      if (scopeType === 'corporation') {
+        sessionStorage.setItem('esi-corp-consent', 'true');
+      } else {
+        sessionStorage.removeItem('esi-corp-consent');
+      }
+    } catch {}
+
     const authState: ESIAuthState = {
       state,
       verifier,
@@ -213,6 +222,10 @@ export class ESIAuthService {
       client_id: this.clientId,
       state: state
     });
+    // For corporation flows, ensure consent screen appears
+    if (scopeType === 'corporation') {
+      params.set('prompt', 'consent');
+    }
     if (scopes && scopes.length > 0) {
       params.set('scope', scopes.join(' '));
     }
@@ -243,6 +256,16 @@ export class ESIAuthService {
     const { verifier, challenge } = await this.generatePKCE();
     const state = this.generateState();
 
+    // If any selected scopes are corporation scopes, mark corp-consent mode
+    try {
+      const hasCorpScopes = scopes.some(s => CORPORATION_SCOPES.includes(s));
+      if (hasCorpScopes) {
+        sessionStorage.setItem('esi-corp-consent', 'true');
+      } else {
+        sessionStorage.removeItem('esi-corp-consent');
+      }
+    } catch {}
+
     const authState: ESIAuthState = {
       state,
       verifier,
@@ -266,6 +289,10 @@ export class ESIAuthService {
       client_id: this.clientId,
       state: state
     });
+    // If requesting any corporation scopes explicitly, prompt for consent
+    if (scopes && scopes.some(s => CORPORATION_SCOPES.includes(s))) {
+      params.set('prompt', 'consent');
+    }
     if (scopes && scopes.length > 0) {
       params.set('scope', scopes.join(' '));
     }

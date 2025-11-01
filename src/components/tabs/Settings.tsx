@@ -3250,8 +3250,8 @@ echo "See README.md for detailed setup instructions"
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Create an application at developers.eveonline.com with callback URL:
-                    <code className="bg-background px-1 rounded">{`${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}${window.location.port ? ':' + window.location.port : ''}/api/esi-callback.php`}</code>
+                    Create an application at developers.eveonline.com with callback URL (SPA root with trailing slash):
+                    <code className="bg-background px-1 rounded">{`${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}${window.location.port ? ':' + window.location.port : ''}/`}</code>
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {window.location.port

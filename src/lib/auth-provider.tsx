@@ -246,7 +246,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
     
     try {
-  // Use SPA root callback for reliability and sessionStorage retention
+      // Mark corp-consent mode for corporation scope so callback doesn't replace current user
+      try {
+        if (scopeType === 'corporation') {
+          sessionStorage.setItem('esi-corp-consent', 'true');
+        } else {
+          sessionStorage.removeItem('esi-corp-consent');
+        }
+      } catch {}
+
+      // Use SPA root callback for reliability and sessionStorage retention
   const callbackRedirect = `${window.location.origin}/`;
       initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
       const esiService = getESIAuthService();
@@ -266,12 +275,70 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setIsLoading(true);
     
     try {
+      // Detect whether this callback is for corporation consent (rather than user login)
+      let corpConsentMode = false;
+      try { corpConsentMode = sessionStorage.getItem('esi-corp-consent') === 'true'; } catch {}
+
       const esiService = getESIAuthService();
     const esiUser = await esiService.handleCallback(code, state, registeredCorporations);
 
-    // Store token in token manager
+      // Store token in token manager
     const tokenManager = CorporationTokenManager.getInstance();
     await tokenManager.storeToken(esiUser);
+      
+      // If this was a corp consent flow, register/update the corporation without switching current user
+      if (corpConsentMode) {
+        // Warn if no corporation scopes were granted (likely wrong character or missing director/CEO role)
+        const hasCorpScopes = (esiUser.corporationScopes && esiUser.corporationScopes.length > 0);
+        if (!hasCorpScopes) {
+          try { toast.warning('No corporation scopes were granted. Make sure you select a character with Director/CEO roles.'); } catch {}
+        }
+        try {
+          const corpId = esiUser.corporationId!;
+          const corpName = esiUser.corporationName || `Corporation ${corpId}`;
+          const corpScopes = esiUser.corporationScopes || [];
+
+          const exists = registeredCorporations.some(c => c.corporationId === corpId);
+          if (!exists) {
+            const newConfig = createDefaultCorporationConfig(corpId, corpName, esiUser.characterId || 0);
+            // Prefer the actual granted corp scopes if available
+            newConfig.registeredScopes = corpScopes.length > 0 ? corpScopes : (newConfig.registeredScopes || []);
+            setRegisteredCorporations(prev => [...prev, newConfig]);
+            console.log('🏢 Registered new corporation from consent:', { corpId, corpName, scopes: newConfig.registeredScopes.length });
+          } else {
+            setRegisteredCorporations(prev => prev.map(c => c.corporationId === corpId 
+              ? { 
+                  ...c, 
+                  registeredScopes: Array.from(new Set([...(c.registeredScopes || []), ...corpScopes]))
+                }
+              : c
+            ));
+            console.log('🔄 Updated corporation scopes from consent:', { corpId, added: corpScopes.length });
+          }
+        } catch (e) {
+          console.warn('Failed to register/update corporation after consent:', e);
+        }
+
+        // Clear corp-consent marker
+        try { sessionStorage.removeItem('esi-corp-consent'); } catch {}
+
+        try {
+          toast.success(`Corporation access granted for ${esiUser.corporationName || 'corporation'}${(esiUser.corporationScopes?.length || 0) ? ` (${esiUser.corporationScopes!.length} scopes)` : ''}`);
+        } catch {}
+
+        // Do NOT replace current user session; return current user if exists, else sanitized ESI user
+        if (currentUser) {
+          return currentUser;
+        } else {
+          // No current session; don't persist tokens into users list
+          setAndPersistSessionTokens({
+            accessToken: esiUser.accessToken,
+            refreshToken: esiUser.refreshToken,
+            tokenExpiry: esiUser.tokenExpiry,
+          });
+          return esiUser;
+        }
+      }
       
       // Check if this replaces an existing manual login
       if (currentUser && currentUser.authMethod === 'manual') {
