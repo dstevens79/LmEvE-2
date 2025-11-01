@@ -101,3 +101,18 @@ Notes:
 
 - Corp registration requires corporation scopes; directors/CEOs should authenticate via the "Register Corporation ESI" button.
 - We removed deprecated/invalid scopes and fixed typos. Exact scopes requested are logged during initiation for verification.
+
+## OAuth callback flow
+
+**Important:** The app uses a **pure SPA OAuth flow**—no PHP callback endpoint.
+
+- **Callback URL:** Set your EVE developer app callback to your site root (e.g., `http://24.128.239.249/` or `https://yourdomain.com/`)
+- **Why:** sessionStorage (used to validate the OAuth state) only persists within the same browsing context. Redirecting through a server-side PHP endpoint breaks this context.
+- **Token storage:** Tokens are kept in-memory and sessionStorage only—they never persist to localStorage or the database. When the browser session ends, tokens are gone.
+- **What changed:** Previously the default was `/api/auth/esi/callback.php`, which caused the "sits and spins" issue during corp auth. Now the SPA handles the full OAuth flow client-side.
+
+**To update your EVE developer app:**
+1. Visit https://developers.eveonline.com
+2. Edit your LMeve application
+3. Set "Callback URL" to `http://YOUR_IP/` or `https://YOUR_DOMAIN/` (must match exactly what you access the app from)
+4. Save

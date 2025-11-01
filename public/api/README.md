@@ -23,10 +23,10 @@ These endpoints are deployed alongside the built app and provide server-side dat
     - columns: order_id, corporation_id, type_id, region_id, location_id, volume_total, volume_remain, min_volume, price, is_buy_order, duration, issued, state
 
 - Auth (EVE SSO):
-  - `POST /api/auth/esi/callback.php`
-    - Body: `{ host, port, username, password, database, clientId, clientSecret, code, redirectUri }`
-    - Exchanges code for tokens, verifies identity, looks up corporation, and upserts into `users` (access_token, refresh_token, token_expiry, scopes).
-    - Returns `{ ok, characterId, characterName, corporationId, scopes, expiresAt }`
+  - **DEPRECATED:** `POST /api/auth/esi/callback.php` - No longer used for SPA authentication
+    - The app now uses a pure SPA OAuth flow with callbacks directly to the app root
+    - Tokens are managed entirely client-side in sessionStorage (not persisted)
+    - This endpoint remains for legacy compatibility but is not invoked by the current auth flow
   - `POST /api/auth/esi/refresh.php`
     - Body: `{ host, port, username, password, database, clientId, clientSecret, characterId, refreshToken }`
     - Refreshes and updates tokens.
