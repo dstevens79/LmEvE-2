@@ -112,45 +112,58 @@ if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
 fi
 
 # -----------------------------------------------------
-# Pre-flight dependency checks (read-only)
+# Pre-flight: system snapshot (CPU, RAM, OS, DB status)
 # -----------------------------------------------------
-check_dep() {
-    local name="$1"; shift
-    local cmd="$1"; shift
-    local ver_cmd="$1"; shift
-    # Tight spacing to sit beside the right panel
-    printf "checking dependency %-10s .. " "$name"
-    if command -v "$cmd" >/dev/null 2>&1; then
-        local ver
-        if [ -n "$ver_cmd" ]; then
-            ver=$(eval "$ver_cmd" 2>/dev/null | head -n1)
-        fi
-        case "$cmd" in
-            curl)
-                ver=$(echo "$ver" | awk '{print $1" "$2}')
-                ;;
-            wget)
-                # Example: "GNU Wget 1.19.4 built on linux-gnu." -> "wget 1.19.4"
-                ver=$(echo "$ver" | awk '{print "wget "$3}')
-                ;;
-            apache2)
-                ver=$(echo "$ver" | sed 's/^Server version: //')
-                ;;
-            mysql)
-                ver=$(echo "$ver" | awk '{print $1" "$2" "$3}')
-                ;;
-        esac
-        echo -e "${GREEN}OK${NC}${ver:+ ($ver)}"
-        return 0
+get_cpu_model() {
+    if command -v lscpu >/dev/null 2>&1; then
+        lscpu | awk -F: '/Model name/ {gsub(/^ +/, "", $2); print $2; exit}'
+    elif [ -r /proc/cpuinfo ]; then
+        awk -F: '/model name/ {gsub(/^ +/, "", $2); print $2; exit}' /proc/cpuinfo
     else
-        echo -e "${YELLOW}MISSING${NC}"
-        return 1
+        echo "Unknown CPU"
     fi
+}
+
+get_mem_total() {
+    if command -v free >/dev/null 2>&1; then
+        free -h | awk '/Mem:/ {print $2; exit}'
+    elif [ -r /proc/meminfo ]; then
+        awk '/MemTotal/ {printf "%.1f GiB", $2/1024/1024; exit}' /proc/meminfo
+    else
+        echo "Unknown RAM"
+    fi
+}
+
+# Detect DB server presence and status
+detect_db_server() {
+    DB_SERVER_PRESENT="N"
+    DB_SERVER_NAME="None"
+    DB_SERVICE_UNIT=""
+
+    if systemctl list-unit-files | grep -q '^mysql\.service'; then DB_SERVICE_UNIT="mysql"; fi
+    if systemctl list-unit-files | grep -q '^mariadb\.service'; then DB_SERVICE_UNIT="mariadb"; fi
+
+    if [ -n "$DB_SERVICE_UNIT" ]; then
+        DB_SERVER_PRESENT="Y"
+        if [ "$DB_SERVICE_UNIT" = "mysql" ]; then
+            DB_SERVER_NAME="MySQL"
+        else
+            DB_SERVER_NAME="MariaDB"
+        fi
+    fi
+}
+
+# Detect if specific databases exist by directory
+detect_db_existence() {
+    LMEVE_DB_PRESENT="N"
+    SDE_DB_PRESENT="N"
+    [ -d "/var/lib/mysql/${LMEVE_DB}" ] && LMEVE_DB_PRESENT="Y"
+    [ -d "/var/lib/mysql/${SDE_DB}" ] && SDE_DB_PRESENT="Y"
 }
 
 draw_preflight_header() {
     local title_left="${BLUE}LmEvE v2${NC}"
-    local title_right="${GREEN}Pre-flight checks${NC}"
+    local title_right="${GREEN}System snapshot${NC}"
     local line_top="┌───────────────────────────────────────────────┐"
     local line_mid="│ ${title_left} , ${title_right} │"
     local line_bot="└───────────────────────────────────────────────┘"
@@ -160,20 +173,20 @@ draw_preflight_header() {
 }
 
 draw_preflight() {
-    draw_preflight_header
-    local MISSING_DEPS=0
-    check_dep "curl"    curl   "curl --version"         || MISSING_DEPS=$((MISSING_DEPS+1))
-    check_dep "wget"    wget   "wget --version"         || MISSING_DEPS=$((MISSING_DEPS+1))
-    check_dep "bzip2"   bzip2  "bzip2 --version"        || MISSING_DEPS=$((MISSING_DEPS+1))
-    check_dep "git"     git    "git --version"          || MISSING_DEPS=$((MISSING_DEPS+1))
-    check_dep "ufw"     ufw    "ufw --version"          || true
-    check_dep "mysql"   mysql  "mysql --version"        || true
+    detect_db_server
+    detect_db_existence
 
-    if [ "$MISSING_DEPS" -gt 0 ]; then
-        echo -e "${YELLOW}Some components are missing and will be installed.${NC}"
+    draw_preflight_header
+    printf "CPU     : %s\n" "$(get_cpu_model)"
+    printf "RAM     : %s\n" "$(get_mem_total)"
+    printf "Linux   : %s\n" "${PRETTY_NAME}"
+    if [ "$DB_SERVER_PRESENT" = "Y" ]; then
+        local active="$(systemctl is-active ${DB_SERVICE_UNIT} 2>/dev/null || echo inactive)"
+        printf "DB      : %s (%s)\n" "$DB_SERVER_NAME" "$active"
     else
-        echo -e "${GREEN}All required dependencies are present.${NC}"
+        printf "DB      : none detected\n"
     fi
+    printf "Schemas : %s=%s, %s=%s\n" "${LMEVE_DB}" "$([ "$LMEVE_DB_PRESENT" = Y ] && echo Yes || echo No)" "${SDE_DB}" "$([ "$SDE_DB_PRESENT" = Y ] && echo Yes || echo No)"
 }
 
 # -----------------------------------------------------
@@ -189,6 +202,21 @@ REMOVE_EXISTING=N
 INSTALL_WEBMIN=N 
 DOWNLOAD_SDE=N
 
+# Setup values (shown in menu only when no DB detected or user opts to start new)
+DB_HOST=localhost
+LMEVE_DB=lmeve2
+SDE_DB=EveStaticData
+LMEVE_USER=lmeve
+LMEVE_PASS=""
+
+need_setup_fields() {
+    detect_db_server
+    if [ "$DB_SERVER_PRESENT" = "N" ] || [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]]; then
+        return 0
+    fi
+    return 1
+}
+
 draw_menu() {
     clear 2>/dev/null || tput clear 2>/dev/null || true
     # Right-side panel first
@@ -198,20 +226,40 @@ draw_menu() {
     draw_preflight
     echo ""
     echo ""
-    echo -e "${BLUE}Installer Options (press 1-6 to edit, Enter=Start, Q=Quit)${NC}"
+    echo -e "${BLUE}Installer Options"
     echo ""
-    printf "  1) Database server        : %s\n" "$([[ "$DB_CHOICE" -eq 2 ]] && echo MariaDB || echo MySQL)"
+    # Update detection for dynamic labels
+    detect_db_existence
+    local sde_label="Download & import SDE"
+    [ "$SDE_DB_PRESENT" = "Y" ] && sde_label="Download & update SDE"
+
+    printf "  1) Database server        : %s\n" "$( [[ "$DB_CHOICE" -eq 2 ]] && echo MariaDB || echo MySQL)"
     printf "  2) Database port          : %s\n" "$DB_PORT"
-    printf "  3) Configure UFW firewall : %s\n" "$([[ "$CONFIG_FIREWALL" =~ ^[Yy]$ ]] && echo Yes || echo No)"
-    printf "  4) Remove existing DB     : %s\n" "$([[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]] && echo Yes || echo No)"
-    printf "  5) Install Webmin         : %s\n" "$([[ "$INSTALL_WEBMIN" =~ ^[Yy]$ ]] && echo Yes || echo No)"
-    printf "  6) Download & import SDE  : %s\n" "$([[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+    printf "  3) Configure UFW firewall : %s\n" "$( [[ "$CONFIG_FIREWALL" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+    printf "  4) Install Webmin         : %s\n" "$( [[ "$INSTALL_WEBMIN" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+    printf "  5) %s  : %s\n" "$sde_label" "$( [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+    printf "  6) Remove existing DB     : %s\n" "$( [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]] && echo Yes || echo No)"
+
+    MENU_MAX=6
+    if need_setup_fields; then
+        echo ""
+        echo -e "${BLUE}Database setup (new)${NC}"
+        printf "  7) DB host                : %s\n" "$DB_HOST"
+        printf "  8) LMeve DB name          : %s\n" "$LMEVE_DB"
+        printf "  9) SDE DB name            : %s\n" "$SDE_DB"
+        printf " 10) App DB username        : %s\n" "$LMEVE_USER"
+        local pass_disp="[not set]"; [ -n "$LMEVE_PASS" ] && pass_disp="[set]"
+        printf " 11) App DB password        : %s\n" "$pass_disp"
+        MENU_MAX=11
+    fi
     echo ""
+    # expose MENU_MAX to main loop
 }
 
 while true; do
     draw_menu
-    read -r -p "Select [1-6], Enter=Start, Q=Quit: " choice || true; echo ""
+    prompt_range="$MENU_MAX"
+    read -r -p "Select [1-${prompt_range}], Enter=Start, Q=Quit: " choice || true; echo ""
     choice_clean="${choice//[[:space:]]/}"
     if [ -z "$choice_clean" ]; then
         break
@@ -230,13 +278,38 @@ while true; do
             if [[ "$CONFIG_FIREWALL" =~ ^[Yy]$ ]]; then CONFIG_FIREWALL=N; else CONFIG_FIREWALL=Y; fi
             ;;
         4)
-            if [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]]; then REMOVE_EXISTING=N; else REMOVE_EXISTING=Y; fi
-            ;;
-        5)
             if [[ "$INSTALL_WEBMIN" =~ ^[Yy]$ ]]; then INSTALL_WEBMIN=N; else INSTALL_WEBMIN=Y; fi
             ;;
-        6)
+        5)
             if [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]]; then DOWNLOAD_SDE=N; else DOWNLOAD_SDE=Y; fi
+            ;;
+        6)
+            if [[ "$REMOVE_EXISTING" =~ ^[Yy]$ ]]; then REMOVE_EXISTING=N; else REMOVE_EXISTING=Y; fi
+            ;;
+        7)
+            if need_setup_fields; then
+                read -r -p "DB host [${DB_HOST}]: " ans; DB_HOST=${ans:-$DB_HOST}
+            fi
+            ;;
+        8)
+            if need_setup_fields; then
+                read -r -p "LMeve DB name [${LMEVE_DB}]: " ans; LMEVE_DB=${ans:-$LMEVE_DB}
+            fi
+            ;;
+        9)
+            if need_setup_fields; then
+                read -r -p "SDE DB name [${SDE_DB}]: " ans; SDE_DB=${ans:-$SDE_DB}
+            fi
+            ;;
+        10)
+            if need_setup_fields; then
+                read -r -p "App DB username [${LMEVE_USER}]: " ans; LMEVE_USER=${ans:-$LMEVE_USER}
+            fi
+            ;;
+        11)
+            if need_setup_fields; then
+                read -rsp "App DB password: " ans; echo ""; LMEVE_PASS="$ans"
+            fi
             ;;
         Q)
             echo "Exiting installer."
@@ -463,8 +536,7 @@ print_step "LMeve Database Configuration"
 echo -e "${YELLOW}Now let's configure your LMeve databases${NC}\n"
 
 # Database host
-read -p "Database Host [localhost]: " DB_HOST
-DB_HOST=${DB_HOST:-localhost}
+read -p "Database Host [${DB_HOST}]: " ans; DB_HOST=${ans:-$DB_HOST}
 
 # Port was already configured earlier
 echo -e "${CYAN}Using Database Port: ${DB_PORT}${NC}"
@@ -476,27 +548,26 @@ echo
 
 # LMeve username
 echo -e "\n${YELLOW}LMeve database user (will be created):${NC}"
-read -p "LMeve Username [lmeve]: " LMEVE_USER
-LMEVE_USER=${LMEVE_USER:-lmeve}
+read -p "LMeve Username [${LMEVE_USER}]: " ans; LMEVE_USER=${ans:-$LMEVE_USER}
 
-# LMeve password
-read -sp "LMeve Password: " LMEVE_PASS
-echo
-read -sp "Confirm LMeve Password: " LMEVE_PASS_CONFIRM
-echo
-
-if [[ "$LMEVE_PASS" != "$LMEVE_PASS_CONFIRM" ]]; then
-    echo -e "\n${RED}❌ Passwords do not match!${NC}"
-    exit 1
+# LMeve password (skip prompt if already set in menu)
+if [ -z "$LMEVE_PASS" ]; then
+    read -sp "LMeve Password: " LMEVE_PASS
+    echo
+    read -sp "Confirm LMeve Password: " LMEVE_PASS_CONFIRM
+    echo
+    if [[ "$LMEVE_PASS" != "$LMEVE_PASS_CONFIRM" ]]; then
+        echo -e "\n${RED}❌ Passwords do not match!${NC}"
+        exit 1
+    fi
+else
+    echo -e "${CYAN}Using LMeve password provided in menu${NC}"
 fi
 
 # Database names
 echo -e "\n${YELLOW}Database Names:${NC}"
-read -p "Main database name [lmeve2]: " LMEVE_DB
-LMEVE_DB=${LMEVE_DB:-lmeve2}
-
-read -p "SDE database name [EveStaticData]: " SDE_DB
-SDE_DB=${SDE_DB:-EveStaticData}
+read -p "Main database name [${LMEVE_DB}]: " ans; LMEVE_DB=${ans:-$LMEVE_DB}
+read -p "SDE database name [${SDE_DB}]: " ans; SDE_DB=${ans:-$SDE_DB}
 
 # SDE download option
 echo -e "\n${YELLOW}EVE Static Data Export (SDE):${NC}"
