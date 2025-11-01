@@ -96,8 +96,8 @@ check_dep() {
     local name="$1"; shift
     local cmd="$1"; shift
     local ver_cmd="$1"; shift
-    # Compact line: " - name : OK (ver)" or " - name : MISSING"
-    printf " - %-10s : " "$name"
+    # Styled like: checking dependency <name> .... OK (ver)
+    printf "checking dependency %-12s .... " "$name"
     if command -v "$cmd" >/dev/null 2>&1; then
         local ver
         if [ -n "$ver_cmd" ]; then
@@ -115,7 +115,7 @@ check_dep() {
                 ver=$(echo "$ver" | sed 's/^Server version: //')
                 ;;
         esac
-        echo -e "${GREEN}OK${NC}${ver:+ ($ver)}"
+        echo -e "${GREEN}OK${NC}${ver:+  ($ver)}"
         return 0
     else
         echo -e "${YELLOW}MISSING${NC}"
@@ -123,8 +123,23 @@ check_dep() {
     fi
 }
 
+draw_preflight_header() {
+    # A compact title bar similar to the screenshot
+    local title_left="${BLUE}LmEvE v2${NC}"
+    local title_right="${GREEN}Pre-flight checks${NC}"
+    # Build a simple boxed header
+    local line_top="┌───────────────────────────────────────────────┐"
+    local line_mid
+    # Compose center text with padding (fixed width ~47)
+    line_mid="│ ${title_left} , ${title_right} │"
+    local line_bot="└───────────────────────────────────────────────┘"
+    echo -e "${BLUE}${line_top}${NC}"
+    echo -e "${line_mid}"
+    echo -e "${BLUE}${line_bot}${NC}"
+}
+
 draw_preflight() {
-    echo -e "${GREEN}1. Pre-flight checks${NC}"
+    draw_preflight_header
     local MISSING_DEPS=0
     check_dep "curl"    curl   "curl --version" || MISSING_DEPS=$((MISSING_DEPS+1))
     check_dep "git"     git    "git --version"   || MISSING_DEPS=$((MISSING_DEPS+1))
