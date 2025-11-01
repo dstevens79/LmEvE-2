@@ -225,14 +225,14 @@ detect_db_existence() {
 
 # Silently install pv in background so SDE import can show progress
 ensure_pv_background() {
-        if command -v pv >/dev/null 2>&1; then return; fi
-        # Only attempt on Debian/Ubuntu with apt-get available
-        if [ -x "/usr/bin/apt-get" ] || command -v apt-get >/dev/null 2>&1; then
-                (
-                    apt-get update -qq >/dev/null 2>&1 || true
-                    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pv >/dev/null 2>&1 || true
-                ) &
-        fi
+ #       if command -v pv >/dev/null 2>&1; then return; fi
+ #       # Only attempt on Debian/Ubuntu with apt-get available
+ #       if [ -x "/usr/bin/apt-get" ] || command -v apt-get >/dev/null 2>&1; then
+ #               (
+ #                   apt-get update -qq >/dev/null 2>&1 || true
+ #                   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pv >/dev/null 2>&1 || true
+ #               ) &
+ #       fi
 }
 
 draw_preflight_header() {
