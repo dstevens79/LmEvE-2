@@ -45,29 +45,30 @@ draw_right_panel() {
     local art=(
 "┌────────────────────────────────────────────────────┐"
 "│                                                    │"
-"│   L      M   M  EEEEE  V   V  EEEEE       -   2222 │"
-"│   L      MM MM  E      V   V  E                2  2│"
-"│   L      M M M  EEEE    V V   EEEE             2  2│"
-"│   L      M   M  E        V    E               2  2 │"
-"│   LLLLL  M   M  EEEEE    V    EEEEE           2222 │"
+"│   L      M   M  EEEEE  V   V  EEEEE        --      │"
+"│   L      MM MM  E      V   V  E          /   |     │"
+"│   L      M M M  EEEE    V V   EEEE   ==     /      │" 
+"│   L      M   M  E        V    E           /        │"
+"│   LLLLL  M   M  EEEEE    V    EEEEE      /____     │"
 "│                                                    │"
-"│        LmEvE v2 • Database Installer               │"
+"│                                                    │" 
+"│          LmEvE v2 • Database Installer             │"
 "│                                                    │"
-"│  ⛭  1–6 edit fields   ↵  Enter to start   Q  quit  │"
+"│  ⛭  1–7 edit fields   ↵  Enter to start  Q  quit   │"
 "│                                                    │"
 "└────────────────────────────────────────────────────┘"
     )
 
     local cols=$(term_cols)
     local art_width=52
-    local margin=6
+    local art=(
     local start_col=$(( cols - art_width - margin ))
     if [ "$start_col" -lt 68 ]; then start_col=68; fi
-    local start_row=1
-
-    if command -v tput >/dev/null 2>&1; then
-        local i=0
-        for line in "${art[@]}"; do
+"│     L      M   M  EEEEE  V   V  EEEEE        -  2222│"
+"│     L      MM MM  E      V   V  E                 2 │"
+"│     L      M M M  EEEE    V V   EEEE              2 │"
+"│     L      M   M  E        V    E               2  2│"
+"│     LLLLL  M   M  EEEEE    V    EEEEE          2222 │"
             tput cup $((start_row + i)) "$start_col" 2>/dev/null || true
             echo -e "${BLUE}${line}${NC}"
             i=$((i+1))
@@ -196,6 +197,7 @@ draw_menu() {
     # Move cursor back to top-left then draw pre-flight
     if command -v tput >/dev/null 2>&1; then tput cup 0 0 2>/dev/null || true; fi
     draw_preflight
+    echo ""
     echo ""
     echo -e "${BLUE}Installer Options (press 1-6 to edit, Enter=Start, Q=Quit)${NC}"
     echo ""
