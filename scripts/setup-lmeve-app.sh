@@ -99,12 +99,16 @@ else
 fi
 
 # -----------------------------------------------------
-# Upfront configuration menu
+# Upfront configuration menu (static redraw)
+# Behavior:
+#  - Number press on Yes/No fields toggles value immediately
+#  - Number press on text fields prompts for new text (replaces on refresh)
+#  - Access method toggles IP <-> Domain on press
 # -----------------------------------------------------
 DEFAULT_DIR="/var/www/html/lmeve2"
 FINAL_DIR="$DEFAULT_DIR"
 ACCESS_METHOD=1 # 1=IP, 2=Domain
-SERVER_NAME=""
+SERVER_NAME=""  # used when ACCESS_METHOD=2 (Domain)
 HTTP_PORT=80
 ADMIN_EMAIL="admin@lmeve2.local"
 ENABLE_SSL="N"
@@ -112,68 +116,92 @@ CONFIG_FIREWALL="N"
 
 first_ip() { hostname -I 2>/dev/null | awk '{print $1}' | sed 's/\s.*//' ; }
 
-while true; do
-    echo -e "\n${BLUE}Installer Options${NC}"
-    echo "  1) Access method         : ${ACCESS_METHOD}  (1=IP, 2=Domain)"
+draw_menu() {
+    clear 2>/dev/null || tput clear 2>/dev/null || true
+    echo -e "${BLUE}"
+    echo "╔════════════════════════════════════════════════════╗"
+    echo "║          LmEvEv2 Application Installer            ║"
+    echo "╚════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+    echo -e "${BLUE}Installer Options (press 1-7 to edit, Enter=Start, Q=Quit)${NC}"
+    echo ""
+    # 1) Access method
+    local am_label=$([ "$ACCESS_METHOD" -eq 1 ] && echo "IP" || echo "Domain")
+    printf "  1) Access method         : %s\n" "$am_label"
+    # 2) Server name/domain
     if [ "$ACCESS_METHOD" -eq 1 ]; then
-        echo "  2) Server name/domain    : [auto] $(first_ip)"
+        printf "  2) Server name/domain    : [auto] %s\n" "$(first_ip)"
     else
-        echo "  2) Server name/domain    : ${SERVER_NAME:-lmeve2.local}"
+        printf "  2) Server name/domain    : %s\n" "${SERVER_NAME:-lmeve2.local}"
     fi
-    echo "  3) HTTP port             : ${HTTP_PORT}"
-    echo "  4) Admin email           : ${ADMIN_EMAIL}"
-    echo "  5) Install directory     : ${FINAL_DIR}"
-            SSL_LABEL=$([[ "$ENABLE_SSL" =~ ^[Yy]$ ]] && echo "Yes" || echo "No")
-            FW_LABEL=$([[ "$CONFIG_FIREWALL" =~ ^[Yy]$ ]] && echo "Yes" || echo "No")
-        echo "  6) Install SSL (certbot) : ${SSL_LABEL}"
-        echo "  7) Configure UFW firewall: ${FW_LABEL}"
-        echo ""
-        echo ""
-    read -p "Choose an option to change (1-7), P to proceed, Q to quit: " choice
-    case "${choice^^}" in
+    # 3) HTTP port
+    printf "  3) HTTP port             : %s\n" "$HTTP_PORT"
+    # 4) Admin email
+    printf "  4) Admin email           : %s\n" "$ADMIN_EMAIL"
+    # 5) Install directory
+    printf "  5) Install directory     : %s\n" "$FINAL_DIR"
+    # 6) SSL toggle
+    local SSL_LABEL=$([[ "$ENABLE_SSL" =~ ^[Yy]$ ]] && echo "Yes" || echo "No")
+    printf "  6) Install SSL (certbot) : %s\n" "$SSL_LABEL"
+    # 7) Firewall toggle
+    local FW_LABEL=$([[ "$CONFIG_FIREWALL" =~ ^[Yy]$ ]] && echo "Yes" || echo "No")
+    printf "  7) Configure UFW firewall: %s\n" "$FW_LABEL"
+    echo ""
+}
+
+while true; do
+    draw_menu
+    read -r -p "Select [1-7], Enter=Start, Q=Quit: " choice || true; echo ""
+    # Strip all whitespace from input for robust matching
+    choice_clean="${choice//[[:space:]]/}"
+    # Empty input -> start install
+    if [ -z "$choice_clean" ]; then
+        break
+    fi
+    case "${choice_clean^^}" in
         1)
-            read -p "Select access method [1=IP, 2=Domain]: " am
-            if [ "$am" = "2" ]; then ACCESS_METHOD=2; else ACCESS_METHOD=1; fi
+            # Toggle access method
+            if [ "$ACCESS_METHOD" -eq 1 ]; then ACCESS_METHOD=2; else ACCESS_METHOD=1; fi
             ;;
         2)
+            # Prompt for domain when in Domain mode
             if [ "$ACCESS_METHOD" -eq 2 ]; then
-                read -p "Enter server name/domain [lmeve2.local]: " sn
-                SERVER_NAME=${sn:-lmeve2.local}
-            else
-                echo "Using IP access; server name is auto-detected."
+                read -r -p "Enter server name/domain [${SERVER_NAME:-lmeve2.local}]: " sn
+                SERVER_NAME=${sn:-${SERVER_NAME:-lmeve2.local}}
             fi
             ;;
         3)
-            read -p "Enter HTTP port [80]: " hp
-            HTTP_PORT=${hp:-80}
+            read -r -p "Enter HTTP port [${HTTP_PORT}]: " hp
+            hp=${hp:-$HTTP_PORT}
+            if [[ "$hp" =~ ^[0-9]{2,5}$ ]]; then
+                HTTP_PORT=$hp
+            else
+                echo -e "${YELLOW}Invalid port. Keeping ${HTTP_PORT}.${NC}"
+                sleep 1
+            fi
             ;;
         4)
-            read -p "Enter admin email [admin@lmeve2.local]: " ae
-            ADMIN_EMAIL=${ae:-admin@lmeve2.local}
+            read -r -p "Enter admin email [${ADMIN_EMAIL}]: " ae
+            ADMIN_EMAIL=${ae:-$ADMIN_EMAIL}
             ;;
         5)
-            read -p "Install directory [${DEFAULT_DIR}]: " id
-            FINAL_DIR=${id:-$DEFAULT_DIR}
+            read -r -p "Install directory [${FINAL_DIR}]: " id
+            FINAL_DIR=${id:-$FINAL_DIR}
             ;;
         6)
-            read -p "Install SSL with certbot? (Y/N) [${ENABLE_SSL}]: " ss
-            ss=${ss:-$ENABLE_SSL}
-            if [[ "$ss" =~ ^[Yy]$ ]]; then ENABLE_SSL="Y"; else ENABLE_SSL="N"; fi
+            # Toggle SSL
+            if [[ "$ENABLE_SSL" =~ ^[Yy]$ ]]; then ENABLE_SSL="N"; else ENABLE_SSL="Y"; fi
             ;;
         7)
-            read -p "Configure UFW firewall? (Y/N) [${CONFIG_FIREWALL}]: " fw
-            fw=${fw:-$CONFIG_FIREWALL}
-            if [[ "$fw" =~ ^[Yy]$ ]]; then CONFIG_FIREWALL="Y"; else CONFIG_FIREWALL="N"; fi
-            ;;
-        P)
-            break
+            # Toggle firewall
+            if [[ "$CONFIG_FIREWALL" =~ ^[Yy]$ ]]; then CONFIG_FIREWALL="N"; else CONFIG_FIREWALL="Y"; fi
             ;;
         Q)
             echo "Exiting installer."
             exit 0
             ;;
         *)
-            echo "Invalid option"
+            # Any other text -> treat as invalid and refresh menu
             ;;
     esac
 done
