@@ -106,7 +106,7 @@ draw_preflight() {
 DEFAULT_DIR="/var/www/html/lmeve2"
 FINAL_DIR="$DEFAULT_DIR"
 ACCESS_METHOD=1 # 1=IP, 2=Domain
-SERVER_NAME=""  # used when ACCESS_METHOD=2 (Domain)
+SERVER_NAME=""  # used when ACCESS_METHOD=2 (Domain) 
 HTTP_PORT=80
 ADMIN_EMAIL="admin@lmeve2.local"
 ENABLE_SSL="N"
