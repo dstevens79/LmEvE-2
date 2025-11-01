@@ -48,7 +48,7 @@
     <div class="card">
       <h2>ESI Callback URL</h2>
       <div class="muted" style="margin-bottom:6px;">Edit and Save the callbackUrl stored in <code>lmeve-settings-esi</code>.</div>
-      <input type="text" id="cbUrl" placeholder="http://host/" />
+      <input type="text" id="cbUrl" placeholder="http://host/api/auth/esi/callback.php" />
       <div class="row" style="margin-top:10px;">
         <button class="btn" id="useSpa">Use SPA root (current origin)</button>
         <button class="btn" id="usePhp">Use PHP callback (current origin)</button>
@@ -177,7 +177,7 @@
     };
 
     const usePhp = () => {
-      cbInput.value = window.location.origin + '/';
+      cbInput.value = window.location.origin + '/api/auth/esi/callback.php';
     };
 
     document.getElementById('loadCb').onclick = loadCb;

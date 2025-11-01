@@ -3228,12 +3228,12 @@ echo "See README.md for detailed setup instructions"
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Create an application at developers.eveonline.com with callback URL: 
-                    <code className="bg-background px-1 rounded">{`${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}${window.location.port ? ':' + window.location.port : ''}/`}</code>
+                    <code className="bg-background px-1 rounded">{`${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}${window.location.port ? ':' + window.location.port : ''}/api/auth/esi/callback.php`}</code>
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {window.location.port
-                      ? `If your external port differs from ${window.location.port}, replace it accordingly (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/).`
-                      : `If you expose the app on a non-standard port, add :PORT after the IP (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/).`}
+                      ? `If your external port differs from ${window.location.port}, replace it accordingly (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/api/auth/esi/callback.php).`
+                      : `If you expose the app on a non-standard port, add :PORT after the IP (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/api/auth/esi/callback.php).`}
                   </p>
                 </div>
               </div>
