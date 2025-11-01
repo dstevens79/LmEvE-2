@@ -164,8 +164,10 @@ detect_db_server() {
     # Find candidate service units
     local candidates=()
     if command -v systemctl >/dev/null 2>&1; then
-        local units
-        units=$(systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}')
+        local units=""
+        # Avoid set -e pipefail aborts: tolerate non-zero exit from systemctl
+        units="$(systemctl list-unit-files --type=service --no-legend 2>/dev/null || true)"
+        units="$(echo "$units" | awk '{print $1}')"
         for svc in mysql mariadb mysqld; do
             echo "$units" | grep -qx "${svc}.service" && candidates+=("$svc")
         done
