@@ -26,6 +26,17 @@ if ($error) {
 
 $qs = http_build_query($params);
 
+// Best-effort logging to help diagnose callback handoff issues
+try {
+  $logDir = __DIR__ . '/../../server/storage/logs';
+  if (is_dir($logDir) && is_writable($logDir)) {
+    $line = sprintf("%s\tcode=%s\tstate=%s\terror=%s\n", date('c'), $code ? 'yes' : 'no', $state ? 'yes' : 'no', $error ?: '');
+    file_put_contents($logDir . '/esi-callback.log', $line, FILE_APPEND);
+  }
+} catch (Throwable $e) {
+  // ignore logging failures
+}
+
 // No caching of auth responses
 header('Cache-Control: no-store, max-age=0');
 header('Pragma: no-cache');

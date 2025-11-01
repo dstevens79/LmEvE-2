@@ -208,9 +208,11 @@ export class ESIAuthService {
 
     const params = new URLSearchParams({
       response_type: 'code',
+      response_mode: 'query',
       redirect_uri: this.redirectUri,
       client_id: this.clientId,
-      state: state
+      state: state,
+      prompt: 'consent'
     });
     if (scopes && scopes.length > 0) {
       params.set('scope', scopes.join(' '));
@@ -260,9 +262,11 @@ export class ESIAuthService {
 
     const params = new URLSearchParams({
       response_type: 'code',
+      response_mode: 'query',
       redirect_uri: this.redirectUri,
       client_id: this.clientId,
-      state: state
+      state: state,
+      prompt: 'consent'
     });
     if (scopes && scopes.length > 0) {
       params.set('scope', scopes.join(' '));
