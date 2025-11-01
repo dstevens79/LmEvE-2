@@ -81,7 +81,6 @@ const CORPORATION_SCOPES = [
   'esi-corporations.read_divisions.v1',
   'esi-corporations.read_facilities.v1',
   'esi-corporations.read_medals.v1',
-  'esi-corporations.read_outposts.v1',
   'esi-corporations.read_standings.v1',
   'esi-corporations.track_members.v1'
 ];
@@ -222,6 +221,9 @@ export class ESIAuthService {
     const authUrl = `${SSO_AUTH_URL}?${params.toString()}`;
     console.log('🔗 OAuth2 authorization URL generated for', scopeType, 'scopes');
     console.log('📋 Scopes requested:', scopes.length, 'scopes');
+    if (scopes && scopes.length > 0) {
+      console.log('📜 Scopes list:', scopes.join(' '));
+    }
     
     return authUrl;
   }
@@ -265,6 +267,9 @@ export class ESIAuthService {
 
     const authUrl = `${SSO_AUTH_URL}?${params.toString()}`;
     console.log('🔗 OAuth2 authorization URL generated with explicit scopes');
+    if (scopes && scopes.length > 0) {
+      console.log('📜 Scopes list:', scopes.join(' '));
+    }
     return authUrl;
   }
 
