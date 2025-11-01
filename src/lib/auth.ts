@@ -51,7 +51,8 @@ class AuthService {
     const state = this.generateRandomString(32);
     const codeVerifier = this.generateRandomString(128);
     const codeChallenge = this.generateCodeChallenge(codeVerifier);
-    const redirectUri = `${window.location.origin}/auth/callback`;
+  // SPA-only callback: use the site origin root to unify redirect handling
+  const redirectUri = `${window.location.origin}/`;
 
     const authState: ESIAuthState = {
       state,

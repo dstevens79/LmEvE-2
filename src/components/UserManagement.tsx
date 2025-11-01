@@ -502,13 +502,33 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
               {users.map((user) => (
                 <div key={user.id} className="mobile-card">
                   <div className="mobile-card-header">
-                    <div>
-                      <div className="font-medium">
-                        {user.characterName || user.username || 'Unknown'}
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <img
+                          src={user.characterId
+                            ? `https://images.evetech.net/characters/${user.characterId}/portrait?size=64`
+                            : 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiMzMzMiLz4KPHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSIxMCIgeT0iMTAiPgo8cGF0aCBkPSJNMTAgMTJDOC4zNCAxMiA3IDEwLjY2IDcgOUM3IDcuMzQgOC4zNCA2IDEwIDZDMTEuNjYgNiAxMyA3LjM0IDEzIDlDMTMgMTAuNjYgMTEuNjYgMTIgMTAgMTJaIiBmaWxsPSIjOTk5Ii8+CjxwYXRoIGQ9Ik0xMCAxNUM3LjI0IDE1IDUgMTIuMjQgNSAxMEM1IDcuNzYgNy4yNCA1IDEwIDVDMTIuMjQgNSAxNSA3Ljc2IDE1IDEwQzE1IDEyLjI0IDEyLjI0IDE1IDEwIDE1WiIgZmlsbD0iIzk5OSIvPgo8L3N2Zz4KPC9zdmc+'}
+                          alt={user.characterName || user.username || 'Unknown'}
+                          className="w-10 h-10 rounded-full border border-accent/30"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiMzMzMiLz4KPHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSIxMCIgeT0iMTAiPgo8cGF0aCBkPSJNMTAgMTJDOC4zNCAxMiA3IDEwLjY2IDcgOUM3IDcuMzQgOC4zNCA2IDEwIDZDMTEuNjYgNiAxMyA3LjM0IDEzIDlDMTMgMTAuNjYgMTEuNjYgMTIgMTAgMTJaIiBmaWxsPSIjOTk5Ii8+CjxwYXRoIGQ9Ik0xMCAxNUM3LjI0IDE1IDUgMTIuMjQgNSAxMEM1IDcuNzYgNy4yNCA1IDEwIDVDMTIuMjQgNSAxNSA3Ljc2IDE1IDEwQzE1IDEyLjI0IDEyLjI0IDE1IDEwIDE1WiIgZmlsbD0iIzk5OSIvPgo8L3N2Zz4KPC9zdmc+';
+                          }}
+                        />
+                        {user.characterId && (
+                          <span
+                            title="Linked character"
+                            className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-accent border border-white"
+                          />
+                        )}
                       </div>
-                      {user.username && user.characterName && (
-                        <div className="text-xs text-muted-foreground">@{user.username}</div>
-                      )}
+                      <div>
+                        <div className="font-medium">
+                          {user.characterName || user.username || 'Unknown'}
+                        </div>
+                        {user.username && user.characterName && (
+                          <div className="text-xs text-muted-foreground">@{user.username}</div>
+                        )}
+                      </div>
                     </div>
                     <Badge variant={getRoleBadgeVariant(user.role)} className="text-xs">
                       {ROLE_LABELS[user.role]}
@@ -635,15 +655,35 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
                 {users.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">
-                          {user.characterName || user.username || 'Unknown'}
-                        </span>
-                        {user.username && user.characterName && (
-                          <span className="text-xs text-muted-foreground">
-                            @{user.username}
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <img
+                            src={user.characterId
+                              ? `https://images.evetech.net/characters/${user.characterId}/portrait?size=64`
+                              : 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiMzMzMiLz4KPHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSIxMCIgeT0iMTAiPgo8cGF0aCBkPSJNMTAgMTJDOC4zNCAxMiA3IDEwLjY2IDcgOUM3IDcuMzQgOC4zNCA2IDEwIDZDMTEuNjYgNiAxMyA3LjM0IDEzIDlDMTMgMTAuNjYgMTEuNjYgMTIgMTAgMTJaIiBmaWxsPSIjOTk5Ii8+CjxwYXRoIGQ9Ik0xMCAxNUw3LjI0IDE1IDUgMTIuMjQgNSAxMEM1IDcuNzYgNy4yNCA1IDEwIDVDMTIuMjQgNSAxNSA3Ljc2IDE1IDEwQzE1IDEyLjI0IDEyLjI0IDE1IDEwIDE1WiIgZmlsbD0iIzk5OSIvPgo8L3N2Zz4KPC9zdmc+'}
+                            alt={user.characterName || user.username || 'Unknown'}
+                            className="w-10 h-10 rounded-full border border-accent/30"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiMzMzMiLz4KPHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSIxMCIgeT0iMTAiPgo8cGF0aCBkPSJNMTAgMTJDOC4zNCAxMiA3IDEwLjY2IDcgOUM3IDcuMzQgOC4zNCA2IDEwIDZDMTEuNjYgNiAxMyA3LjM0IDEzIDlDMTMgMTAuNjYgMTEuNjYgMTIgMTAgMTJaIiBmaWxsPSIjOTk5Ii8+CjxwYXRoIGQ9Ik0xMCAxNUw3LjI0IDE1IDUgMTIuMjQgNSAxMEM1IDcuNzYgNy4yNCA1IDEwIDVDMTIuMjQgNSAxNSA3Ljc2IDE1IDEwQzE1IDEyLjI0IDEyLjI0IDE1IDEwIDE1WiIgZmlsbD0iIzk5OSIvPgo8L3N2Zz4KPC9zdmc+';
+                            }}
+                          />
+                          {user.characterId && (
+                            <span
+                              title="Linked character"
+                              className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-accent border border-white"
+                            />
+                          )}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-medium">
+                            {user.characterName || user.username || 'Unknown'}
                           </span>
-                        )}
+                          {user.username && user.characterName && (
+                            <span className="text-xs text-muted-foreground">
+                              @{user.username}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     

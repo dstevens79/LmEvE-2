@@ -60,7 +60,29 @@ if ($method === 'GET') {
   if (!is_array($json)) {
     api_fail(500, 'Corrupt settings file');
   }
-  api_respond(['ok' => true, 'settings' => $json]);
+  // Mask secrets in response
+  $maskKeys = ['password','clientSecret','sudoPassword','smtpPassword'];
+  $maskSecrets = function ($value) use (&$maskSecrets, $maskKeys) {
+    if (is_array($value)) {
+      $masked = [];
+      foreach ($value as $k => $v) {
+        if (in_array($k, $maskKeys, true)) {
+          // Only mask if not already masked and non-empty
+          if (is_string($v) && $v !== '' && $v !== '***') {
+            $masked[$k] = '***';
+          } else {
+            $masked[$k] = $v;
+          }
+        } else {
+          $masked[$k] = $maskSecrets($v);
+        }
+      }
+      return $masked;
+    }
+    return $value;
+  };
+  $maskedJson = $maskSecrets($json);
+  api_respond(['ok' => true, 'settings' => $maskedJson]);
 }
 
 if ($method === 'POST') {

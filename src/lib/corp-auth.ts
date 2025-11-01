@@ -72,7 +72,8 @@ class CorporationAuthService {
     const state = this.generateRandomString(32);
     const codeVerifier = this.generateRandomString(128);
     const codeChallenge = this.generateCodeChallenge(codeVerifier);
-    const redirectUri = `${window.location.origin}${window.location.pathname}`;
+  // SPA-only callback: always use site origin root to ensure same-tab, stable redirect_uri
+  const redirectUri = `${window.location.origin}/`;
 
     const authState: ESIAuthState = {
       state,
