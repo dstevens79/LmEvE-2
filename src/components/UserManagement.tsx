@@ -48,7 +48,15 @@ const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
 };
 
 export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
-  const { user: currentUser, getAllUsers, createManualUser, updateUserRole, deleteUser } = useAuth();
+  const { 
+    user: currentUser, 
+    getAllUsers, 
+    createManualUser, 
+    updateUserRole, 
+    deleteUser,
+    linkUserToCharacter,
+    unlinkUserCharacter
+  } = useAuth();
   const [users, setUsers] = useState<LMeveUser[]>(getAllUsers());
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<LMeveUser | null>(null);
@@ -74,6 +82,10 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
   const [characterSearchResults, setCharacterSearchResults] = useState<any[]>([]);
   const [selectedCharacter, setSelectedCharacter] = useState<any>(null);
   const [isSearchingCharacters, setIsSearchingCharacters] = useState(false);
+  // If set, we are linking a character to an existing user instead of creating a new one
+  const [linkTargetUser, setLinkTargetUser] = useState<LMeveUser | null>(null);
+  // Optional: role selection when creating a new user from character
+  const [selectedRoleForCreation, setSelectedRoleForCreation] = useState<UserRole>('corp_member');
 
   // Check permissions
   const canManageUsers = hasPermission(currentUser, 'canManageUsers');
@@ -217,6 +229,30 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
     }
   };
 
+  // Link selected character to an existing user
+  const handleLinkCharacterToUser = async (user: LMeveUser, character: any) => {
+    try {
+      await linkUserToCharacter(user.id, {
+        characterId: character.characterId,
+        characterName: character.characterName,
+        corporationId: character.corporationId,
+        corporationName: character.corporationName,
+        allianceId: character.allianceId,
+        allianceName: character.allianceName
+      });
+      setShowCharacterLookup(false);
+      setSelectedCharacter(null);
+      setCharacterSearchTerm('');
+      setCharacterSearchResults([]);
+      setLinkTargetUser(null);
+      refreshUsers();
+      toast.success(`Linked ${character.characterName} to ${user.username || user.characterName}`);
+    } catch (error) {
+      console.error('Error linking character:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to link character');
+    }
+  };
+
   // Handle create user
   const handleCreateUser = async () => {
     if (!newUsername.trim() || !newPassword.trim()) {
@@ -334,12 +370,15 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
         
         <div className={`flex items-center gap-2 ${isMobileView ? 'w-full' : ''}`}>
           <Button 
-            onClick={() => setShowCharacterLookup(true)}
+            onClick={() => {
+              setLinkTargetUser(null); // explicit create mode
+              setShowCharacterLookup(true);
+            }}
             variant="outline"
             className={isMobileView ? "mobile-touch-target flex-1" : ""}
           >
             <LinkSimple size={16} className="mr-2" />
-            Link Character
+            Link/Create from Character
           </Button>
           
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -521,6 +560,37 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
                     </div>
                     
                     <div className="pt-2 flex justify-end gap-1">
+                      {/* Link/Unlink actions for manual users */}
+                      {user.authMethod === 'manual' && (
+                        <>
+                          {!user.characterId ? (
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => {
+                                setLinkTargetUser(user);
+                                setShowCharacterLookup(true);
+                              }}
+                              className="mobile-touch-target"
+                            >
+                              <LinkSimple size={14} />
+                            </Button>
+                          ) : (
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={async () => {
+                                await unlinkUserCharacter(user.id);
+                                refreshUsers();
+                                toast.success('Unlinked character');
+                              }}
+                              className="mobile-touch-target"
+                            >
+                              <X size={14} />
+                            </Button>
+                          )}
+                        </>
+                      )}
                       {user.id !== currentUser?.id && (user.role !== 'super_admin' || canManageSystem) && (
                         <Button 
                           variant="ghost" 
@@ -628,6 +698,33 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
                     
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        {/* Link/Unlink for manual users */}
+                        {user.authMethod === 'manual' && (
+                          !user.characterId ? (
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => {
+                                setLinkTargetUser(user);
+                                setShowCharacterLookup(true);
+                              }}
+                            >
+                              <LinkSimple size={14} />
+                            </Button>
+                          ) : (
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={async () => {
+                                await unlinkUserCharacter(user.id);
+                                refreshUsers();
+                                toast.success('Unlinked character');
+                              }}
+                            >
+                              <X size={14} />
+                            </Button>
+                          )
+                        )}
                         {/* Can't edit current user or super admin (unless current user is super admin) */}
                         {user.id !== currentUser?.id && (user.role !== 'super_admin' || canManageSystem) && (
                           <Button 
@@ -774,10 +871,18 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
       </Dialog>
 
       {/* Character Lookup Dialog */}
-      <Dialog open={showCharacterLookup} onOpenChange={setShowCharacterLookup}>
+      <Dialog open={showCharacterLookup} onOpenChange={(open) => {
+        setShowCharacterLookup(open);
+        if (!open) {
+          setLinkTargetUser(null);
+          setSelectedCharacter(null);
+          setCharacterSearchResults([]);
+          setCharacterSearchTerm('');
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Link EVE Character</DialogTitle>
+            <DialogTitle>{linkTargetUser ? 'Link EVE Character to User' : 'Create User from EVE Character'}</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4 pt-4">
@@ -854,11 +959,11 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
               </div>
             )}
 
-            {/* Role Selection */}
-            {selectedCharacter && (
+            {/* Role Selection - only when creating a new user */}
+            {selectedCharacter && !linkTargetUser && (
               <div className="space-y-2">
                 <Label>Assign Role</Label>
-                <Select defaultValue="corp_member">
+                <Select value={selectedRoleForCreation} onValueChange={(v) => setSelectedRoleForCreation(v as UserRole)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
@@ -891,6 +996,7 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
                 setCharacterSearchTerm('');
                 setCharacterSearchResults([]);
                 setSelectedCharacter(null);
+                setLinkTargetUser(null);
               }}
               variant="outline"
               className="flex-1"
@@ -900,13 +1006,17 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
             <Button
               onClick={() => {
                 if (selectedCharacter) {
-                  handleCreateUserFromCharacter(selectedCharacter, 'corp_member');
+                  if (linkTargetUser) {
+                    handleLinkCharacterToUser(linkTargetUser, selectedCharacter);
+                  } else {
+                    handleCreateUserFromCharacter(selectedCharacter, selectedRoleForCreation);
+                  }
                 }
               }}
               disabled={!selectedCharacter}
               className="flex-1 bg-accent hover:bg-accent/90"
             >
-              Create User
+              {linkTargetUser ? 'Link Character' : 'Create User'}
             </Button>
           </div>
         </DialogContent>

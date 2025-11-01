@@ -38,6 +38,9 @@ interface AuthContextType {
   updateUserPermissions: (userId: string, permissions: Partial<import('./types').RolePermissions>) => Promise<void>;
   deleteUser: (userId: string) => Promise<void>;
   getAllUsers: () => LMeveUser[];
+  // Manual linking between local users and ESI characters
+  linkUserToCharacter: (userId: string, character: { characterId: number; characterName: string; corporationId?: number; corporationName?: string; allianceId?: number; allianceName?: string }) => Promise<void>;
+  unlinkUserCharacter: (userId: string) => Promise<void>;
   
   // Corporation management
   registerCorporation: (config: CorporationConfig) => Promise<void>;
@@ -69,6 +72,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [esiConfiguration, setESIConfiguration] = useKV<{ clientId?: string; clientSecret?: string }>('lmeve-esi-config', {});
   const [registeredCorporations, setRegisteredCorporations] = useKV<CorporationConfig[]>('lmeve-registered-corps', []);
   const [adminConfig, setAdminConfig] = useKV<{ username: string; password: string }>('admin-config', { username: 'admin', password: '12345' });
+  // Character to user linking map: characterId -> userId
+  const [userLinks, setUserLinks] = useKV<Record<string, string>>('lmeve-user-links', {});
   
   // Local state
   const [isLoading, setIsLoading] = useState(false);
@@ -279,7 +284,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return updatedUser;
       } else {
         // New ESI login
-        const existingUser = users.find(u => u.characterId === esiUser.characterId);
+        // First, try linked manual user mapping by characterId
+        const linkedUserId = esiUser.characterId ? userLinks[String(esiUser.characterId)] : undefined;
+        let existingUser = users.find(u => (u.characterId && u.characterId === esiUser.characterId) || (linkedUserId && u.id === linkedUserId));
         
         if (existingUser) {
           // Update existing ESI user
@@ -303,7 +310,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           triggerAuthChange();
           return updatedUser;
         } else {
-          // Create new ESI user
+          // Create new ESI user if no mapping and no existing user found
           // Persist without tokens and keep current user sanitized
           setUsers(prev => [...prev, sanitizeUserForPersistence(esiUser)]);
           setCurrentUser(sanitizeUserForPersistence(esiUser));
@@ -636,6 +643,51 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return users;
   }, [users]);
 
+  // Link a manual/local user to an ESI character for future auto-merge on SSO
+  const linkUserToCharacter = useCallback(async (
+    userId: string,
+    character: { characterId: number; characterName: string; corporationId?: number; corporationName?: string; allianceId?: number; allianceName?: string }
+  ) => {
+    // Update user record with character fields for visibility and set mapping
+    setUsers(prev => prev.map(u => u.id === userId ? {
+      ...u,
+      characterId: character.characterId,
+      characterName: character.characterName || u.characterName,
+      corporationId: character.corporationId ?? u.corporationId,
+      corporationName: character.corporationName ?? u.corporationName,
+      allianceId: character.allianceId ?? u.allianceId,
+      allianceName: character.allianceName ?? u.allianceName,
+      updatedDate: new Date().toISOString(),
+      updatedBy: currentUser?.id
+    } : u));
+    setUserLinks(prev => ({ ...prev, [String(character.characterId)]: userId }));
+  }, [setUsers, setUserLinks, currentUser?.id]);
+
+  // Unlink a user from any associated character
+  const unlinkUserCharacter = useCallback(async (userId: string) => {
+    let removedCharId: number | undefined;
+    setUsers(prev => prev.map(u => {
+      if (u.id === userId) {
+        removedCharId = u.characterId;
+        return {
+          ...u,
+          characterId: undefined,
+          characterName: u.username || u.characterName,
+          updatedDate: new Date().toISOString(),
+          updatedBy: currentUser?.id
+        } as LMeveUser;
+      }
+      return u;
+    }));
+    if (removedCharId) {
+      setUserLinks(prev => {
+        const clone = { ...prev };
+        delete clone[String(removedCharId!)];
+        return clone;
+      });
+    }
+  }, [setUsers, setUserLinks, currentUser?.id]);
+
   // Register corporation
   const registerCorporation = useCallback(async (config: CorporationConfig) => {
     console.log('🏢 Registering corporation:', config.corporationName);
@@ -799,6 +851,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     updateUserPermissions,
     deleteUser,
     getAllUsers,
+  linkUserToCharacter,
+  unlinkUserCharacter,
     
     // Corporation management
     registerCorporation,
