@@ -461,55 +461,38 @@ export class ESIAuthService {
    * Implements OAuth2 token endpoint specification
    */
   private async exchangeCodeForToken(code: string, verifier: string): Promise<ESITokenResponse> {
-    console.log('🔄 Exchanging authorization code for access token');
-    
-    const body = new URLSearchParams({
+    console.log('🔄 Exchanging authorization code for access token (server proxy)');
+
+    const payload = {
       grant_type: 'authorization_code',
       client_id: this.clientId,
-      code: code
-    });
-    // EVE SSO requires redirect_uri to match the authorization request when provided
-    if (this.redirectUri) {
-      body.append('redirect_uri', this.redirectUri);
-    }
-    // Only include code_verifier when PKCE was used
-    if (verifier) {
-      body.append('code_verifier', verifier);
-    }
+      client_secret: this.clientSecret,
+      code,
+      redirect_uri: this.redirectUri,
+      code_verifier: verifier
+    } as any;
 
-    if (this.clientSecret) {
-      body.append('client_secret', this.clientSecret);
-    }
-
-    const response = await fetch(SSO_TOKEN_URL, {
+    const response = await fetch('/api/esi-token.php', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'LMeve/1.0 (https://github.com/dstevens79/lmeve)',
-        'Host': 'login.eveonline.com'
-      },
-      body: body.toString()
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ Token exchange failed:', response.status, errorText);
+      console.error('❌ Token exchange failed (proxy):', response.status, errorText);
       throw new Error(`Token exchange failed: ${response.status} ${errorText}`);
     }
 
     const tokenData: ESITokenResponse = await response.json();
-    
-    if (!tokenData.access_token) {
+    if (!(tokenData as any).access_token) {
       throw new Error('Token response missing access_token');
     }
-    
-    if (!tokenData.refresh_token) {
+    if (!(tokenData as any).refresh_token) {
       console.warn('⚠️ Token response missing refresh_token');
     }
-    
     console.log('✅ Token exchange successful - received JWT access token');
-    
-    return tokenData;
+    return tokenData as ESITokenResponse;
   }
 
   /**
@@ -616,11 +599,10 @@ export class ESIAuthService {
       scopes: jwtClaims.scp
     });
     
-    const response = await fetch(SSO_VERIFY_URL, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'User-Agent': 'LMeve/1.0 (https://github.com/dstevens79/lmeve)'
-      }
+    const response = await fetch('/api/esi-verify.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ access_token: accessToken })
     });
 
     if (!response.ok) {
@@ -773,14 +755,15 @@ export class ESIAuthService {
       body.append('client_secret', this.clientSecret);
     }
 
-    const response = await fetch(SSO_TOKEN_URL, {
+    const response = await fetch('/api/esi-token.php', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'LMeve/1.0 (https://github.com/dstevens79/lmeve)',
-        'Host': 'login.eveonline.com'
-      },
-      body: body.toString()
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: this.clientId,
+        client_secret: this.clientSecret
+      })
     });
 
     if (!response.ok) {
