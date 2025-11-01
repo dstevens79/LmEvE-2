@@ -188,9 +188,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
     try {
       // Check credentials
-      const storedPassword = userCredentials[username];
+      let storedPassword = userCredentials[username];
       if (!storedPassword || storedPassword !== password) {
-        throw new Error('Invalid username or password');
+        // Rescue path: allow admin-config credentials even if credentials store is out of sync
+        if (adminConfig && username === adminConfig.username && password === adminConfig.password) {
+          console.warn('⚠️ Credentials store mismatch; using admin-config fallback for local admin');
+          // Ensure credentials store is updated
+          setUserCredentials(prev => ({ ...prev, [username]: password }));
+          storedPassword = password;
+          // Ensure an admin user exists
+          let existingAdmin = users.find(u => u.username === username);
+          if (!existingAdmin) {
+            const adminUser = createUserWithRole({ username, characterName: 'Local Administrator', authMethod: 'manual' }, 'super_admin');
+            setUsers(prev => [...prev, adminUser]);
+            existingAdmin = adminUser;
+            console.log('✅ Created missing admin user from admin-config');
+          }
+        } else {
+          throw new Error('Invalid username or password');
+        }
       }
       
       // Find user
@@ -219,7 +235,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [userCredentials, users, setUsers, setCurrentUser, triggerAuthChange]);
+  }, [userCredentials, users, setUsers, setCurrentUser, triggerAuthChange, adminConfig, setUserCredentials]);
 
   // ESI SSO login
   const loginWithESI = useCallback(async (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic', scopesOverride?: string[]) => {
