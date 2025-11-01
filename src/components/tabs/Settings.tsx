@@ -1,3 +1,4 @@
+import { eveApi, type CharacterInfo, type CorporationInfo, fetchESI } from '@/lib/eveApi';
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -64,7 +65,7 @@ import { useAuth } from '@/lib/auth-provider';
 import { initializeESIAuth, getESIAuthService } from '@/lib/esi-auth';
 import { CorpSettings } from '@/lib/types';
 import { toast } from 'sonner';
-import { eveApi, type CharacterInfo, type CorporationInfo } from '@/lib/eveApi';
+// merged into the eveApi import above to include fetchESI
 import { useSDEManager, type SDEDatabaseStats } from '@/lib/sdeService';
 import { DatabaseManager, DatabaseSetupManager } from '@/lib/database';
 import { runDatabaseValidationTests } from '@/lib/databaseTestCases';
@@ -743,11 +744,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
       console.log('🔍 Searching for characters:', searchTerm);
       
       // Use EVE API to search for characters
-      const response = await fetch(`https://esi.evetech.net/v1/search/?categories=character&search=${encodeURIComponent(searchTerm)}&strict=false`, {
-        headers: {
-          'User-Agent': 'LMeve/2.0 (Character Search)'
-        }
-      });
+  const response = await fetchESI(`/v1/search/?categories=character&search=${encodeURIComponent(searchTerm)}&strict=false`);
 
       if (response.ok) {
         const data = await response.json();
@@ -760,11 +757,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
               try {
                 console.log('📋 Fetching details for character ID:', id);
                 
-                const charResponse = await fetch(`https://esi.evetech.net/v5/characters/${id}/`, {
-                  headers: {
-                    'User-Agent': 'LMeve/2.0 (Character Details)'
-                  }
-                });
+                const charResponse = await fetchESI(`/v5/characters/${id}/`);
                 
                 if (charResponse.ok) {
                   const charData = await charResponse.json();
@@ -774,11 +767,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
                   let corporationData: any = null;
                   if (charData.corporation_id) {
                     try {
-                      const corpResponse = await fetch(`https://esi.evetech.net/v5/corporations/${charData.corporation_id}/`, {
-                        headers: {
-                          'User-Agent': 'LMeve/2.0 (Corporation Details)'
-                        }
-                      });
+                      const corpResponse = await fetchESI(`/v5/corporations/${charData.corporation_id}/`);
                       if (corpResponse.ok) {
                         corporationData = await corpResponse.json();
                         console.log('🏢 Corporation data received:', corporationData);
@@ -2805,14 +2794,7 @@ echo "See README.md for detailed setup instructions"
       // Query EVE Online ESI server status directly
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch('https://esi.evetech.net/latest/status/?datasource=tranquility', {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'LMeve/1.0 (status check)'
-        },
-        signal: controller.signal
-      });
+      const res = await fetchESI('/status/?datasource=tranquility', { signal: controller.signal });
       clearTimeout(timeout);
 
       if (res.ok) {

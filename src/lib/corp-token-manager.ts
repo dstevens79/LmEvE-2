@@ -80,7 +80,8 @@ export class CorporationTokenManager {
       accessToken: user.accessToken,
       refreshToken: user.refreshToken,
       expiresAt: user.tokenExpiry ? new Date(user.tokenExpiry).getTime() : Date.now() + 1200000,
-      scopes: user.esiScopes || [],
+      // Prefer corporation-specific scopes when available; fall back to all granted scopes
+      scopes: user.corporationScopes || user.scopes || [],
       lastRefreshed: Date.now(),
       isValid: true
     };
@@ -159,7 +160,8 @@ export class CorporationTokenManager {
 
     try {
       const esiService = getESIAuthService();
-      const newTokenData = await esiService.refreshAccessToken(token.refreshToken);
+      // Use the ESI auth service refresh method
+      const newTokenData = await esiService.refreshToken(token.refreshToken);
 
       const updatedToken: CorporationToken = {
         ...token,

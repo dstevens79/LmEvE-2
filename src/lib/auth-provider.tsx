@@ -436,6 +436,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       sessionStorage.removeItem('esi-auth-state');
       sessionStorage.removeItem('esi-login-attempt');
+      sessionStorage.removeItem('esi-corp-consent');
       sessionStorage.removeItem('lmeve-session-tokens');
     } catch {}
 

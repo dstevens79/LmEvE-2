@@ -1,5 +1,7 @@
 // EVE Online ESI API Integration
 // Documentation: https://esi.evetech.net/ui/
+import { getESIAuthService } from './esi-auth';
+import { CorporationTokenManager } from './corp-token-manager';
 
 interface ESIResponse<T> {
   data: T;
@@ -373,7 +375,7 @@ class EVEApi {
     if (ids.length === 0) return [];
     
     // ESI limits batch requests to 1000 IDs
-    const chunks = [];
+  const chunks: number[][] = [];
     for (let i = 0; i < ids.length; i += 1000) {
       chunks.push(ids.slice(i, i + 1000));
     }
@@ -427,6 +429,123 @@ class EVEApi {
 
 // Create a singleton instance
 export const eveApi = new EVEApi();
+
+// Lightweight session token helpers for SPA-only flows
+function readSessionTokens(): { accessToken?: string; refreshToken?: string; tokenExpiry?: string } | null {
+  try {
+    const raw = sessionStorage.getItem('lmeve-session-tokens');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionTokens(tokens: { accessToken?: string; refreshToken?: string; tokenExpiry?: string } | null) {
+  try {
+    if (tokens) {
+      sessionStorage.setItem('lmeve-session-tokens', JSON.stringify(tokens));
+    } else {
+      sessionStorage.removeItem('lmeve-session-tokens');
+    }
+  } catch {}
+}
+
+type ESIAuthSpec =
+  | { type: 'none' }
+  | { type: 'character' }
+  | { type: 'corporation'; corporationId: number };
+
+/**
+ * Unified ESI fetch with optional auth, 401 refresh-and-retry, and error-limit backoff.
+ * Use for endpoints that require Authorization or that can benefit from automatic backoff on 420/429.
+ */
+export async function fetchESI(
+  path: string,
+  init: RequestInit = {},
+  auth: ESIAuthSpec = { type: 'none' }
+): Promise<Response> {
+  const baseUrl = 'https://esi.evetech.net/latest';
+  const url = path.startsWith('http') ? path : `${baseUrl}${path}`;
+
+  // Prepare headers
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+    'User-Agent': 'LMeve Corporation Management Tool',
+    ...(init.headers as Record<string, string> | undefined)
+  };
+
+  // Attach token by auth type
+  let characterRefreshToken: string | undefined;
+  let corporationIdForRefresh: number | undefined;
+
+  if (auth.type === 'character') {
+    const sess = readSessionTokens();
+    if (sess?.accessToken) headers.Authorization = `Bearer ${sess.accessToken}`;
+    characterRefreshToken = sess?.refreshToken;
+  } else if (auth.type === 'corporation') {
+    const mgr = CorporationTokenManager.getInstance();
+    const tok = await mgr.getToken(auth.corporationId);
+    if (tok?.accessToken) headers.Authorization = `Bearer ${tok.accessToken}`;
+    corporationIdForRefresh = auth.corporationId;
+  }
+
+  const doFetch = async (): Promise<Response> => {
+    return fetch(url, { ...init, headers });
+  };
+
+  // One attempt + one retry path on 401 or 420/429 with limited backoff
+  let res = await doFetch();
+
+  // If error-limit is hit or nearly hit, respect backoff before retry
+  const maybeBackoff = async (r: Response) => {
+    const status = r.status;
+    if (status === 420 || status === 429) {
+      const resetSeconds = Number(r.headers.get('x-esi-error-limit-reset') || r.headers.get('x-esi-error-limit-remain'));
+      const delay = Number.isFinite(resetSeconds) ? Math.max(1000, resetSeconds * 1000) : 2000;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return true;
+    }
+    const remain = Number(r.headers.get('x-esi-error-limit-remain'));
+    const reset = Number(r.headers.get('x-esi-error-limit-reset'));
+    if (Number.isFinite(remain) && remain <= 1) {
+      const delay = Number.isFinite(reset) ? Math.max(1000, reset * 1000) : 2000;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return true;
+    }
+    return false;
+  };
+
+  // Handle unauthorized -> attempt single refresh then retry
+  if (res.status === 401 && (auth.type === 'character' || auth.type === 'corporation')) {
+    try {
+      if (auth.type === 'character' && characterRefreshToken) {
+        const svc = getESIAuthService();
+        const tokenResp = await svc.refreshToken(characterRefreshToken);
+        writeSessionTokens({
+          accessToken: tokenResp.access_token,
+          refreshToken: tokenResp.refresh_token || characterRefreshToken,
+          tokenExpiry: new Date(Date.now() + tokenResp.expires_in * 1000).toISOString()
+        });
+        headers.Authorization = `Bearer ${tokenResp.access_token}`;
+      } else if (auth.type === 'corporation' && corporationIdForRefresh) {
+        const mgr = CorporationTokenManager.getInstance();
+        const result = await mgr.refreshToken(corporationIdForRefresh);
+        if (!result.success || !result.token) return res;
+        headers.Authorization = `Bearer ${result.token.accessToken}`;
+      }
+      res = await doFetch();
+    } catch (e) {
+      return res;
+    }
+  }
+
+  // Handle error-limit backoff once if needed
+  if ((res.status === 420 || res.status === 429) && (await maybeBackoff(res))) {
+    res = await doFetch();
+  }
+
+  return res;
+}
 
 // Helper functions for common operations
 export const formatISK = (amount: number): string => {
