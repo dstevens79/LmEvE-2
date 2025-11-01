@@ -144,9 +144,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     if (esiConfiguration.clientId) {
       try {
-        const spaRedirect = `${window.location.origin}/`;
-        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, spaRedirect);
-        console.log('✅ ESI Auth initialized (SPA mode)', { redirectUri: spaRedirect });
+        const callbackRedirect = `${window.location.origin}/api/esi-callback.php`;
+        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
+        console.log('✅ ESI Auth initialized (Server callback mode)', { redirectUri: callbackRedirect });
       } catch (error) {
         console.error('❌ Failed to initialize ESI Auth:', error);
       }
@@ -246,9 +246,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
     
     try {
-      // SPA-only redirect to current origin root to keep state in same tab
-      const spaRedirect = `${window.location.origin}/`;
-      initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, spaRedirect);
+      // Use server relay callback for reliability
+      const callbackRedirect = `${window.location.origin}/api/esi-callback.php`;
+      initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
       const esiService = getESIAuthService();
       const url = scopesOverride && scopesOverride.length > 0
         ? await esiService.initiateLoginWithScopes(scopesOverride)
@@ -812,9 +812,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
     // Initialize ESI service with new config
     try {
-      const spaRedirect = `${window.location.origin}/`;
-      initializeESIAuth(clientId, clientSecret, registeredCorporations, spaRedirect);
-      console.log('✅ ESI configuration updated (SPA mode)');
+      const callbackRedirect = `${window.location.origin}/api/esi-callback.php`;
+      initializeESIAuth(clientId, clientSecret, registeredCorporations, callbackRedirect);
+      console.log('✅ ESI configuration updated (Server callback mode)');
     } catch (error) {
       console.error('❌ Failed to update ESI configuration:', error);
       throw error;
