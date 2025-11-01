@@ -206,7 +206,7 @@ function AppContent() {
     // 2. We have stored ESI auth state (required for CSRF protection)
     // Note: Do NOT require 'esi-login-attempt' since it can be lost across some navigations
     if (code && state) {
-      const storedStateData = sessionStorage.getItem('esi-auth-state');
+      const storedStateData = sessionStorage.getItem('esi-auth-state') || localStorage.getItem('esi-auth-state');
       if (storedStateData) {
         console.log('🔗 Detected valid ESI callback - showing ESI processor');
         setIsESICallback(true);
@@ -241,6 +241,7 @@ function AppContent() {
     // Clean up ESI-related session storage
     sessionStorage.removeItem('esi-login-attempt');
     sessionStorage.removeItem('esi-auth-state');
+    try { localStorage.removeItem('esi-auth-state'); } catch {}
     
     // Clear URL parameters after successful auth
     if (window.location.search) {
@@ -299,6 +300,7 @@ function AppContent() {
     // Clean up ESI-related session storage
     sessionStorage.removeItem('esi-login-attempt'); 
     sessionStorage.removeItem('esi-auth-state');
+    try { localStorage.removeItem('esi-auth-state'); } catch {}
     
     // Clear URL parameters after failed auth
     if (window.location.search) {

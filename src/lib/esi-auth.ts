@@ -199,7 +199,11 @@ export class ESIAuthService {
       scopes
     };
 
-    sessionStorage.setItem('esi-auth-state', JSON.stringify(authState));
+  // Persist state in sessionStorage and also in localStorage as a resilience fallback
+  // Some environments may lose sessionStorage during cross-origin redirects; we recover from localStorage
+  const authStateJson = JSON.stringify(authState);
+  sessionStorage.setItem('esi-auth-state', authStateJson);
+  try { localStorage.setItem('esi-auth-state', authStateJson); } catch {}
     sessionStorage.setItem('esi-login-attempt', 'true');
 
     const params = new URLSearchParams({
@@ -247,7 +251,10 @@ export class ESIAuthService {
       scopes
     };
 
-    sessionStorage.setItem('esi-auth-state', JSON.stringify(authState));
+  // Persist state in sessionStorage and also in localStorage as a resilience fallback
+  const authStateJson = JSON.stringify(authState);
+  sessionStorage.setItem('esi-auth-state', authStateJson);
+  try { localStorage.setItem('esi-auth-state', authStateJson); } catch {}
     sessionStorage.setItem('esi-login-attempt', 'true');
 
     const params = new URLSearchParams({
@@ -426,16 +433,18 @@ export class ESIAuthService {
 
       // No auto-registration flow; corp is always derived from SSO and used for data only
 
-      sessionStorage.removeItem('esi-auth-state');
-      sessionStorage.removeItem('esi-login-attempt');
+  sessionStorage.removeItem('esi-auth-state');
+  sessionStorage.removeItem('esi-login-attempt');
+  try { localStorage.removeItem('esi-auth-state'); } catch {}
 
       return user;
       
     } catch (error) {
       console.error('❌ ESI authentication failed:', error);
       
-      sessionStorage.removeItem('esi-auth-state');
-      sessionStorage.removeItem('esi-login-attempt');
+  sessionStorage.removeItem('esi-auth-state');
+  sessionStorage.removeItem('esi-login-attempt');
+  try { localStorage.removeItem('esi-auth-state'); } catch {}
       
       throw error;
     }
@@ -453,6 +462,10 @@ export class ESIAuthService {
       client_id: this.clientId,
       code: code
     });
+    // EVE SSO requires redirect_uri to match the authorization request when provided
+    if (this.redirectUri) {
+      body.append('redirect_uri', this.redirectUri);
+    }
     // Only include code_verifier when PKCE was used
     if (verifier) {
       body.append('code_verifier', verifier);
