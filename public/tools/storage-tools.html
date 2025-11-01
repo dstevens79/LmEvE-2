@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LMeve Storage Tools</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif; background:#0b0b0c; color:#e5e7eb; margin:0; }
+    .container { max-width: 880px; margin: 0 auto; padding: 24px; }
+    .card { background:#101114; border:1px solid #1f2430; border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    h2 { font-size: 16px; margin: 0 0 10px; color:#93c5fd; }
+    code, pre { background:#0f172a; border:1px solid #1e293b; border-radius: 6px; padding: 4px 6px; color:#cbd5e1; }
+    pre { padding: 10px; overflow:auto; max-height: 260px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; }
+    .btn { background:#1f2937; border:1px solid #374151; color:#e5e7eb; padding:8px 12px; border-radius:8px; cursor:pointer; }
+    .btn:hover { background:#111827; }
+    .btn.warn { background:#7f1d1d; border-color:#b91c1c; }
+    .btn.warn:hover { background:#450a0a; }
+    input[type=text] { width:100%; background:#0f172a; border:1px solid #1e293b; color:#e5e7eb; border-radius:8px; padding:8px 10px; }
+    .muted { color:#9ca3af; font-size: 12px; }
+    .tag { display:inline-block; background:#0f172a; border:1px solid #1e293b; padding:2px 6px; border-radius:6px; margin:2px; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>LMeve Storage Tools</h1>
+      <div class="muted">Origin: <code id="origin"></code></div>
+      <div class="muted">Time: <code id="time"></code></div>
+    </div>
+
+    <div class="card">
+      <h2>Quick Actions</h2>
+      <div class="row" style="margin-bottom:10px;">
+        <button class="btn" id="showKeys">Show All Keys</button>
+        <button class="btn" id="clearESIState">Clear ESI Auth State</button>
+        <button class="btn" id="clearESISettings">Clear ESI Settings</button>
+        <button class="btn" id="clearSetup">Clear Setup Status</button>
+        <button class="btn" id="clearUsers">Clear Users/Creds</button>
+      </div>
+      <div class="row">
+        <button class="btn warn" id="clearLmeve">Clear All LMeve Keys</button>
+        <button class="btn warn" id="clearAll">Clear ALL localStorage + sessionStorage</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>ESI Callback URL</h2>
+      <div class="muted" style="margin-bottom:6px;">Edit and Save the callbackUrl stored in <code>lmeve-settings-esi</code>.</div>
+      <input type="text" id="cbUrl" placeholder="http://host/api/auth/esi/callback.php" />
+      <div class="row" style="margin-top:10px;">
+        <button class="btn" id="useSpa">Use SPA root (current origin)</button>
+        <button class="btn" id="usePhp">Use PHP callback (current origin)</button>
+        <button class="btn" id="saveCb">Save callbackUrl</button>
+        <button class="btn" id="loadCb">Load current</button>
+      </div>
+      <div class="muted" id="cbStatus" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Output</h2>
+      <pre id="out">Ready.</pre>
+    </div>
+  </div>
+
+  <script>
+    const out = document.getElementById('out');
+    const log = (msg) => { out.textContent = (msg + '\n' + out.textContent).slice(0, 60000); };
+    document.getElementById('origin').textContent = window.location.origin;
+    document.getElementById('time').textContent = new Date().toLocaleString();
+
+    const keysLmeve = [
+      'lmeve-settings-esi',
+      'lmeve-current-user',
+      'lmeve-users',
+      'lmeve-credentials',
+      'lmeve-registered-corps',
+      'lmeve-database-connected',
+      'lmeve-setup-status',
+      'active-tab',
+      'active-settings-tab',
+      'mobile-view'
+    ];
+
+    const keysSession = [
+      'esi-auth-state',
+      'esi-login-attempt'
+    ];
+
+    const showAllKeys = () => {
+      const l = [];
+      l.push('localStorage:');
+      for (let i=0;i<localStorage.length;i++) {
+        const k = localStorage.key(i);
+        l.push('  ' + k);
+      }
+      l.push('sessionStorage:');
+      for (let i=0;i<sessionStorage.length;i++) {
+        const k = sessionStorage.key(i);
+        l.push('  ' + k);
+      }
+      log(l.join('\n'));
+    };
+
+    document.getElementById('showKeys').onclick = showAllKeys;
+
+    document.getElementById('clearESIState').onclick = () => {
+      keysSession.forEach(k => sessionStorage.removeItem(k));
+      log('Cleared ESI auth state (sessionStorage).');
+    };
+
+    document.getElementById('clearESISettings').onclick = () => {
+      localStorage.removeItem('lmeve-settings-esi');
+      log('Removed lmeve-settings-esi.');
+    };
+
+    document.getElementById('clearSetup').onclick = () => {
+      localStorage.removeItem('lmeve-setup-status');
+      log('Removed lmeve-setup-status.');
+    };
+
+    document.getElementById('clearUsers').onclick = () => {
+      ['lmeve-current-user','lmeve-users','lmeve-credentials'].forEach(k => localStorage.removeItem(k));
+      log('Removed current user, users, and credential storage.');
+    };
+
+    document.getElementById('clearLmeve').onclick = () => {
+      const removed = [];
+      for (let i=0;i<localStorage.length;i++) {
+        const k = localStorage.key(i);
+        if (k && k.toLowerCase().includes('lmeve')) removed.push(k);
+      }
+      removed.forEach(k => localStorage.removeItem(k));
+      keysSession.forEach(k => sessionStorage.removeItem(k));
+      log('Cleared all keys containing "lmeve" and ESI session keys. Removed: ' + removed.join(', '));
+    };
+
+    document.getElementById('clearAll').onclick = () => {
+      localStorage.clear();
+      sessionStorage.clear();
+      log('Cleared ALL localStorage and sessionStorage for this origin.');
+    };
+
+    const cbInput = document.getElementById('cbUrl');
+    const cbStatus = document.getElementById('cbStatus');
+
+    const loadCb = () => {
+      cbStatus.textContent = '';
+      try {
+        const raw = localStorage.getItem('lmeve-settings-esi');
+        if (!raw) { cbStatus.textContent = 'No lmeve-settings-esi found.'; return; }
+        const obj = JSON.parse(raw);
+        cbInput.value = obj.callbackUrl || '';
+        cbStatus.textContent = 'Loaded.';
+      } catch (e) {
+        cbStatus.textContent = 'Failed to load: ' + e.message;
+      }
+    };
+
+    const saveCb = () => {
+      cbStatus.textContent = '';
+      try {
+        const raw = localStorage.getItem('lmeve-settings-esi');
+        const obj = raw ? JSON.parse(raw) : {};
+        obj.callbackUrl = cbInput.value.trim();
+        localStorage.setItem('lmeve-settings-esi', JSON.stringify(obj));
+        cbStatus.textContent = 'Saved.';
+        log('Saved callbackUrl: ' + obj.callbackUrl);
+      } catch (e) {
+        cbStatus.textContent = 'Failed to save: ' + e.message;
+      }
+    };
+
+    const useSpa = () => {
+      cbInput.value = window.location.origin + '/';
+    };
+
+    const usePhp = () => {
+      cbInput.value = window.location.origin + '/api/auth/esi/callback.php';
+    };
+
+    document.getElementById('loadCb').onclick = loadCb;
+    document.getElementById('saveCb').onclick = saveCb;
+    document.getElementById('useSpa').onclick = useSpa;
+    document.getElementById('usePhp').onclick = usePhp;
+
+    // Auto-load current callback URL on page open
+    loadCb();
+  </script>
+</body>
+</html>
