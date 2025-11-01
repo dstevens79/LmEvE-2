@@ -625,6 +625,10 @@ export class ESIAuthService {
 
     const verifyData = await response.json();
     console.log('✅ Token verified via /oauth/verify');
+    try {
+      const grantedScopes: string[] = (verifyData?.Scopes || '').split(' ').filter((s: string) => !!s);
+      console.log('🎯 Granted scopes:', grantedScopes.length, grantedScopes.join(' '));
+    } catch {}
     
     const charResponse = await fetch(
       `${ESI_BASE_URL}/latest/characters/${characterId}/`,

@@ -203,19 +203,11 @@ function AppContent() {
     
     // Only process ESI callback if:
     // 1. We have code and state parameters
-    // 2. We have stored ESI auth state (required for CSRF protection)
-    // Note: Do NOT require 'esi-login-attempt' since it can be lost across some navigations
+    // Let the ESICallback + auth service handle state validation and fallbacks.
+    // This prevents silently dropping a valid callback when storage is slow or lost.
     if (code && state) {
-      const storedStateData = sessionStorage.getItem('esi-auth-state') || localStorage.getItem('esi-auth-state');
-      if (storedStateData) {
-        console.log('🔗 Detected valid ESI callback - showing ESI processor');
-        setIsESICallback(true);
-      } else {
-        console.log('⚠️ ESI callback detected but no stored state - clearing URL');
-        // Clear invalid callback state
-        sessionStorage.removeItem('esi-login-attempt');
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
+      console.log('🔗 Detected ESI callback parameters - delegating to ESICallback');
+      setIsESICallback(true);
     } else if (code || state) {
       // Clear any stray ESI parameters that aren't valid
       console.log('⚠️ Clearing invalid ESI callback parameters');
