@@ -47,8 +47,6 @@ fi
 # -----------------------------------------------------
 # Dependency checks (read-only)
 # -----------------------------------------------------
-echo -e "\n${GREEN}1. Pre-flight checks${NC}"
-
 check_dep() {
     local name="$1"; shift
     local cmd="$1"; shift
@@ -62,15 +60,12 @@ check_dep() {
         # Trim noisy version strings for readability
         case "$cmd" in
             curl)
-                # Example: "curl 7.68.0 (x86_64-pc-linux-gnu) ..." -> "curl 7.68.0"
                 ver=$(echo "$ver" | awk '{print $1" "$2}')
                 ;;
             php)
-                # Example: "PHP 7.4.3-...' -> "PHP 7.4.3-..." (first two tokens)
                 ver=$(echo "$ver" | awk '{print $1" "$2}')
                 ;;
             apache2)
-                # Example: "Server version: Apache/2.4.41 (Ubuntu)" -> "Apache/2.4.41 (Ubuntu)"
                 ver=$(echo "$ver" | sed 's/^Server version: //')
                 ;;
         esac
@@ -82,21 +77,24 @@ check_dep() {
     fi
 }
 
-MISSING_DEPS=0
-check_dep "curl"    curl   "curl --version" || MISSING_DEPS=$((MISSING_DEPS+1))
-check_dep "git"     git    "git --version"   || MISSING_DEPS=$((MISSING_DEPS+1))
-check_dep "Apache"  apache2 "apache2 -v"     || MISSING_DEPS=$((MISSING_DEPS+1))
-check_dep "PHP"     php    "php -v"          || MISSING_DEPS=$((MISSING_DEPS+1))
-check_dep "Node.js" node   "node -v"         || MISSING_DEPS=$((MISSING_DEPS+1))
-check_dep "npm"     npm    "npm -v"          || MISSING_DEPS=$((MISSING_DEPS+1))
-check_dep "ufw"     ufw    "ufw --version"   || true
-check_dep "certbot" certbot "certbot --version" || true
+draw_preflight() {
+    echo -e "${GREEN}1. Pre-flight checks${NC}"
+    local MISSING_DEPS=0
+    check_dep "curl"    curl   "curl --version" || MISSING_DEPS=$((MISSING_DEPS+1))
+    check_dep "git"     git    "git --version"   || MISSING_DEPS=$((MISSING_DEPS+1))
+    check_dep "Apache"  apache2 "apache2 -v"     || MISSING_DEPS=$((MISSING_DEPS+1))
+    check_dep "PHP"     php    "php -v"          || MISSING_DEPS=$((MISSING_DEPS+1))
+    check_dep "Node.js" node   "node -v"         || MISSING_DEPS=$((MISSING_DEPS+1))
+    check_dep "npm"     npm    "npm -v"          || MISSING_DEPS=$((MISSING_DEPS+1))
+    check_dep "ufw"     ufw    "ufw --version"   || true
+    check_dep "certbot" certbot "certbot --version" || true
 
-if [ "$MISSING_DEPS" -gt 0 ]; then
-    echo -e "${YELLOW}Some required components are missing and will be installed.${NC}"
-else
-    echo -e "${GREEN}All required dependencies are present.${NC}"
-fi
+    if [ "$MISSING_DEPS" -gt 0 ]; then
+        echo -e "${YELLOW}Some required components are missing and will be installed.${NC}"
+    else
+        echo -e "${GREEN}All required dependencies are present.${NC}"
+    fi
+}
 
 # -----------------------------------------------------
 # Upfront configuration menu (static redraw)
@@ -123,6 +121,9 @@ draw_menu() {
     echo "║          LmEvEv2 Application Installer            ║"
     echo "╚════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+    # Show pre-flight dependency checks above the menu (read-only)
+    draw_preflight
+    echo ""
     echo -e "${BLUE}Installer Options (press 1-7 to edit, Enter=Start, Q=Quit)${NC}"
     echo ""
     # 1) Access method
