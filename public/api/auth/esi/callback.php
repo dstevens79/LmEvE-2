@@ -2,20 +2,9 @@
 // EVE SSO OAuth callback: exchange code, verify, and store tokens in DB users table
 require_once __DIR__ . '/../../_lib/common.php';
 
-// Frontend-redirect mode: If invoked by CCP as a plain GET with only code/state,
-// forward those params to the SPA so the React app can complete the exchange.
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-  $code = $_GET['code'] ?? null;
-  $state = $_GET['state'] ?? null;
-  // If DB/ESI fields are not supplied, use SPA flow
-  $hasDbFields = isset($_GET['host'], $_GET['username'], $_GET['database']);
-  if ($code && $state && !$hasDbFields) {
-    $qs = http_build_query(['code' => $code, 'state' => $state]);
-    // Redirect to app root with query for the SPA to process
-    header('Location: /?' . $qs, true, 302);
-    exit;
-  }
-}
+// If invoked by CCP as plain GET (HTTP deployments), handle the exchange server-side
+// using server-stored DB/ESI config and then redirect to app root without exposing code/state.
+// POST mode remains JSON API for programmatic use.
 
 function http_post_json($url, $headers, $data) {
   $ch = curl_init($url);
@@ -43,7 +32,9 @@ function http_get_json($url, $headers) {
   return [$resp, $code, null];
 }
 
-$payload = $_SERVER['REQUEST_METHOD'] === 'POST' ? api_read_json() : $_GET;
+// Determine payload based on method
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+$payload = $method === 'POST' ? api_read_json() : $_GET;
 // Expect minimal OAuth details; DB/ESI config will be loaded from server settings if not provided
 api_expect($payload, ['code']);
 
@@ -111,12 +102,20 @@ if (!$stmt->execute()) { api_fail(200, 'DB execute failed', ['error' => $stmt->e
 $stmt->close();
 
 $db->close();
-api_respond([
-  'ok' => true,
-  'characterId' => $characterId,
-  'characterName' => $characterName,
-  'corporationId' => $corpId,
-  'scopes' => $scopes,
-  'expiresAt' => $expiresAt,
-  'tokenType' => $tokenType
-]);
+
+// For POST (programmatic), return JSON as before
+if ($method === 'POST') {
+  api_respond([
+    'ok' => true,
+    'characterId' => $characterId,
+    'characterName' => $characterName,
+    'corporationId' => $corpId,
+    'scopes' => $scopes,
+    'expiresAt' => $expiresAt,
+    'tokenType' => $tokenType
+  ]);
+}
+
+// For GET (CCP redirect), redirect back to the app root without leaking params
+header('Location: /?auth=ok', true, 302);
+exit;

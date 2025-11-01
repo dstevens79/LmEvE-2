@@ -909,6 +909,15 @@ else
     echo -e "${YELLOW}⚠️  Schema creation had issues, but database may still be usable${NC}"
 fi
 
+# Create default admin user if not present (password will be upgraded to bcrypt on first login)
+print_step "Creating default admin user (if missing)"
+mysql -u "$LMEVE_USER" -p"$LMEVE_PASS" -h "$DB_HOST" -P "$DB_PORT" ${LMEVE_DB} << 'ADMIN_EOF'
+INSERT INTO users (username, password, role, auth_method, is_active, created_date, updated_date)
+SELECT 'admin', '12345', 'super_admin', 'manual', TRUE, NOW(), NOW()
+WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='admin');
+ADMIN_EOF
+echo -e "${GREEN}✅ Ensured default admin user exists (username: admin)${NC}"
+
 # Step 5: Download and Import SDE (if requested)
 if [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]]; then
     print_step "Downloading EVE Static Data (MySQL Format)"

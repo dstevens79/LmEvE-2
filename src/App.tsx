@@ -36,7 +36,7 @@ import {
   Key,
   Receipt
 } from '@phosphor-icons/react';
-import { useLocalKV, bootstrapSettingsFromServerIfEmpty } from '@/lib/persistenceService';
+import { useLocalKV, loadSettingsFromServer, useGeneralSettings } from '@/lib/persistenceService';
 import { TabType } from '@/lib/types';
 import { DatabaseProvider } from '@/lib/DatabaseContext';
 import { LMeveDataProvider } from '@/lib/LMeveDataContext';
@@ -61,14 +61,11 @@ import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
 import { Buyback } from '@/components/tabs/Buyback';
 
 function AppContent() {
-  // Bootstrap settings from server if this origin has no local settings yet
+  // Always hydrate settings from server on startup to ensure disk-backed configs are loaded
   React.useEffect(() => {
     (async () => {
-      const status = await bootstrapSettingsFromServerIfEmpty();
-      if (status === 'loaded') {
-        // Reload to ensure all hooks read the just-restored settings
-        window.location.reload();
-      }
+      const ok = await loadSettingsFromServer();
+      if (ok) window.location.reload();
     })();
   }, []);
   const [activeTab, setActiveTab] = useLocalKV<TabType>('active-tab', 'dashboard');
@@ -87,8 +84,10 @@ function AppContent() {
     loginWithESI,
     handleESICallback,
     esiConfig,
-    getRegisteredCorporations
+    getRegisteredCorporations,
+    hydrateSessionFromServer
   } = useAuth();
+  const [generalSettings] = useGeneralSettings();
   const [isESICallback, setIsESICallback] = useState(false);
   const [forceRender, setForceRender] = useState(0);
   
@@ -199,6 +198,7 @@ function AppContent() {
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
     const state = urlParams.get('state');
+    const auth = urlParams.get('auth');
     const esiLoginAttempt = sessionStorage.getItem('esi-login-attempt');
     
     // Only process ESI callback if:
@@ -213,6 +213,15 @@ function AppContent() {
       console.log('⚠️ Clearing invalid ESI callback parameters');
       window.history.replaceState({}, document.title, window.location.pathname);
       sessionStorage.removeItem('esi-login-attempt');
+    } else if (auth === 'ok') {
+      // Server-side callback completed; hydrate session from server
+      (async () => {
+        console.log('🔗 Detected server auth completion (?auth=ok) - hydrating session');
+        await hydrateSessionFromServer();
+        // Clean URL param
+        window.history.replaceState({}, document.title, window.location.pathname);
+        try { toast.success('Authenticated via EVE SSO'); } catch {}
+      })();
     }
   }, []);
 
@@ -222,6 +231,36 @@ function AppContent() {
       refreshUserToken();
     }
   }, [isAuthenticated, isTokenExpired, refreshUserToken]);
+
+  // Auto logout after inactivity based on General Settings
+  useEffect(() => {
+    if (!generalSettings?.sessionTimeout) return;
+    const minutes = Math.max(5, Math.min(480, generalSettings.sessionTimeoutMinutes || 60));
+    const timeoutMs = minutes * 60 * 1000;
+    let lastActivity = Date.now();
+    let timer: number | undefined;
+
+    const resetTimer = () => {
+      lastActivity = Date.now();
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        // If still inactive, log out
+        if (Date.now() - lastActivity >= timeoutMs) {
+          try { console.log('⏳ Inactivity timeout reached - logging out'); } catch {}
+          logout();
+        }
+      }, timeoutMs + 1000);
+    };
+
+    const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
+    events.forEach(evt => window.addEventListener(evt, resetTimer, { passive: true } as any));
+    resetTimer();
+
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      events.forEach(evt => window.removeEventListener(evt, resetTimer as any));
+    };
+  }, [generalSettings?.sessionTimeout, generalSettings?.sessionTimeoutMinutes, logout]);
 
   // Handle successful authentication
   const handleLoginSuccess = () => {

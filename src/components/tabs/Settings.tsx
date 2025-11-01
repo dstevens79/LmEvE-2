@@ -291,21 +291,42 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     lastSetupCheck: null as string | null
   });
 
-  // EVE Online server and corporation ESI status
-  const [eveServerStatus, setEveServerStatus] = useLocalKV('eve-server-status', {
-    status: 'unknown', // 'online', 'offline', 'unknown'
+  // EVE Online server and corporation ESI status (server-backed, not in browser storage)
+  const [eveServerStatus, _setEveServerStatus] = React.useState({
+    status: 'unknown' as 'online' | 'offline' | 'unknown',
     players: 0,
     lastCheck: null as string | null
   });
-
   // Scope corporation ESI status per-corporation so multiple corps don't collide
   const corpStatusKey = user?.corporationId ? `corporation-esi-status:${user.corporationId}` : 'corporation-esi-status';
-  const [corporationESIStatus, setCorporationESIStatus] = useLocalKV(corpStatusKey, {
+  const [corporationESIStatus, _setCorporationESIStatus] = React.useState({
     hasActiveCorporation: false,
     corporationCount: 0,
     hasCEODirectorAuth: false,
     lastAuthCheck: null as string | null
   });
+
+  const loadSiteData = async (key: string) => {
+    try {
+      const resp = await fetch(`/api/site-data.php?key=${encodeURIComponent(key)}`);
+      if (!resp.ok) return null;
+      const json = await resp.json();
+      return json?.value ?? null;
+    } catch { return null; }
+  };
+  const saveSiteData = async (key: string, value: any) => {
+    try {
+      await fetch('/api/site-data.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, value }) });
+    } catch {}
+  };
+  const setEveServerStatus = (next: typeof eveServerStatus) => {
+    _setEveServerStatus(next);
+    saveSiteData('eve-server-status', next);
+  };
+  const setCorporationESIStatus = (next: typeof corporationESIStatus) => {
+    _setCorporationESIStatus(next);
+    saveSiteData(corpStatusKey, next);
+  };
 
   // Backward compatibility - gradually migrate away from this
   const settings = {
@@ -2871,7 +2892,7 @@ echo "See README.md for detailed setup instructions"
     
     performInitialChecks();
     
-    // Set up periodic refresh every 5 minutes for EVE server status
+    // Set up periodic refresh every 30 minutes for EVE server and corp auth status
     const refreshInterval = setInterval(async () => {
       try {
         await checkEVEServerStatus();
@@ -2879,7 +2900,7 @@ echo "See README.md for detailed setup instructions"
       } catch (error) {
         console.error('Periodic status refresh failed:', error);
       }
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 30 * 60 * 1000); // 30 minutes
     
     return () => {
       clearInterval(refreshInterval);
@@ -2957,6 +2978,248 @@ echo "See README.md for detailed setup instructions"
                     </p>
                   </div>
                 )}
+              </div>
+
+              {/* Cache Management */}
+              <div className="space-y-4 border-t border-border pt-4">
+                <h4 className="font-medium">Cache Management</h4>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Enable Local Cache</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Use machine-local cache for faster loads. This is not browser storage.
+                    </p>
+                  </div>
+                  <Switch 
+                    checked={!!generalSettings.cacheEnabled}
+                    onCheckedChange={(checked) => updateGeneralSetting('cacheEnabled', checked)}
+                  />
+                </div>
+                {generalSettings.cacheEnabled && (
+                  <div className="space-y-2">
+                    <Label htmlFor="cacheMaxSize">Cache Size (MB)</Label>
+                    <Input
+                      id="cacheMaxSize"
+                      type="number"
+                      value={(generalSettings.cacheMaxSizeMB ?? 256).toString()}
+                      onChange={(e) => updateGeneralSetting('cacheMaxSizeMB', Math.max(16, parseInt(e.target.value) || 256))}
+                      min="16"
+                      max="32768"
+                      placeholder="256"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Range: 16 MB – 32768 MB (32 GB). Actual implementation depends on server configuration.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Site Configuration */}
+              <div className="space-y-4 border-t border-border pt-4">
+                <h4 className="font-medium">Site Configuration</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Deployment Protocol</Label>
+                    <Select
+                      value={generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http')}
+                      onValueChange={(v) => updateGeneralSetting('deploymentProtocol', v as 'http'|'https')}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select protocol" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="http">HTTP</SelectItem>
+                        <SelectItem value="https">HTTPS</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      If HTTPS is selected, ensure certificates and reverse proxy are configured.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Authentication Flow</Label>
+                    <Select
+                      value={generalSettings.authFlow || 'server'}
+                      onValueChange={(v) => updateGeneralSetting('authFlow', v as 'spa'|'server')}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select auth flow" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="server">PHP (Server Callback)</SelectItem>
+                        <SelectItem value="spa">SPA (Client Callback)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Server callback is recommended for HTTP deployments. SPA callback requires HTTPS for PKCE.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ESI Application Credentials */}
+              <div className="space-y-4 border-t border-border pt-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${esiConfig.clientId ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <h4 className="font-medium">ESI Application Credentials</h4>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open('https://developers.eveonline.com/applications', '_blank')}
+                  >
+                    <Globe size={16} className="mr-2" />
+                    Manage Apps
+                  </Button>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="clientId">EVE Online Client ID</Label>
+                      <Input
+                        id="clientId"
+                        value={esiSettings.clientId || esiConfig.clientId || ''}
+                        onChange={(e) => updateESISetting('clientId', e.target.value)}
+                        placeholder="Your EVE Online application Client ID"
+                        className={esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId ? 'border-accent' : ''}
+                      />
+                      {esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId && (
+                        <p className="text-xs text-accent">• Unsaved changes</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="clientSecret">EVE Online Client Secret</Label>
+                      <div className="relative">
+                        <Input
+                          id="clientSecret"
+                          type={showSecrets ? 'text' : 'password'}
+                          value={esiSettings.clientSecret || esiConfig.clientSecret || ''}
+                          onChange={(e) => updateESISetting('clientSecret', e.target.value)}
+                          placeholder="Your EVE Online application Client Secret"
+                          className={esiSettings.clientSecret && esiSettings.clientSecret !== esiConfig.clientSecret ? 'border-accent' : ''}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3"
+                          onClick={() => setShowSecrets(!showSecrets)}
+                        >
+                          {showSecrets ? <EyeSlash size={16} /> : <Eye size={16} />}
+                        </Button>
+                      </div>
+                      {esiSettings.clientSecret && esiSettings.clientSecret !== esiConfig.clientSecret && (
+                        <p className="text-xs text-accent">• Unsaved changes</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => {
+                        const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
+                        const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim();
+                        if (clientId) {
+                          updateESIConfig(clientId, clientSecret || '');
+                          setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
+                          toast.success('ESI configuration updated');
+                        } else {
+                          toast.error('Client ID is required');
+                        }
+                      }}
+                      size="sm"
+                      disabled={!esiSettings.clientId && !esiConfig.clientId}
+                      className={
+                        (esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId) ||
+                        (esiSettings.clientSecret && esiSettings.clientSecret !== esiConfig.clientSecret)
+                          ? 'bg-accent hover:bg-accent/90 text-accent-foreground'
+                          : ''
+                      }
+                    >
+                      {((esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId) ||
+                        (esiSettings.clientSecret && esiSettings.clientSecret !== esiConfig.clientSecret))
+                        ? 'Save Changes' : 'Save ESI Config'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
+                        toast.info('Form cleared');
+                      }}
+                      disabled={!esiSettings.clientId && !esiSettings.clientSecret}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
+                          const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
+                          const callbackUrl = (generalSettings.authFlow || 'server') === 'spa'
+                            ? `${(generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http'))}://${window.location.host}/`
+                            : `${(generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http'))}://${window.location.host}/api/auth/esi/callback.php`;
+                          if (!clientId) {
+                            toast.error('Client ID is required to test ESI configuration');
+                            return;
+                          }
+
+                          const corps = getRegisteredCorporations();
+                          initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
+                          const svc = getESIAuthService();
+                          const url = await svc.initiateLogin('basic');
+                          toast.info('Redirecting to EVE SSO for basic test...');
+                          window.location.href = url;
+                        } catch (err) {
+                          console.error('ESI config test failed:', err);
+                          const message = err instanceof Error ? err.message : 'Failed to initialize ESI login';
+                          toast.error(message);
+                        }
+                      }}
+                    >
+                      Test ESI Config
+                    </Button>
+                  </div>
+
+                  {/* Callback guidance based on selected auth flow */}
+                  {(() => {
+                    const proto = generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http');
+                    const host = window.location.host || `${serverPublicIp || 'YOUR_EXTERNAL_IP'}${window.location.port ? ':' + window.location.port : ''}`;
+                    const isServer = (generalSettings.authFlow || 'server') === 'server';
+                    const callback = isServer
+                      ? `${proto}://${host}/api/auth/esi/callback.php`
+                      : `${proto}://${host}/`;
+                    return (
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        <p>
+                          {isServer
+                            ? 'Use this callback URL in your EVE application (Server/PHP callback):'
+                            : 'Use this callback URL in your EVE application (SPA/client callback):'}
+                        </p>
+                        <code className="bg-background px-1 rounded break-all">{callback}</code>
+                        <p>
+                          {window.location.port
+                            ? `If your external port differs from ${window.location.port}, replace it accordingly (e.g., ${proto}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345${isServer ? '/api/auth/esi/callback.php' : '/'})`
+                            : `If you expose the app on a non-standard port, add :PORT after the IP (e.g., ${proto}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345${isServer ? '/api/auth/esi/callback.php' : '/'})`}
+                        </p>
+                        {isServer ? (
+                          <p>
+                            Server callback works on HTTP and HTTPS. SPA callback requires HTTPS with PKCE.
+                          </p>
+                        ) : (
+                          <p>
+                            SPA callback requires HTTPS. Switch to PHP callback for HTTP deployments.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
 
               {/* Save Actions */}
@@ -3074,176 +3337,6 @@ echo "See README.md for detailed setup instructions"
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-
-              {/* ESI Configuration Section */}
-              <div className="border border-border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${esiConfig.clientId ? 'bg-green-500' : 'bg-red-500'}`} />
-                    <h4 className="font-medium">ESI Application Credentials</h4>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.open('https://developers.eveonline.com/applications', '_blank')}
-                  >
-                    <Globe size={16} className="mr-2" />
-                    Manage Apps
-                  </Button>
-                </div>
-                
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="clientId">EVE Online Client ID</Label>
-                      <Input
-                        id="clientId"
-                        value={esiSettings.clientId || esiConfig.clientId || ''}
-                        onChange={(e) => updateESISetting('clientId', e.target.value)}
-                        placeholder="Your EVE Online application Client ID"
-                        className={esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId ? 'border-accent' : ''}
-                      />
-                      {esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId && (
-                        <p className="text-xs text-accent">• Unsaved changes</p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="clientSecret">EVE Online Client Secret</Label>
-                      <div className="relative">
-                        <Input
-                          id="clientSecret"
-                          type={showSecrets ? "text" : "password"}
-                          value={esiSettings.clientSecret || esiConfig.clientSecret || ''}
-                          onChange={(e) => updateESISetting('clientSecret', e.target.value)}
-                          placeholder="Your EVE Online application Client Secret"
-                          className={esiSettings.clientSecret && esiSettings.clientSecret !== esiConfig.clientSecret ? 'border-accent' : ''}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3"
-                          onClick={() => setShowSecrets(!showSecrets)}
-                        >
-                          {showSecrets ? <EyeSlash size={16} /> : <Eye size={16} />}
-                        </Button>
-                      </div>
-                      {esiSettings.clientSecret && esiSettings.clientSecret !== esiConfig.clientSecret && (
-                        <p className="text-xs text-accent">• Unsaved changes</p>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() => {
-                        const clientId = esiSettings.clientId || esiConfig.clientId || '';
-                        const clientSecret = esiSettings.clientSecret || esiConfig.clientSecret;
-                        if (clientId.trim()) {
-                          updateESIConfig(clientId.trim(), clientSecret || '');
-                          setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
-                          toast.success('ESI configuration updated');
-                        } else {
-                          toast.error('Client ID is required');
-                        }
-                      }}
-                      size="sm"
-                      disabled={!esiSettings.clientId && !esiConfig.clientId}
-                      className={
-                        (esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId) ||
-                        (esiSettings.clientSecret && esiSettings.clientSecret !== esiConfig.clientSecret)
-                          ? 'bg-accent hover:bg-accent/90 text-accent-foreground'
-                          : ''
-                      }
-                    >
-                      {((esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId) ||
-                        (esiSettings.clientSecret && esiSettings.clientSecret !== esiConfig.clientSecret)) 
-                        ? 'Save Changes' : 'Save ESI Config'}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
-                          const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
-                          const callbackUrl = `${window.location.origin}/`;
-                          if (!clientId) {
-                            toast.error('Client ID is required to start ESI login');
-                            return;
-                          }
-
-                          // Initialize ESI service with current inputs (do not persist here)
-                          const corps = getRegisteredCorporations();
-                          initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
-                          const svc = getESIAuthService();
-                          const singleScope = ['esi-corporations.read_divisions.v1'];
-                          const url = await svc.initiateLoginWithScopes(singleScope);
-                          // Navigate to CCP SSO to perform a single-scope test (divisions)
-                          window.location.href = url;
-                        } catch (err) {
-                          console.error('Single-scope ESI login failed:', err);
-                          const message = err instanceof Error ? err.message : 'Failed to initiate single-scope ESI login';
-                          toast.error(message);
-                        }
-                      }}
-                    >
-                      Test Single Scope (Divisions)
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
-                        toast.info('Form cleared');
-                      }}
-                      disabled={!esiSettings.clientId && !esiSettings.clientSecret}
-                    >
-                      Clear
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
-                          const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
-                          const callbackUrl = `${window.location.origin}/`;
-                          if (!clientId) {
-                            toast.error('Client ID is required to test ESI configuration');
-                            return;
-                          }
-
-                          // Initialize ESI service on-demand with current inputs (without persisting form)
-                          const corps = getRegisteredCorporations();
-                          initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
-
-                          const svc = getESIAuthService();
-                          const url = await svc.initiateLogin('basic');
-                          // Redirect same-tab to preserve state reliably
-                          toast.info('Redirecting to EVE SSO for basic test...');
-                          window.location.href = url;
-                        } catch (err) {
-                          console.error('ESI config test failed:', err);
-                          const message = err instanceof Error ? err.message : 'Failed to initialize ESI login';
-                          toast.error(message);
-                        }
-                      }}
-                    >
-                      Test ESI Config
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Create an application at developers.eveonline.com with callback URL (SPA root with trailing slash):
-                    <code className="bg-background px-1 rounded">{`${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}${window.location.port ? ':' + window.location.port : ''}/`}</code>
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {window.location.port
-                      ? `If your external port differs from ${window.location.port}, replace it accordingly (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/).`
-                      : `If you expose the app on a non-standard port, add :PORT after the IP (e.g., ${(window.location.protocol === 'https:' ? 'https' : 'http')}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345/).`}
-                  </p>
-                </div>
-              </div>
 
               {/* Compact Database Connection Configuration */}
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
@@ -4231,7 +4324,7 @@ echo "See README.md for detailed setup instructions"
                 <Alert>
                   <Warning size={16} />
                   <AlertDescription>
-                    ESI authentication is not configured. Contact your system administrator to configure ESI Client ID and Secret in the Database settings.
+                    ESI authentication is not configured. Configure your ESI Client ID and Secret in Settings → General.
                   </AlertDescription>
                 </Alert>
               )}

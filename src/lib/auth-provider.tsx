@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useKV } from '@/lib/kv';
+import { useGeneralSettings } from '@/lib/persistenceService';
 import { toast } from 'sonner';
 import { LMeveUser, UserRole, CorporationConfig } from './types';
 import { createUserWithRole, isSessionValid, refreshUserSession } from './roles';
@@ -56,6 +57,9 @@ interface AuthContextType {
   
   // Force refresh trigger
   authTrigger: number;
+
+  // Server session hydration (HTTP-friendly auth)
+  hydrateSessionFromServer: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -65,13 +69,16 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
+  // Site general settings (for auth flow selection)
+  const [generalSettings] = useGeneralSettings();
   // Persistent storage
   const [currentUser, setCurrentUser] = useKV<LMeveUser | null>('lmeve-current-user', null);
   const [users, setUsers] = useKV<LMeveUser[]>('lmeve-users', []);
-  const [userCredentials, setUserCredentials] = useKV<Record<string, string>>('lmeve-credentials', {});
+  // Remove browser-stored credentials; use DB-backed auth only
   const [esiConfiguration, setESIConfiguration] = useKV<{ clientId?: string; clientSecret?: string }>('lmeve-esi-config', {});
   const [registeredCorporations, setRegisteredCorporations] = useKV<CorporationConfig[]>('lmeve-registered-corps', []);
-  const [adminConfig, setAdminConfig] = useKV<{ username: string; password: string }>('admin-config', { username: 'admin', password: '12345' });
+  // Keep an editable admin username reference locally without any password
+  const [adminConfig, setAdminConfig] = useKV<{ username: string; password: string }>('admin-config', { username: '', password: '' });
   // Character to user linking map: characterId -> userId
   const [userLinks, setUserLinks] = useKV<Record<string, string>>('lmeve-user-links', {});
   
@@ -122,36 +129,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch {}
   }, []);
 
-  // Initialize with default admin user
-  useEffect(() => {
-    if (users.length === 0) {
-      console.log('🔧 Creating default admin user');
-      
-      const adminUser = createUserWithRole({
-        username: 'admin',
-        characterName: 'Local Administrator',
-        authMethod: 'manual'
-      }, 'super_admin');
-      
-      setUsers([adminUser]);
-      setUserCredentials({ admin: '12345' });
-      
-      console.log('✅ Default admin user created');
-    }
-  }, [users, setUsers, setUserCredentials]);
+  // Do not create admin locally. Admin should be provisioned in DB setup script.
 
-  // Initialize ESI service when configuration changes (SPA-only callback)
+  // Initialize ESI service when configuration changes (respect auth flow from settings)
   useEffect(() => {
     if (esiConfiguration.clientId) {
       try {
-        const callbackRedirect = `${window.location.origin}/`;
+        const useSpa = (generalSettings?.authFlow || 'server') === 'spa';
+        const callbackRedirect = useSpa
+          ? `${window.location.origin}/`
+          : `${window.location.origin}/api/auth/esi/callback.php`;
         initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
-        console.log('✅ ESI Auth initialized (SPA callback mode)', { redirectUri: callbackRedirect });
+        console.log(`✅ ESI Auth initialized (${useSpa ? 'SPA' : 'Server'} callback mode)`, { redirectUri: callbackRedirect });
       } catch (error) {
         console.error('❌ Failed to initialize ESI Auth:', error);
       }
     }
-  }, [esiConfiguration, registeredCorporations]);
+  }, [esiConfiguration, registeredCorporations, generalSettings?.authFlow]);
   
   // Session validation for manual logins
   useEffect(() => {
@@ -183,59 +177,46 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Manual login with username/password
   const loginWithCredentials = useCallback(async (username: string, password: string) => {
-    console.log('🔐 Attempting manual login:', username);
+    console.log('🔐 Attempting manual login (DB):', username);
     setIsLoading(true);
-    
     try {
-      // Check credentials
-      let storedPassword = userCredentials[username];
-      if (!storedPassword || storedPassword !== password) {
-        // Rescue path: allow admin-config credentials even if credentials store is out of sync
-        if (adminConfig && username === adminConfig.username && password === adminConfig.password) {
-          console.warn('⚠️ Credentials store mismatch; using admin-config fallback for local admin');
-          // Ensure credentials store is updated
-          setUserCredentials(prev => ({ ...prev, [username]: password }));
-          storedPassword = password;
-          // Ensure an admin user exists
-          let existingAdmin = users.find(u => u.username === username);
-          if (!existingAdmin) {
-            const adminUser = createUserWithRole({ username, characterName: 'Local Administrator', authMethod: 'manual' }, 'super_admin');
-            setUsers(prev => [...prev, adminUser]);
-            existingAdmin = adminUser;
-            console.log('✅ Created missing admin user from admin-config');
-          }
-        } else {
-          throw new Error('Invalid username or password');
-        }
+      const resp = await fetch('/api/auth/manual-login.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || 'Login failed');
       }
-      
-      // Find user
-      const user = users.find(u => u.username === username);
-      if (!user) {
-        throw new Error('User not found');
-      }
-      
-      if (!user.isActive) {
-        throw new Error('User account is disabled');
-      }
-      
-      // Refresh session
-      const refreshedUser = refreshUserSession(user);
-      
-      // Update user in storage
-      setUsers(prev => prev.map(u => u.id === user.id ? refreshedUser : u));
-      setCurrentUser(refreshedUser);
-      
-      console.log('✅ Manual login successful:', username);
+      const json = await resp.json();
+      const row = json?.user;
+      if (!row) throw new Error('Invalid server response');
+      const roleFromServer = (row.role || 'corp_member') as UserRole;
+      const userData: Partial<LMeveUser> = {
+        id: String(row.id ?? `user_${Date.now()}`),
+        username: row.username || username,
+        characterName: row.character_name || 'Local Administrator',
+        corporationId: row.corporation_id || undefined,
+        corporationName: row.corporation_name || undefined,
+        authMethod: 'manual',
+      };
+      const fullUser = createUserWithRole(userData, roleFromServer);
+      // Persist sanitized user and set current
+      setUsers(prev => {
+        const exists = prev.find(u => u.id === fullUser.id);
+        return exists ? prev.map(u => u.id === fullUser.id ? fullUser : u) : [...prev, fullUser];
+      });
+      setCurrentUser(fullUser);
+      console.log('✅ Manual login successful via DB:', username);
       triggerAuthChange();
-      
     } catch (error) {
       console.error('❌ Manual login failed:', error);
       throw error;
     } finally {
       setIsLoading(false);
     }
-  }, [userCredentials, users, setUsers, setCurrentUser, triggerAuthChange, adminConfig, setUserCredentials]);
+  }, [setUsers, setCurrentUser, triggerAuthChange]);
 
   // ESI SSO login
   const loginWithESI = useCallback(async (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic', scopesOverride?: string[]) => {
@@ -255,8 +236,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       } catch {}
 
-      // Use SPA root callback for reliability and sessionStorage retention
-  const callbackRedirect = `${window.location.origin}/`;
+      // Use site setting to determine callback behavior
+  const useSpa = (generalSettings?.authFlow || 'server') === 'spa';
+  const callbackRedirect = useSpa
+    ? `${window.location.origin}/`
+    : `${window.location.origin}/api/auth/esi/callback.php`;
       initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
       const esiService = getESIAuthService();
       const url = scopesOverride && scopesOverride.length > 0
@@ -457,6 +441,65 @@ export function AuthProvider({ children }: AuthProviderProps) {
     console.log('✅ User logged out');
   }, [currentUser, setCurrentUser, triggerAuthChange]);
 
+  // Hydrate current user from server session/DB (best-effort)
+  const hydrateSessionFromServer = useCallback(async () => {
+    try {
+      const resp = await fetch('/api/auth/session.php', { method: 'GET' });
+      if (!resp.ok) return;
+      const json = await resp.json();
+      const row = json?.user;
+      if (!row) return;
+
+      // Map server row to LMeveUser (tokens never stored client-side)
+      const roleFromServer = (row.role || 'corp_member') as UserRole;
+      const scopes: string[] = typeof row.scopes === 'string' ? row.scopes.split(' ').filter((s: string) => !!s) : [];
+      const userData: Partial<LMeveUser> = {
+        id: String(row.id ?? `user_${Date.now()}`),
+        username: row.username || undefined,
+        characterId: row.character_id || undefined,
+        characterName: row.character_name || undefined,
+        corporationId: row.corporation_id || undefined,
+        authMethod: 'esi',
+        scopes,
+      };
+
+      const fullUser = createUserWithRole(userData, roleFromServer);
+      // Persist sanitized user (no tokens) and set as current
+      setUsers(prev => {
+        const existing = prev.find(u => u.id === fullUser.id);
+        if (existing) {
+          return prev.map(u => u.id === fullUser.id ? {
+            ...fullUser,
+            accessToken: undefined as any,
+            refreshToken: undefined as any,
+            tokenExpiry: undefined as any,
+          } : u);
+        }
+        return [...prev, {
+          ...fullUser,
+          accessToken: undefined as any,
+          refreshToken: undefined as any,
+          tokenExpiry: undefined as any,
+        }];
+      });
+      setCurrentUser({
+        ...fullUser,
+        accessToken: undefined as any,
+        refreshToken: undefined as any,
+        tokenExpiry: undefined as any,
+      });
+      // Clear any SPA auth artifacts just in case
+      try {
+        sessionStorage.removeItem('esi-auth-state');
+        sessionStorage.removeItem('esi-login-attempt');
+        sessionStorage.removeItem('esi-corp-consent');
+      } catch {}
+      triggerAuthChange();
+    } catch (_) {
+      // best-effort only
+    }
+  }, [setUsers, setCurrentUser, triggerAuthChange]);
+
   // Refresh ESI token
   const refreshUserToken = useCallback(async () => {
     const refreshToken = sessionTokens?.refreshToken || currentUser?.refreshToken;
@@ -609,9 +652,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       throw new Error('Username already exists');
     }
     
-    if (userCredentials[username]) {
-      throw new Error('Username already exists');
-    }
+    // Passwords are NOT stored client-side; manual users should be created via server API in production.
     
     const user = createUserWithRole({
       username,
@@ -625,12 +666,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       allianceName: characterInfo?.allianceName
     }, role);
     
-    setUsers(prev => [...prev, user]);
-    setUserCredentials(prev => ({ ...prev, [username]: password }));
+  setUsers(prev => [...prev, user]);
     
     console.log('✅ Manual user created:', username, characterInfo ? `linked to ${characterInfo.characterName}` : 'no character link');
     return user;
-  }, [users, userCredentials, currentUser, setUsers, setUserCredentials]);
+  }, [users, currentUser, setUsers]);
 
   // Update user role
   const updateUserRole = useCallback(async (userId: string, newRole: UserRole) => {
@@ -708,19 +748,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       throw new Error('Cannot delete currently logged in user');
     }
     
-    // Remove user and credentials
+    // Remove user (no client-side credentials persisted)
     setUsers(prev => prev.filter(u => u.id !== userId));
     
-    if (userToDelete.username) {
-      setUserCredentials(prev => {
-        const updated = { ...prev };
-        delete updated[userToDelete.username!];
-        return updated;
-      });
-    }
-    
     console.log('✅ User deleted');
-  }, [users, currentUser, setUsers, setUserCredentials]);
+  }, [users, currentUser, setUsers]);
 
   // Get all users
   const getAllUsers = useCallback(() => {
@@ -880,9 +912,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
     // Initialize ESI service with new config
     try {
-  const callbackRedirect = `${window.location.origin}/`;
+  const useSpa2 = (generalSettings?.authFlow || 'server') === 'spa';
+  const callbackRedirect = useSpa2
+    ? `${window.location.origin}/`
+    : `${window.location.origin}/api/auth/esi/callback.php`;
       initializeESIAuth(clientId, clientSecret, registeredCorporations, callbackRedirect);
-      console.log('✅ ESI configuration updated (Server callback mode)');
+    console.log('✅ ESI configuration updated (Server callback mode)');
     } catch (error) {
       console.error('❌ Failed to update ESI configuration:', error);
       throw error;
@@ -893,15 +928,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const updateAdminConfig = useCallback((config: { username: string; password: string }) => {
     console.log('🔧 Updating admin configuration');
     setAdminConfig(config);
-    
-    // Update the credentials storage for the admin user
-    setUserCredentials(prev => ({
-      ...prev,
-      [config.username]: config.password
-    }));
-    
     console.log('✅ Admin configuration updated');
-  }, [setAdminConfig, setUserCredentials]);
+  }, [setAdminConfig]);
 
   // Merge persisted user with session-only tokens for runtime context
   const mergedUser: LMeveUser | null = currentUser
@@ -955,7 +983,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     updateAdminConfig,
     
     // Force refresh trigger
-    authTrigger
+    authTrigger,
+
+    // Server session hydration
+    hydrateSessionFromServer
   };
 
   return (

@@ -30,6 +30,25 @@ function useLocalStorageKV<T>(key: string, defaultValue: T): [T, (value: T | ((p
 // Expose a local KV hook for use across the app (no Spark KV dependency)
 export const useLocalKV = useLocalStorageKV;
 
+// Server write-through: debounce saves to disk per category
+const saveDebounceTimers: Record<string, number | undefined> = {};
+function scheduleCategorySave(category: string, payload: any, delayMs = 400) {
+  try {
+    if (saveDebounceTimers[category]) {
+      window.clearTimeout(saveDebounceTimers[category]);
+    }
+    saveDebounceTimers[category] = window.setTimeout(async () => {
+      try {
+        await fetch('/api/settings.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [category]: payload })
+        });
+      } catch {}
+    }, delayMs);
+  } catch {}
+}
+
 export interface GeneralSettings {
   applicationName: string;
   corpId: number;
@@ -46,6 +65,11 @@ export interface GeneralSettings {
   logLevel: 'error' | 'warn' | 'info' | 'debug';
   enableLogging: boolean;
   enableAutoBackup: boolean;
+  // Cache and deployment config
+  cacheEnabled?: boolean;
+  cacheMaxSizeMB?: number;
+  deploymentProtocol?: 'http' | 'https';
+  authFlow?: 'spa' | 'server';
 }
 
 export interface DatabaseSettings {
@@ -321,6 +345,10 @@ export const defaultGeneralSettings: GeneralSettings = {
   logLevel: 'info',
   enableLogging: true,
   enableAutoBackup: true,
+  cacheEnabled: true,
+  cacheMaxSizeMB: 256,
+  deploymentProtocol: (window.location.protocol === 'https:' ? 'https' : 'http'),
+  authFlow: 'server',
 };
 
 export const defaultDatabaseSettings: DatabaseSettings = {
@@ -545,16 +573,55 @@ export const defaultApplicationData: ApplicationData = {
 };
 
 // Hook exports for React components
-export const useGeneralSettings = () => useLocalStorageKV<GeneralSettings>('lmeve-settings-general', defaultGeneralSettings);
-// Use localStorage to ensure persistence across navigation
-export const useDatabaseSettings = () => useLocalStorageKV<DatabaseSettings>('lmeve-settings-database', defaultDatabaseSettings);
-export const useESISettings = () => useLocalStorageKV<ESISettings>('lmeve-settings-esi', defaultESISettings);
+// Category-specific hooks that also persist changes to server storage (disk)
+export const useGeneralSettings = () => {
+  const [val, setVal] = useLocalStorageKV<GeneralSettings>('lmeve-settings-general', defaultGeneralSettings);
+  const setter = (next: GeneralSettings | ((prev: GeneralSettings) => GeneralSettings)) => {
+    setVal(prev => {
+      const resolved = typeof next === 'function' ? (next as any)(prev) : next;
+      scheduleCategorySave('general', resolved);
+      return resolved;
+    });
+  };
+  return [val, setter] as const;
+};
+
+export const useDatabaseSettings = () => {
+  const [val, setVal] = useLocalStorageKV<DatabaseSettings>('lmeve-settings-database', defaultDatabaseSettings);
+  const setter = (next: DatabaseSettings | ((prev: DatabaseSettings) => DatabaseSettings)) => {
+    setVal(prev => {
+      const resolved = typeof next === 'function' ? (next as any)(prev) : next;
+      scheduleCategorySave('database', resolved);
+      return resolved;
+    });
+  };
+  return [val, setter] as const;
+};
+
+export const useESISettings = () => {
+  const [val, setVal] = useLocalStorageKV<ESISettings>('lmeve-settings-esi', defaultESISettings);
+  const setter = (next: ESISettings | ((prev: ESISettings) => ESISettings)) => {
+    setVal(prev => {
+      const resolved = typeof next === 'function' ? (next as any)(prev) : next;
+      scheduleCategorySave('esi', resolved);
+      return resolved;
+    });
+  };
+  return [val, setter] as const;
+};
+
 export const useSDESettings = () => useLocalStorageKV<SDESettings>('lmeve-settings-sde', defaultSDESettings);
+
 export const useSyncSettings = () => useLocalStorageKV<SyncSettings>('lmeve-settings-sync', defaultSyncSettings);
+
 export const useNotificationSettings = () => useLocalStorageKV<NotificationSettings>('lmeve-settings-notifications', defaultNotificationSettings);
+
 export const useIncomeSettings = () => useLocalStorageKV<IncomeSettings>('lmeve-settings-income', defaultIncomeSettings);
+
 export const useManualUsers = () => useLocalStorageKV<ManualUser[]>('lmeve-manual-users', []);
+
 export const useApplicationData = () => useLocalStorageKV<ApplicationData>('lmeve-application-data', defaultApplicationData);
+
 export const useCorporationData = () => useLocalStorageKV<CorporationData[]>('lmeve-corporation-data', []);
 
 // Local-only helpers to read/write settings
@@ -670,6 +737,25 @@ export const loadSettingsFromServer = async (): Promise<boolean> => {
     const importObj = settingsPayload.settings
       ? settingsPayload
       : { settings: settingsPayload };
+
+    // Build current local snapshot for comparison
+    const localSnapshot = {
+      general: (await safeKVGet<GeneralSettings>('lmeve-settings-general')) ?? defaultGeneralSettings,
+      database: (await safeKVGet<DatabaseSettings>('lmeve-settings-database')) ?? defaultDatabaseSettings,
+      esi: (await safeKVGet<ESISettings>('lmeve-settings-esi')) ?? defaultESISettings,
+      sde: (await safeKVGet<SDESettings>('lmeve-settings-sde')) ?? defaultSDESettings,
+      sync: (await safeKVGet<SyncSettings>('lmeve-settings-sync')) ?? defaultSyncSettings,
+      notifications: (await safeKVGet<NotificationSettings>('lmeve-settings-notifications')) ?? defaultNotificationSettings,
+      income: (await safeKVGet<IncomeSettings>('lmeve-settings-income')) ?? defaultIncomeSettings,
+      users: (await safeKVGet<ManualUser[]>('lmeve-manual-users')) ?? [],
+      application: (await safeKVGet<ApplicationData>('lmeve-application-data')) ?? defaultApplicationData,
+    };
+    const incomingSnapshot = importObj.settings;
+
+    // Compare shallow JSON of categories to avoid unnecessary import/reload
+    const isSame = JSON.stringify(localSnapshot) === JSON.stringify(incomingSnapshot);
+    if (isSame) return false;
+
     await importAllSettings(importObj);
     return true;
   } catch {
@@ -699,6 +785,19 @@ export const validateSettings = (category: string, settings: any): string[] => {
   const errors: string[] = [];
   
   switch (category) {
+    case 'general':
+      if (settings.cacheEnabled) {
+        if (typeof settings.cacheMaxSizeMB !== 'number' || settings.cacheMaxSizeMB < 16) {
+          errors.push('Cache size must be at least 16 MB');
+        }
+      }
+      if (settings.deploymentProtocol && !['http','https'].includes(settings.deploymentProtocol)) {
+        errors.push('Deployment protocol must be http or https');
+      }
+      if (settings.authFlow && !['spa','server'].includes(settings.authFlow)) {
+        errors.push('Auth flow must be spa or server');
+      }
+      break;
     case 'database':
       if (!settings.host) errors.push('Database host is required');
       if (!settings.database) errors.push('Database name is required');
