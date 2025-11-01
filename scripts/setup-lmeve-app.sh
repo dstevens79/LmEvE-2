@@ -22,6 +22,57 @@ echo "║          LmEvEv2 Application Installer            ║"
 echo "╚════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
+# Utility: terminal width
+term_cols() {
+    if [ -n "$COLUMNS" ]; then echo "$COLUMNS"; return; fi
+    if command -v tput >/dev/null 2>&1; then tput cols 2>/dev/null || echo 120; else echo 120; fi
+}
+
+# Right-side banner art (drawn with cursor positioning)
+draw_right_panel() {
+    # Define art block
+    local art=(
+"┌────────────────────────────────────────────────────┐"
+"│                                                    │"
+"│   L      M   M  EEEEE  V   V  EEEEE        --      │"
+"│   L      MM MM  E      V   V  E          /   |     │"
+"│   L      M M M  EEEE    V V   EEEE   ==     /      │" 
+"│   L      M   M  E        V    E           /        │"
+"│   LLLLL  M   M  EEEEE    V    EEEEE      /____     │"
+"│                                                    │"
+"│                                                    │" 
+"│          LmEvE v2 • Application Installer          │"
+"│                                                    │"
+"│  ⛭  1–7 edit fields   ↵  Enter to start  Q  quit  │"
+"│                                                    │"
+"└────────────────────────────────────────────────────┘"
+    )
+
+    # Compute placement
+    local cols=$(term_cols)
+    local art_width=52
+    local margin=2
+    local start_col=$(( cols - art_width - margin ))
+    if [ "$start_col" -lt 56 ]; then start_col=56; fi
+    local start_row=1
+
+    # Draw using tput if available
+    if command -v tput >/dev/null 2>&1; then
+        local i=0
+        for line in "${art[@]}"; do
+            tput cup $((start_row + i)) "$start_col" 2>/dev/null || true
+            echo -e "${BLUE}${line}${NC}"
+            i=$((i+1))
+        done
+    else
+        # Fallback: just echo after some spaces
+        local pad=""
+        local n=$start_col
+        while [ $n -gt 0 ]; do pad+=" "; n=$((n-1)); done
+        for line in "${art[@]}"; do echo -e "${pad}${BLUE}${line}${NC}"; done
+    fi
+}
+
 # Check for root
 if [ "$EUID" -ne 0 ]; then
     echo -e "${RED}Error: This script must be run as root (use sudo)${NC}"
@@ -121,6 +172,8 @@ draw_menu() {
     echo "║          LmEvEv2 Application Installer            ║"
     echo "╚════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+    # Draw large right-side moniker
+    draw_right_panel
     # Show pre-flight dependency checks above the menu (read-only)
     draw_preflight
     echo ""
