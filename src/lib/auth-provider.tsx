@@ -236,26 +236,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
     
     try {
-      let esiService: ReturnType<typeof getESIAuthService>;
+      // Always ensure the ESI service is initialized with the latest saved callback URL
+      // This avoids stale redirect_uri values if settings were changed or hydrated after initial load
+      let redirectUri: string | undefined = undefined;
       try {
-        esiService = getESIAuthService();
-      } catch (e) {
-        // Initialize on-demand if not yet initialized
-        console.warn('ESI service not initialized. Initializing now...');
-        // Reinitialize with current callbackUrl if available
-        let redirectUri: string | undefined = undefined;
-        try {
-          const raw = localStorage.getItem('lmeve-settings-esi');
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed?.callbackUrl && typeof parsed.callbackUrl === 'string') {
-              redirectUri = parsed.callbackUrl;
-            }
+        const raw = localStorage.getItem('lmeve-settings-esi');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.callbackUrl && typeof parsed.callbackUrl === 'string' && parsed.callbackUrl.trim().length > 0) {
+            redirectUri = parsed.callbackUrl.trim();
           }
-        } catch {}
-        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, redirectUri);
-        esiService = getESIAuthService();
-      }
+        }
+      } catch {}
+      initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, redirectUri);
+      const esiService = getESIAuthService();
       const url = scopesOverride && scopesOverride.length > 0
         ? await esiService.initiateLoginWithScopes(scopesOverride)
         : await esiService.initiateLogin(scopeType);
