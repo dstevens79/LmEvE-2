@@ -233,7 +233,7 @@ detect_db_existence() {
  #                   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pv >/dev/null 2>&1 || true
  #               ) &
  #       fi
-#}
+#} 
 
 draw_preflight_header() {
     local title_left="${BLUE}LmEvE v2${NC}"
