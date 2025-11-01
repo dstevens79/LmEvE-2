@@ -60,9 +60,9 @@ draw_right_panel() {
 
     local cols=$(term_cols)
     local art_width=52
-    local margin=2
+    local margin=6
     local start_col=$(( cols - art_width - margin ))
-    if [ "$start_col" -lt 56 ]; then start_col=56; fi
+    if [ "$start_col" -lt 68 ]; then start_col=68; fi
     local start_row=1
 
     if command -v tput >/dev/null 2>&1; then
@@ -128,6 +128,10 @@ check_dep() {
         case "$cmd" in
             curl)
                 ver=$(echo "$ver" | awk '{print $1" "$2}')
+                ;;
+            wget)
+                # Example: "GNU Wget 1.19.4 built on linux-gnu." -> "wget 1.19.4"
+                ver=$(echo "$ver" | awk '{print "wget "$3}')
                 ;;
             apache2)
                 ver=$(echo "$ver" | sed 's/^Server version: //')
