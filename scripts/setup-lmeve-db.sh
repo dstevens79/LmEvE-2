@@ -139,22 +139,80 @@ get_mem_total() {
     fi
 }
 
-# Detect DB server presence and status
+get_datadir() {
+    local d="/var/lib/mysql"
+    if command -v mysqld >/dev/null 2>&1; then
+        local dd
+        dd=$(mysqld --verbose --help 2>/dev/null | awk '/^datadir/ {print $2; exit}')
+        [ -n "$dd" ] && d="$dd"
+    fi
+    echo "$d"
+}
+
+# Detect DB server presence and status (robust, multi-signal)
 detect_db_server() {
     DB_SERVER_PRESENT="N"
     DB_SERVER_NAME="None"
     DB_SERVICE_UNIT=""
+    DB_ACTIVE="inactive"
 
-    if systemctl list-unit-files | grep -q '^mysql\.service'; then DB_SERVICE_UNIT="mysql"; fi
-    if systemctl list-unit-files | grep -q '^mariadb\.service'; then DB_SERVICE_UNIT="mariadb"; fi
+    local binary_present="N"
+    command -v mysql >/dev/null 2>&1 && binary_present="Y"
 
-    if [ -n "$DB_SERVICE_UNIT" ]; then
-        DB_SERVER_PRESENT="Y"
-        if [ "$DB_SERVICE_UNIT" = "mysql" ]; then
-            DB_SERVER_NAME="MySQL"
-        else
-            DB_SERVER_NAME="MariaDB"
+    local pkg_present="N"
+    if command -v dpkg >/dev/null 2>&1; then
+        if dpkg -l 2>/dev/null | grep -qE '^ii\s+(mysql-server|mariadb-server)\b'; then
+            pkg_present="Y"
         fi
+    fi
+
+    # Find candidate service units
+    local candidates=()
+    if command -v systemctl >/dev/null 2>&1; then
+        local units
+        units=$(systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}')
+        for svc in mysql mariadb mysqld; do
+            echo "$units" | grep -qx "${svc}.service" && candidates+=("$svc")
+        done
+        # Prefer active service if any
+        for svc in "${candidates[@]}"; do
+            if systemctl is-active "$svc" >/dev/null 2>&1; then
+                DB_SERVICE_UNIT="$svc"; DB_ACTIVE="active"; break
+            fi
+        done
+        # Otherwise pick the first candidate and query its state
+        if [ -z "$DB_SERVICE_UNIT" ] && [ ${#candidates[@]} -gt 0 ]; then
+            DB_SERVICE_UNIT="${candidates[0]}"
+            DB_ACTIVE=$(systemctl is-active "$DB_SERVICE_UNIT" 2>/dev/null || echo inactive)
+        fi
+    fi
+
+    # Fallback: detect running daemon even without systemd
+    if [ -z "$DB_SERVICE_UNIT" ]; then
+        if pgrep -x mysqld >/dev/null 2>&1; then
+            DB_SERVICE_UNIT="mysqld"; DB_ACTIVE="active"
+        fi
+    fi
+
+    # Determine datadir and overall presence
+    local datadir
+    datadir=$(get_datadir)
+    if [ -d "$datadir/mysql" ] || [ "$binary_present" = "Y" ] || [ "$pkg_present" = "Y" ] || [ -n "$DB_SERVICE_UNIT" ]; then
+        DB_SERVER_PRESENT="Y"
+    fi
+
+    # Decide server name
+    if command -v mysql >/dev/null 2>&1; then
+        if mysql --version 2>/dev/null | grep -qi "mariadb"; then
+            DB_SERVER_NAME="MariaDB"
+        else
+            DB_SERVER_NAME="MySQL"
+        fi
+    else
+        case "$DB_SERVICE_UNIT" in
+            mariadb) DB_SERVER_NAME="MariaDB" ;;
+            mysql|mysqld) DB_SERVER_NAME="MySQL" ;;
+        esac
     fi
 }
 
@@ -162,8 +220,10 @@ detect_db_server() {
 detect_db_existence() {
     LMEVE_DB_PRESENT="N"
     SDE_DB_PRESENT="N"
-    [ -d "/var/lib/mysql/${LMEVE_DB}" ] && LMEVE_DB_PRESENT="Y"
-    [ -d "/var/lib/mysql/${SDE_DB}" ] && SDE_DB_PRESENT="Y"
+    local datadir
+    datadir=$(get_datadir)
+    [ -d "${datadir}/${LMEVE_DB}" ] && LMEVE_DB_PRESENT="Y"
+    [ -d "${datadir}/${SDE_DB}" ] && SDE_DB_PRESENT="Y"
 }
 
 draw_preflight_header() {
@@ -304,11 +364,7 @@ DB_SERVER_NAME_SNAPSHOT="$DB_SERVER_NAME"
 DB_SERVICE_UNIT_SNAPSHOT="$DB_SERVICE_UNIT"
 LMEVE_DB_PRESENT_SNAPSHOT="$LMEVE_DB_PRESENT"
 SDE_DB_PRESENT_SNAPSHOT="$SDE_DB_PRESENT"
-if [ "$DB_SERVER_PRESENT_SNAPSHOT" = "Y" ] && [ -n "$DB_SERVICE_UNIT_SNAPSHOT" ]; then
-    DB_ACTIVE_SNAPSHOT="$(systemctl is-active ${DB_SERVICE_UNIT_SNAPSHOT} 2>/dev/null || echo inactive)"
-else
-    DB_ACTIVE_SNAPSHOT="inactive"
-fi
+DB_ACTIVE_SNAPSHOT="$DB_ACTIVE"
 
 while true; do
     draw_menu
