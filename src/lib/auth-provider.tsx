@@ -144,9 +144,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     if (esiConfiguration.clientId) {
       try {
-        const callbackRedirect = `${window.location.origin}/api/esi-callback.php`;
+        const callbackRedirect = `${window.location.origin}/`;
         initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
-        console.log('✅ ESI Auth initialized (Server callback mode)', { redirectUri: callbackRedirect });
+        console.log('✅ ESI Auth initialized (SPA callback mode)', { redirectUri: callbackRedirect });
       } catch (error) {
         console.error('❌ Failed to initialize ESI Auth:', error);
       }
@@ -246,8 +246,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
     
     try {
-      // Use server relay callback for reliability
-      const callbackRedirect = `${window.location.origin}/api/esi-callback.php`;
+  // Use SPA root callback for reliability and sessionStorage retention
+  const callbackRedirect = `${window.location.origin}/`;
       initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
       const esiService = getESIAuthService();
       const url = scopesOverride && scopesOverride.length > 0
@@ -812,7 +812,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
     // Initialize ESI service with new config
     try {
-      const callbackRedirect = `${window.location.origin}/api/esi-callback.php`;
+  const callbackRedirect = `${window.location.origin}/`;
       initializeESIAuth(clientId, clientSecret, registeredCorporations, callbackRedirect);
       console.log('✅ ESI configuration updated (Server callback mode)');
     } catch (error) {

@@ -65,18 +65,15 @@ import { initializeESIAuth, getESIAuthService } from '@/lib/esi-auth';
 import { CorpSettings } from '@/lib/types';
 import { toast } from 'sonner';
 import { eveApi, type CharacterInfo, type CorporationInfo } from '@/lib/eveApi';
-import { hasPermission } from '@/lib/roles';
 import { useSDEManager, type SDEDatabaseStats } from '@/lib/sdeService';
+import { DatabaseManager, DatabaseSetupManager } from '@/lib/database';
 import { runDatabaseValidationTests } from '@/lib/databaseTestCases';
-import { EnhancedDatabaseSetupManager, validateSetupConfig, type DatabaseSetupConfig } from '@/lib/database-setup-scripts';
-import { DatabaseManager } from '@/lib/database';
-import { 
-  useGeneralSettings, 
-  useDatabaseSettings, 
-  useESISettings, 
-  useSDESettings, 
-  useSyncSettings, 
-  useNotificationSettings, 
+import { useGeneralSettings,
+  useDatabaseSettings,
+  useESISettings,
+  useSDESettings,
+  useSyncSettings,
+  useNotificationSettings,
   useIncomeSettings, 
   useApplicationData,
   useManualUsers,
@@ -3185,7 +3182,7 @@ echo "See README.md for detailed setup instructions"
                         try {
                           const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
                           const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
-                          const callbackUrl = `${window.location.origin}/api/esi-callback.php`;
+                          const callbackUrl = `${window.location.origin}/`;
                           if (!clientId) {
                             toast.error('Client ID is required to start ESI login');
                             return;
@@ -3226,7 +3223,7 @@ echo "See README.md for detailed setup instructions"
                         try {
                           const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
                           const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
-                          const callbackUrl = `${window.location.origin}/api/esi-callback.php`;
+                          const callbackUrl = `${window.location.origin}/`;
                           if (!clientId) {
                             toast.error('Client ID is required to test ESI configuration');
                             return;
@@ -3418,12 +3415,7 @@ echo "See README.md for detailed setup instructions"
                             addLog('✅ SDE update completed successfully');
                             toast.success('SDE updated to latest version');
                             
-                            setSdeStatus(prev => ({
-                              ...prev,
-                              currentVersion: prev.latestVersion,
-                              isUpdateAvailable: false,
-                              installedDate: new Date().toISOString()
-                            }));
+                            // Note: sdeStatus comes from useSDEManager; updating state is handled by that service
                           } catch (error) {
                             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
                             toast.error('SDE update failed');

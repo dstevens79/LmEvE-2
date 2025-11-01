@@ -211,8 +211,7 @@ export class ESIAuthService {
       response_mode: 'query',
       redirect_uri: this.redirectUri,
       client_id: this.clientId,
-      state: state,
-      prompt: 'consent'
+      state: state
     });
     if (scopes && scopes.length > 0) {
       params.set('scope', scopes.join(' '));
@@ -265,8 +264,7 @@ export class ESIAuthService {
       response_mode: 'query',
       redirect_uri: this.redirectUri,
       client_id: this.clientId,
-      state: state,
-      prompt: 'consent'
+      state: state
     });
     if (scopes && scopes.length > 0) {
       params.set('scope', scopes.join(' '));
