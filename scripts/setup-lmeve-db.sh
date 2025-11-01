@@ -341,7 +341,7 @@ need_setup_fields() {
         return 0
     fi
     return 1
-}
+} 
 
 draw_menu() {
     clear 2>/dev/null || tput clear 2>/dev/null || true
