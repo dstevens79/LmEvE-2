@@ -68,6 +68,7 @@ import { eveApi, type CharacterInfo, type CorporationInfo } from '@/lib/eveApi';
 import { useSDEManager, type SDEDatabaseStats } from '@/lib/sdeService';
 import { DatabaseManager, DatabaseSetupManager } from '@/lib/database';
 import { runDatabaseValidationTests } from '@/lib/databaseTestCases';
+import { hasPermission } from '@/lib/roles';
 import { useGeneralSettings,
   useDatabaseSettings,
   useESISettings,
