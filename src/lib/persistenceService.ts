@@ -679,8 +679,14 @@ export const loadSettingsFromServer = async (): Promise<boolean> => {
 
 export const bootstrapSettingsFromServerIfEmpty = async (): Promise<'loaded' | 'skipped' | 'failed'> => {
   try {
+    // If any critical category is missing locally, hydrate from server.
+    const hasESI = localStorage.getItem('lmeve-settings-esi');
+    const hasDB = localStorage.getItem('lmeve-settings-database');
     const hasGeneral = localStorage.getItem('lmeve-settings-general');
-    if (hasGeneral) return 'skipped';
+
+    const needsHydration = !hasESI || !hasDB || !hasGeneral;
+    if (!needsHydration) return 'skipped';
+
     const ok = await loadSettingsFromServer();
     return ok ? 'loaded' : 'failed';
   } catch {
