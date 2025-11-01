@@ -19,6 +19,7 @@ import {
   LockKey,
   CheckCircle
 } from '@phosphor-icons/react';
+  import { hasPermission } from '@/lib/roles';
 import { 
   Popover,
   PopoverContent,
@@ -202,8 +203,8 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
   
   const registeredCorps = getRegisteredCorporations();
 
-  const isAdmin = user?.role && ['super_admin', 'admin', 'ceo'].includes(user.role);
-  const canEditCorpScopes = user?.role && ['super_admin', 'admin', 'ceo'].includes(user.role);
+  const isAdmin = hasPermission(user, 'canManageSystem');
+  const canEditCorpScopes = hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
 
   const handlePersonalAuth = async () => {
     try {
@@ -421,7 +422,7 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
 
             {/* Registration Action */}
             <div className="pt-2 mt-auto">
-              {user && user.authMethod === 'esi' && ['director', 'ceo', 'super_admin', 'admin'].includes(user.role || '') ? (
+              {user && user.authMethod === 'esi' && (hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem')) ? (
                 <Button
                   size="sm"
                   className="w-full"

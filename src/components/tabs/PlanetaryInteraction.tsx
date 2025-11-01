@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { hasPermission } from '@/lib/roles';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -549,7 +550,8 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
     }
   };
 
-  const canManage = user?.role === 'ceo' || user?.role === 'director' || user?.role === 'manager';
+  // Use permissions instead of string role names
+  const canManage = hasPermission(user as any, 'canManageManufacturing') || hasPermission(user as any, 'canManageMining') || hasPermission(user as any, 'canManageCorp') || hasPermission(user as any, 'canManageSystem');
 
   const userAssignments = getUserAssignments();
 

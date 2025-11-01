@@ -65,6 +65,7 @@ import { initializeESIAuth, getESIAuthService } from '@/lib/esi-auth';
 import { CorpSettings } from '@/lib/types';
 import { toast } from 'sonner';
 import { eveApi, type CharacterInfo, type CorporationInfo } from '@/lib/eveApi';
+import { hasPermission } from '@/lib/roles';
 import { useSDEManager, type SDEDatabaseStats } from '@/lib/sdeService';
 import { runDatabaseValidationTests } from '@/lib/databaseTestCases';
 import { EnhancedDatabaseSetupManager, validateSetupConfig, type DatabaseSetupConfig } from '@/lib/database-setup-scripts';
@@ -3745,6 +3746,97 @@ echo "See README.md for detailed setup instructions"
         </TabsContent>
 
         <TabsContent value="esi" className="space-y-6">
+          {/* ESI Overview - quick status and actions */}
+          {user && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2">
+                  <UserCheck size={18} />
+                  ESI Overview
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Your ESI authentication status and quick actions
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    {user.characterId && (
+                      <img
+                        src={`https://images.evetech.net/characters/${user.characterId}/portrait?size=64`}
+                        alt={user.characterName || 'Character'}
+                        className="w-10 h-10 rounded-full border"
+                      />
+                    )}
+                    <div>
+                      <div className="font-medium leading-tight">{user.characterName || 'Unknown Character'}</div>
+                      <div className="text-xs text-muted-foreground">{user.corporationName || 'Unknown Corporation'}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={user.authMethod === 'esi' ? 'default' : 'secondary'}>
+                      {user.authMethod === 'esi' ? 'ESI Authenticated' : 'Local Account'}
+                    </Badge>
+                    {user.role && (
+                      <Badge variant="outline">{user.role.replace('_',' ').toUpperCase()}</Badge>
+                    )}
+                    {(hasPermission(user as any, 'canManageCorp') || hasPermission(user as any, 'canManageSystem')) && (
+                      <Badge variant="outline">Corp Management</Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Quick actions grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="p-3 rounded border bg-muted/30">
+                    <div className="text-xs font-medium mb-2 flex items-center gap-2">
+                      <UserCheck size={14} /> Personal ESI
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            const url = await loginWithESI('enhanced');
+                            window.location.href = url;
+                          } catch (e) {
+                            console.error('Failed to start personal ESI refresh:', e);
+                            toast.error('Failed to start personal authentication');
+                          }
+                        }}
+                        disabled={!esiConfig?.clientId}
+                      >
+                        Refresh Consent
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="p-3 rounded border bg-muted/30">
+                    <div className="text-xs font-medium mb-2 flex items-center gap-2">
+                      <Building size={14} /> Corporation ESI
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            const corpAuth = await loginWithESI('corporation');
+                            window.location.href = corpAuth;
+                          } catch (error) {
+                            console.error('Failed to start corp ESI auth:', error);
+                            toast.error('Failed to start corporation authentication');
+                          }
+                        }}
+                        disabled={!esiConfig?.clientId || !(hasPermission(user as any,'canManageCorp') || hasPermission(user as any,'canManageSystem'))}
+                      >
+                        Register Corporation ESI
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -3792,7 +3884,8 @@ echo "See README.md for detailed setup instructions"
                       </div>
                       
                       {/* Corporation Director/CEO Actions */}
-                      {user.role && ['super_admin','corp_admin','corp_director'].includes(user.role as any) && (
+                      {/* Use permission-based gating to allow CEOs/Directors/Super Admins */}
+                      {hasPermission(user as any, 'canManageCorp') || hasPermission(user as any, 'canManageSystem') ? (
                         <div className="p-3 bg-accent/10 border border-accent/30 rounded">
                           <div className="flex items-center gap-2 mb-2">
                             <Shield size={16} className="text-accent" />
@@ -3820,7 +3913,7 @@ echo "See README.md for detailed setup instructions"
                             Register Corporation ESI Access
                           </Button>
                         </div>
-                      )}
+                      ) : null}
                       
                       {/* Enhanced ESI Scope Management */}
                       <div className="p-3 bg-muted/30 rounded space-y-4">
