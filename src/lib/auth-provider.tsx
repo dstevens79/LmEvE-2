@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useKV } from '@/lib/kv';
-import { useGeneralSettings } from '@/lib/persistenceService';
+import { useGeneralSettings, useDatabaseSettings } from '@/lib/persistenceService';
 import { toast } from 'sonner';
 import { LMeveUser, UserRole, CorporationConfig } from './types';
 import { createUserWithRole, isSessionValid, refreshUserSession } from './roles';
@@ -71,6 +71,8 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   // Site general settings (for auth flow selection)
   const [generalSettings] = useGeneralSettings();
+  // Database settings (server-backed) for manual login endpoint
+  const [databaseSettings] = useDatabaseSettings();
   // Persistent storage
   const [currentUser, setCurrentUser] = useKV<LMeveUser | null>('lmeve-current-user', null);
   const [users, setUsers] = useKV<LMeveUser[]>('lmeve-users', []);
@@ -180,14 +182,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
     console.log('🔐 Attempting manual login (DB):', username);
     setIsLoading(true);
     try {
-      const resp = await fetch('/api/auth/manual-login.php', {
+      // Build query string from current database settings so server selects the correct DB
+      const qs = new URLSearchParams();
+      try {
+        if (databaseSettings?.host) qs.set('host', String(databaseSettings.host));
+        if (databaseSettings?.port) qs.set('port', String(databaseSettings.port));
+        if (databaseSettings?.username) qs.set('username', String(databaseSettings.username));
+        if (databaseSettings?.password) qs.set('password', String(databaseSettings.password));
+        if (databaseSettings?.database) qs.set('database', String(databaseSettings.database));
+      } catch {}
+
+      const url = `/api/auth/manual-login.php${qs.toString() ? `?${qs.toString()}` : ''}`;
+      const resp = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
-        throw new Error(err.error || 'Login failed');
+        const statusInfo = `HTTP ${resp.status}`;
+        throw new Error(err.error ? `${err.error} (${statusInfo})` : `Login failed (${statusInfo})`);
       }
       const json = await resp.json();
       const row = json?.user;

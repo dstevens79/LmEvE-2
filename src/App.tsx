@@ -427,7 +427,8 @@ function AppContent() {
       toast.success('Login successful!');
     } catch (error) {
       console.error('❌ Quick login failed:', error);
-      toast.error('Login failed. Please check your credentials.');
+      const msg = error instanceof Error ? error.message : 'Please check your credentials.';
+      toast.error(`Login failed: ${msg}`);
     } finally {
       setIsLoggingIn(false);
     }
