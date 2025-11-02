@@ -57,7 +57,7 @@ draw_right_panel() {
 "│  ⛭  1–6 edit fields   ↵  Enter to start   Q  quit  │"
 "│                                                    │" 
 "└────────────────────────────────────────────────────┘"
-    )
+    ) 
 
     local cols=$(term_cols)
     local art_width=52
