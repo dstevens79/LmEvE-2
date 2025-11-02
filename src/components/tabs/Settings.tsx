@@ -87,6 +87,8 @@ import { UserManagement } from '@/components/UserManagement';
 import { SyncSetupPanel } from '@/components/settings/SyncSetupPanel';
 import { PermissionsTab } from '@/components/settings/PermissionsTab';
 import { SyncMonitoring } from '@/components/tabs/SyncMonitoring';
+import { ConnectionLogsPanel } from '@/components/settings/DatabaseTab/ConnectionLogsPanel';
+import { DatabaseConfigPanel } from '@/components/settings/DatabaseTab/DatabaseConfigPanel';
 
 // Status Indicator Component
 const StatusIndicator: React.FC<{
@@ -458,8 +460,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
   });
   
   // UI state management for modals and forms
-  const [showDbPassword, setShowDbPassword] = useState(false);
-  const [showSudoPassword, setShowSudoPassword] = useState(false);
+  // Moved password visibility state into DatabaseConfigPanel
   const [showSshPassword, setShowSshPassword] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionLogs, setConnectionLogs] = useState<string[]>([]);
@@ -2925,234 +2926,27 @@ echo "See README.md for detailed setup instructions"
 
               {/* Compact Database Connection Configuration */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* Database Connection - Compact */}
-                <div className="lg:col-span-1 space-y-4">
-                  <div className="border border-border rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className={`w-2 h-2 rounded-full ${dbStatus.connected ? 'bg-green-500' : 'bg-red-500'}`} />
-                      <h4 className="text-sm font-medium">Database</h4>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="dbHost" className="text-xs">Host</Label>
-                        <Input
-                          id="dbHost"
-                          value={databaseSettings.host || ''}
-                          onChange={(e) => {
-                            updateDatabaseSetting('host', e.target.value);
-                            updateDatabaseSetting('sudoHost', e.target.value);
-                          }}
-                          placeholder="localhost"
-                          className="h-8 text-sm"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="dbPort" className="text-xs">Port</Label>
-                        <Input
-                          id="dbPort"
-                          type="number"
-                          value={databaseSettings.port || ''}
-                          onChange={(e) => {
-                            const port = parseInt(e.target.value) || 3306;
-                            updateDatabaseSetting('port', port);
-                            updateDatabaseSetting('sudoPort', port);
-                          }}
-                          placeholder="3306"
-                          className="h-8 text-sm"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="dbName" className="text-xs">Database</Label>
-                        <Input
-                          id="dbName"
-                          value={databaseSettings.database || ''}
-                          onChange={(e) => updateDatabaseSetting('database', e.target.value)}
-                          placeholder="lmeve"
-                          className="h-8 text-sm"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Database Users - Compact */}
-                <div className="lg:col-span-1 space-y-4">
-                  <div className="border border-border rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className={`w-2 h-2 rounded-full ${databaseSettings.sudoUsername && databaseSettings.sudoPassword ? 'bg-green-500' : 'bg-red-500'}`} />
-                      <h4 className="text-sm font-medium">DB Users</h4>
-                    </div>
-                    <div className="space-y-3">
-                      {/* Admin User */}
-                      <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground">Sudo User</Label>
-                        <Input
-                          value={databaseSettings.sudoUsername || ''}
-                          onChange={(e) => updateDatabaseSetting('sudoUsername', e.target.value)}
-                          placeholder="root"
-                          className="h-8 text-sm"
-                        />
-                        <div className="relative">
-                          <Input
-                            type={showSudoPassword ? "text" : "password"}
-                            value={databaseSettings.sudoPassword || ''}
-                            onChange={(e) => updateDatabaseSetting('sudoPassword', e.target.value)}
-                            placeholder="Admin password"
-                            className="h-8 text-sm pr-8"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="absolute right-0 top-0 h-8 w-8 p-0"
-                            onClick={() => setShowSudoPassword(!showSudoPassword)}
-                          >
-                            {showSudoPassword ? <EyeSlash size={12} /> : <Eye size={12} />}
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* App User */}
-                      <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground">LMeve User</Label>
-                        <Input
-                          value={databaseSettings.username || ''}
-                          onChange={(e) => updateDatabaseSetting('username', e.target.value)}
-                          placeholder="lmeve_user"
-                          className="h-8 text-sm"
-                        />
-                        <div className="relative">
-                          <Input
-                            type={showDbPassword ? "text" : "password"}
-                            value={databaseSettings.password || ''}
-                            onChange={(e) => updateDatabaseSetting('password', e.target.value)}
-                            placeholder="App password"
-                            className="h-8 text-sm pr-8"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="absolute right-0 top-0 h-8 w-8 p-0"
-                            onClick={() => setShowDbPassword(!showDbPassword)}
-                          >
-                            {showDbPassword ? <EyeSlash size={12} /> : <Eye size={12} />}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <DatabaseConfigPanel
+                  databaseSettings={databaseSettings}
+                  dbConnected={!!dbStatus.connected}
+                  onUpdate={(key, value) => updateDatabaseSetting(key as any, value)}
+                />
 
                 {/* Connection Logs + Actions (Right column) */}
-                <div className="lg:col-span-1 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">Connection Logs</Label>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={clearConnectionLogs}
-                      disabled={connectionLogs.length === 0}
-                      className="h-8 px-3 text-xs"
-                    >
-                      <X size={12} className="mr-1" />
-                      Clear
-                    </Button>
-                  </div>
-                  <div className="bg-muted/30 border border-border rounded p-4 h-64 overflow-y-auto font-mono text-xs">
-                    {connectionLogs.length === 0 ? (
-                      <div className="flex items-center justify-center h-full text-muted-foreground">
-                        No logs available
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        {connectionLogs.map((log, index) => (
-                          <div 
-                            key={index} 
-                            className={`leading-relaxed ${
-                              log.includes('❌') || log.includes('💥') ? 'text-red-300' :
-                              log.includes('⚠️') ? 'text-yellow-300' :
-                              log.includes('✅') || log.includes('🎉') ? 'text-green-300' :
-                              log.includes('🔍') || log.includes('🌐') || log.includes('🔌') || 
-                              log.includes('🧪') ? 'text-blue-300' : 'text-foreground'
-                            }`}
-                          >
-                            {log}
-                          </div>
-                        ))}
-                        <div ref={connectionLogsEndRef} />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Actions under logs */}
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        console.log('🧪 Test connection button clicked');
-                        handleTestDbConnection();
-                      }}
-                      disabled={testingConnection}
-                      className="flex-1 hover:bg-accent/10 active:bg-accent/20 transition-colors"
-                    >
-                      {testingConnection ? (
-                        <>
-                          <ArrowClockwise size={16} className="mr-2 animate-spin" />
-                          Testing...
-                        </>
-                      ) : (
-                        <>
-                          <Play size={16} className="mr-2" />
-                          Test Connection
-                        </>
-                      )}
-                    </Button>
-
-                    {dbStatus.connected ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleDisconnectDb}
-                        className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/10"
-                      >
-                        <Stop size={16} className="mr-2" />
-                        Disconnect
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={handleConnectDb}
-                        className="flex-1 bg-accent hover:bg-accent/90"
-                      >
-                        <Play size={16} className="mr-2" />
-                        Connect
-                      </Button>
-                    )}
-
-                    <Button
-                      onClick={saveDatabaseSettings}
-                      variant="secondary"
-                      size="sm"
-                      className="flex-1"
-                    >
-                      Save
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        // Reset to current saved values
-                        window.location.reload();
-                      }}
-                      size="sm"
-                      className="flex-1"
-                    >
-                      Reset
-                    </Button>
-                  </div>
-                </div>
+                <ConnectionLogsPanel
+                  logs={connectionLogs}
+                  testing={testingConnection}
+                  connected={!!dbStatus.connected}
+                  onClear={clearConnectionLogs}
+                  onTest={() => {
+                    console.log('🧪 Test connection button clicked');
+                    handleTestDbConnection();
+                  }}
+                  onConnect={handleConnectDb}
+                  onDisconnect={handleDisconnectDb}
+                  onSave={saveDatabaseSettings}
+                  onReset={() => window.location.reload()}
+                />
               </div>
 
               {/* Removed: Complete Database Setup Section (yellow area) */}
