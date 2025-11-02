@@ -10,6 +10,14 @@ $storeFile = $storeDir . '/settings.json';
 
 if (!is_dir($storeDir)) {
   @mkdir($storeDir, 0775, true);
+  clearstatcache();
+  if (!is_dir($storeDir)) {
+    $lastErr = error_get_last();
+    api_fail(500, 'Failed to create settings storage directory', [
+      'storeDir' => $storeDir,
+      'lastPhpError' => $lastErr ? ($lastErr['message'] ?? 'unknown') : null
+    ]);
+  }
 }
 
 // Helper: resolve root 'settings' object from various shapes
@@ -54,7 +62,14 @@ if ($method === 'GET') {
   }
   $raw = @file_get_contents($storeFile);
   if ($raw === false) {
-    api_fail(500, 'Failed to read settings file');
+    $lastErr = error_get_last();
+    api_fail(500, 'Failed to read settings file', [
+      'storeFile' => $storeFile,
+      'exists' => file_exists($storeFile),
+      'isReadable' => is_readable($storeFile),
+      'dirIsWritable' => is_writable($storeDir),
+      'lastPhpError' => $lastErr ? ($lastErr['message'] ?? 'unknown') : null
+    ]);
   }
   $json = json_decode($raw, true);
   if (!is_array($json)) {
@@ -119,9 +134,22 @@ if ($method === 'POST') {
     }
   }
 
-  $ok = @file_put_contents($storeFile, json_encode($toStore, JSON_PRETTY_PRINT));
+  $payloadToWrite = json_encode($toStore, JSON_PRETTY_PRINT);
+  if ($payloadToWrite === false) {
+    api_fail(500, 'Failed to encode settings JSON');
+  }
+  $ok = @file_put_contents($storeFile, $payloadToWrite);
   if ($ok === false) {
-    api_fail(500, 'Failed to write settings file');
+    $lastErr = error_get_last();
+    api_fail(500, 'Failed to write settings file', [
+      'storeDir' => $storeDir,
+      'storeFile' => $storeFile,
+      'dirExists' => is_dir($storeDir),
+      'dirIsWritable' => is_writable($storeDir),
+      'fileExists' => file_exists($storeFile),
+      'fileIsWritable' => file_exists($storeFile) ? is_writable($storeFile) : null,
+      'lastPhpError' => $lastErr ? ($lastErr['message'] ?? 'unknown') : null
+    ]);
   }
   api_respond(['ok' => true]);
 }

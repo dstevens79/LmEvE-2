@@ -86,17 +86,24 @@ function AppContent() {
     handleESICallback,
     esiConfig,
     getRegisteredCorporations,
-    hydrateSessionFromServer
+    hydrateSessionFromServer,
+    getAllUsers
   } = useAuth();
   const [generalSettings] = useGeneralSettings();
   const [databaseSettings] = useDatabaseSettings();
   // Global, lightweight status for quick inline display in desktop nav
-  const [dbConnected] = useLocalKV<boolean>('lmeve-database-connected', false);
+  const [dbConnected, setDbConnected] = useLocalKV<boolean>('lmeve-database-connected', false);
   const { sdeStatus, checkForUpdates } = useSDEManager();
   const [serverHostname, setServerHostname] = React.useState<string | null>(null);
   const [serverPublicIp, setServerPublicIp] = React.useState<string | null>(null);
   const [manualLoginCount, setManualLoginCount] = React.useState<number>(0);
   const [ssoLoginCount, setSsoLoginCount] = React.useState<number>(0);
+  // ESI service and EVE server status (simple ping + players)
+  const [esiServiceStatus, setEsiServiceStatus] = React.useState<'online' | 'offline' | 'unknown'>('unknown');
+  const [eveServerStatus, setEveServerStatus] = React.useState<'online' | 'offline' | 'unknown'>('unknown');
+  const [evePlayersOnline, setEvePlayersOnline] = React.useState<number>(0);
+  const [registeredPilots, setRegisteredPilots] = React.useState<number>(0);
+  const [registeredCorpsCount, setRegisteredCorpsCount] = React.useState<number>(0);
   React.useEffect(() => {
     (async () => {
       try {
@@ -115,13 +122,47 @@ function AppContent() {
           if (data && typeof data === 'object') {
             if (typeof data.manualLoginCount === 'number') setManualLoginCount(data.manualLoginCount);
             if (typeof data.ssoLoginCount === 'number') setSsoLoginCount(data.ssoLoginCount);
+            if (typeof data.registeredPilotsCount === 'number') setRegisteredPilots(data.registeredPilotsCount);
+            if (typeof data.registeredCorpsCount === 'number') setRegisteredCorpsCount(data.registeredCorpsCount);
+            if (typeof data.dbConnected === 'boolean') setDbConnected(!!data.dbConnected);
           }
         }
       } catch {}
+      // Simple ESI service ping (no corp endpoints)
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000);
+        // Fetch a static resource that indicates ESI is up and serving JSON
+        const esi = await fetch('https://esi.evetech.net/latest/swagger.json', { method: 'GET', signal: controller.signal });
+        clearTimeout(timer);
+        setEsiServiceStatus(esi.ok ? 'online' : 'offline');
+      } catch {
+        setEsiServiceStatus('offline');
+      }
+      // EVE Tranquility server status (players online)
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000);
+        const r = await fetch('https://esi.evetech.net/latest/status/?datasource=tranquility', { method: 'GET', signal: controller.signal });
+        clearTimeout(timer);
+        if (r.ok) {
+          const j = await r.json();
+          const players = typeof j?.players === 'number' ? j.players : 0;
+          setEvePlayersOnline(players);
+          setEveServerStatus('online');
+        } else {
+          setEveServerStatus(r.status >= 500 || r.status === 503 ? 'offline' : 'unknown');
+          setEvePlayersOnline(0);
+        }
+      } catch {
+        setEveServerStatus('unknown');
+        setEvePlayersOnline(0);
+      }
     })();
     // Opportunistically trigger SDE status check (respects internal cooldowns)
     try { checkForUpdates(); } catch {}
   }, []);
+  // Registered Pilots now provided by server app-metrics
   // Prefer server-observed first-run signal: no successful logins recorded yet
   const needsDBSetup = React.useMemo(() => {
     const firstRun = (manualLoginCount + ssoLoginCount) === 0;
@@ -751,34 +792,21 @@ function AppContent() {
           {!isMobileView && (
             <div className="w-64 bg-card border-r border-border flex flex-col">
               <div className="p-4 space-y-2 flex-1 overflow-y-auto">
-                {/* Inline system status + network info (compact) */}
-                <div className="mb-2 space-y-2">
-                  <div className="text-xs text-muted-foreground flex items-center justify-between">
-                    <span className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${dbConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-                      <span>Database</span>
-                    </span>
-                    <span className="font-medium">{dbConnected ? 'Online' : 'Offline'}</span>
-                  </div>
-                  <div className="text-xs text-muted-foreground flex items-center justify-between">
-                    <span className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${sdeStatus?.isInstalled ? (sdeStatus?.isUpdateAvailable ? 'bg-red-500' : 'bg-green-500') : 'bg-gray-400'}`} />
-                      <span>SDE</span>
-                    </span>
-                    <span className="font-medium">
-                      {sdeStatus?.isInstalled ? (sdeStatus?.isUpdateAvailable ? 'Outdated' : 'Current') : 'Unknown'}
-                    </span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    <div className="flex items-center justify-between">
-                      <span>Server</span>
-                      <span className="font-medium truncate max-w-[10rem]" title={serverHostname || undefined}>{serverHostname || 'Unknown'}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>External IP</span>
-                      <span className="font-medium">{serverPublicIp || 'Unknown'}</span>
-                    </div>
-                  </div>
+                {/* System Status (merged block) */}
+                <div className="mb-3 space-y-2 text-xs">
+                  <div className="text-foreground font-semibold">--=System Status=--</div>
+                  <div className="flex items-center justify-between text-muted-foreground"><span>Database</span><span className="font-medium">{dbConnected ? 'Online' : 'Offline'}</span></div>
+                  <div className="flex items-center justify-between text-muted-foreground"><span>ESI</span><span className="font-medium">{esiServiceStatus === 'online' ? 'Online' : esiServiceStatus === 'offline' ? 'Offline' : 'Unknown'}</span></div>
+                  <div className="flex items-center justify-between text-muted-foreground"><span>EVE Server</span><span className="font-medium">{eveServerStatus === 'online' ? 'Online' : eveServerStatus === 'offline' ? 'Offline' : 'Unknown'}</span></div>
+                  <div className="flex items-center justify-between text-muted-foreground"><span>Corp ESI</span><span className="font-medium">{(esiConfig?.clientId && registeredCorps.length > 0) ? 'Online' : 'Offline'}</span></div>
+                  <div className="flex items-center justify-between text-muted-foreground"><span>Overall</span><span className="font-medium">{(dbConnected && esiServiceStatus === 'online' && eveServerStatus === 'online') ? 'Online' : 'Offline'}</span></div>
+                  <div className="text-foreground font-semibold pt-1">-==Eve Status=--</div>
+                  <div className="flex items-center justify-between text-muted-foreground"><span>Pilots Online</span><span className="font-medium">{evePlayersOnline.toLocaleString()}</span></div>
+                  <div className="flex items-center justify-between text-muted-foreground"><span>Registered Corps</span><span className="font-medium">{registeredCorpsCount}</span></div>
+                  <div className="flex items-center justify-between text-muted-foreground"><span>Registered Pilots</span><span className="font-medium">{registeredPilots}</span></div>
+                  <div className="text-foreground font-semibold pt-1">Server Info</div>
+                  <div className="flex items-center justify-between text-muted-foreground"><span>Server</span><span className="font-medium truncate max-w-[10rem]" title={serverHostname || undefined}>{serverHostname || 'Unknown'}</span></div>
+                  <div className="flex items-center justify-between text-muted-foreground"><span>External IP</span><span className="font-medium">{serverPublicIp || 'Unknown'}</span></div>
                   <div className="border-b border-border pt-1" />
                 </div>
                 {/* Main navigation tabs */}

@@ -2083,6 +2083,31 @@ echo "See README.md for detailed setup instructions"
       
       // Run the REAL connection test
       const testResult = await manager.testConnection();
+
+      // Explicit admin validation reporting from backend
+      try {
+        const usersTableExists = (testResult as any).usersTableExists;
+        const adminExists = (testResult as any).adminExists ?? (testResult as any).userExists;
+        const adminPasswordInfo = (testResult as any).adminPasswordInfo as
+          | { set: boolean; type: string; matchesDefault: boolean }
+          | undefined;
+
+        if (typeof usersTableExists !== 'undefined') {
+          addConnectionLog(`Users table check: ${usersTableExists ? 'FOUND' : 'NOT FOUND'}`);
+        }
+        if (typeof adminExists !== 'undefined') {
+          addConnectionLog(`Admin user lookup: ${adminExists ? 'FOUND' : 'NOT FOUND'}`);
+        }
+        if (adminExists && adminPasswordInfo) {
+          addConnectionLog(
+            `Admin password status: set=${adminPasswordInfo.set ? 'YES' : 'NO'}; type=${adminPasswordInfo.type}; matches default 12345=${adminPasswordInfo.matchesDefault ? 'YES' : 'NO'}`
+          );
+        } else if (adminExists && !adminPasswordInfo) {
+          addConnectionLog('Admin password status: (no details reported by server)');
+        } else if (adminExists === false) {
+          addConnectionLog('ℹ️  Admin account missing. Seed admin (admin/12345) to enable local sign-in');
+        }
+      } catch {}
       
       // Additional check for lmeve user only when appropriate
       let lmeveUserExists = false;
@@ -2385,7 +2410,7 @@ echo "See README.md for detailed setup instructions"
     return descriptions[scope] || 'EVE Online API access scope';
   };
 
-  // Load corporation and character info on mount
+  // Load corporation and character info on mount (only when ESI configured)
   useEffect(() => {
     const loadEVEData = async () => {
       if (eveOnlineSync.corporationId) {
@@ -2407,10 +2432,11 @@ echo "See README.md for detailed setup instructions"
       }
     };
 
-    if (eveOnlineSync.enabled) {
+    // Gate EVE API fetches until ESI is configured to avoid noise during status checks
+    if (eveOnlineSync.enabled && !!esiConfig?.clientId) {
       loadEVEData();
     }
-  }, [eveOnlineSync.enabled, eveOnlineSync.corporationId, eveOnlineSync.characterId]);
+  }, [eveOnlineSync.enabled, eveOnlineSync.corporationId, eveOnlineSync.characterId, esiConfig?.clientId]);
 
   // Initialize ESI settings with proper state management
   useEffect(() => {

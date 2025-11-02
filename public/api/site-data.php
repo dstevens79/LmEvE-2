@@ -10,6 +10,14 @@ $storeFile = $storeDir . '/site-data.json';
 
 if (!is_dir($storeDir)) {
   @mkdir($storeDir, 0775, true);
+  clearstatcache();
+  if (!is_dir($storeDir)) {
+    $lastErr = error_get_last();
+    api_fail(500, 'Failed to create site-data storage directory', [
+      'storeDir' => $storeDir,
+      'lastPhpError' => $lastErr ? ($lastErr['message'] ?? 'unknown') : null
+    ]);
+  }
 }
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -23,7 +31,9 @@ function load_site_data(string $file): array {
 }
 
 function save_site_data(string $file, array $data): bool {
-  return @file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT)) !== false;
+  $json = json_encode($data, JSON_PRETTY_PRINT);
+  if ($json === false) return false;
+  return @file_put_contents($file, $json) !== false;
 }
 
 if ($method === 'GET') {
@@ -42,7 +52,16 @@ if ($method === 'POST') {
   $all = load_site_data($storeFile);
   $all[$key] = $value;
   if (!save_site_data($storeFile, $all)) {
-    api_fail(500, 'Failed to write site data');
+    $lastErr = error_get_last();
+    api_fail(500, 'Failed to write site data', [
+      'storeDir' => $storeDir,
+      'storeFile' => $storeFile,
+      'dirExists' => is_dir($storeDir),
+      'dirIsWritable' => is_writable($storeDir),
+      'fileExists' => file_exists($storeFile),
+      'fileIsWritable' => file_exists($storeFile) ? is_writable($storeFile) : null,
+      'lastPhpError' => $lastErr ? ($lastErr['message'] ?? 'unknown') : null
+    ]);
   }
   api_respond(['ok' => true]);
 }
