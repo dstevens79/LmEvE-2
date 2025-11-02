@@ -36,7 +36,8 @@ fi
 
 # Utility: terminal width
 term_cols() {
-    if [ -n "$COLUMNS" ]; then echo "$COLUMNS"; return; fi
+    # Use ${COLUMNS:-} to avoid set -u abort when COLUMNS is unset
+    if [ -n "${COLUMNS:-}" ]; then echo "${COLUMNS}"; return; fi
     if command -v tput >/dev/null 2>&1; then tput cols 2>/dev/null || echo 120; else echo 120; fi
 }
 
@@ -99,7 +100,7 @@ print_step "Detecting Operating System"
 if [[ -f /etc/os-release ]]; then
     . /etc/os-release
     OS=$ID
-    OS_VERSION=$VERSION_ID   
+    OS_VERSION=$VERSION_ID
     echo -e "${GREEN}✅ Detected: $PRETTY_NAME${NC}"
 else
     echo -e "${RED}❌ Cannot detect OS. This script supports Ubuntu/Debian.${NC}"
@@ -149,7 +150,7 @@ detect_db_server() {
     DB_SERVER_PRESENT="N"
     DB_SERVER_NAME="None"
     DB_SERVICE_UNIT=""
-    DB_ACTIVE="inactive"  
+    DB_ACTIVE="inactive"
 
     local binary_present="N"
     command -v mysql >/dev/null 2>&1 && binary_present="Y"
@@ -164,10 +165,8 @@ detect_db_server() {
     # Find candidate service units
     local candidates=()
     if command -v systemctl >/dev/null 2>&1; then
-        local units=""
-        # Avoid set -e pipefail aborts: tolerate non-zero exit from systemctl
-        units="$(systemctl list-unit-files --type=service --no-legend 2>/dev/null || true)"
-        units="$(echo "$units" | awk '{print $1}')"
+        local units
+        units=$(systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}')
         for svc in mysql mariadb mysqld; do
             echo "$units" | grep -qx "${svc}.service" && candidates+=("$svc")
         done
@@ -223,6 +222,17 @@ detect_db_existence() {
     [ -d "${datadir}/${SDE_DB}" ] && SDE_DB_PRESENT="Y"
 }
 
+# Silently install pv in background so SDE import can show progress
+ensure_pv_background() {
+        if command -v pv >/dev/null 2>&1; then return; fi
+        # Only attempt on Debian/Ubuntu with apt-get available
+        if [ -x "/usr/bin/apt-get" ] || command -v apt-get >/dev/null 2>&1; then
+                (
+                    apt-get update -qq >/dev/null 2>&1 || true
+                    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pv >/dev/null 2>&1 || true
+                ) &
+        fi
+}
 
 draw_preflight_header() {
     local title_left="${BLUE}LmEvE v2${NC}"
