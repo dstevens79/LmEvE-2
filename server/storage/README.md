@@ -42,3 +42,23 @@ Bootstrap
 Notes
 - Do not commit real credentials to source control. Keep server/storage/settings.json out of version control.
 - Ensure the web server user has read/write access to this directory.
+- Storage location resolution (server-side):
+  1) Preferred: this repo path, server/storage
+  2) If set: environment variable LMEVE_STORAGE_DIR
+  3) Fallback: system temp directory, e.g. /tmp/lmeve2-storage
+  The API endpoints will use the first directory that exists and is writable.
+
+Permissions quick-fix (Linux/Apache example)
+```
+sudo mkdir -p server/storage
+sudo chown -R www-data:www-data server/storage
+sudo chmod -R 775 server/storage
+```
+
+Alternative: point storage at a custom location
+```
+export LMEVE_STORAGE_DIR=/var/lib/lmeve2
+sudo mkdir -p "$LMEVE_STORAGE_DIR"
+sudo chown -R www-data:www-data "$LMEVE_STORAGE_DIR"
+sudo chmod -R 775 "$LMEVE_STORAGE_DIR"
+```

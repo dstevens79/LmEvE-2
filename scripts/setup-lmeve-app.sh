@@ -385,6 +385,11 @@ a2enmod headers
 a2enmod ssl
 
 # Create Apache config
+# Storage directory for writable server-side data (PHP APIs)
+STORAGE_DIR="/var/lib/lmeve2"
+mkdir -p "$STORAGE_DIR"
+chown -R www-data:www-data "$STORAGE_DIR"
+chmod -R 775 "$STORAGE_DIR"
 if [ "$USE_IP" = true ]; then
     # IP-based configuration
     VHOST_FILE="/etc/apache2/sites-available/lmeve2.conf"
@@ -392,6 +397,8 @@ if [ "$USE_IP" = true ]; then
     cat > "$VHOST_FILE" << EOF
 <VirtualHost *:${HTTP_PORT}>
     ServerAdmin ${ADMIN_EMAIL}
+    # Writable storage location for PHP endpoints
+    SetEnv LMEVE_STORAGE_DIR "${STORAGE_DIR}"
     
     DocumentRoot ${FINAL_DIR}
     
@@ -429,6 +436,8 @@ else
 <VirtualHost *:${HTTP_PORT}>
     ServerName ${SERVER_NAME}
     ServerAdmin ${ADMIN_EMAIL}
+    # Writable storage location for PHP endpoints
+    SetEnv LMEVE_STORAGE_DIR "${STORAGE_DIR}"
     
     DocumentRoot ${FINAL_DIR}
     
@@ -475,6 +484,11 @@ fi
 # Set permissions
 chown -R www-data:www-data "$FINAL_DIR"
 chmod -R 755 "$FINAL_DIR"
+
+# Ensure in-repo storage folder exists (for preferred relative path used by APIs)
+mkdir -p "${FINAL_DIR}/server/storage"
+chown -R www-data:www-data "${FINAL_DIR}/server/storage"
+chmod -R 775 "${FINAL_DIR}/server/storage"
 
 # Restart Apache
 systemctl restart apache2

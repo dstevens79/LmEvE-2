@@ -5,20 +5,43 @@
 
 require_once __DIR__ . '/_lib/common.php';
 
-$storeDir = __DIR__ . '/../../server/storage';
-$storeFile = $storeDir . '/site-data.json';
+// Resolve a writable storage directory with fallbacks (env and system temp)
+$preferredDir = __DIR__ . '/../../server/storage';
+$attemptLog = [];
+$storeDir = null;
 
-if (!is_dir($storeDir)) {
-  @mkdir($storeDir, 0775, true);
-  clearstatcache();
-  if (!is_dir($storeDir)) {
+$candidates = [];
+$candidates[] = $preferredDir;
+$envDir = getenv('LMEVE_STORAGE_DIR');
+if ($envDir && $envDir !== '') $candidates[] = $envDir;
+$candidates[] = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'lmeve2-storage';
+
+foreach ($candidates as $dir) {
+  $attempt = [ 'dir' => $dir, 'created' => false, 'exists' => false, 'writable' => false, 'error' => null ];
+  if (!is_dir($dir)) {
+    @mkdir($dir, 0775, true);
+    $attempt['created'] = true;
+    clearstatcache();
+  }
+  $attempt['exists'] = is_dir($dir);
+  if ($attempt['exists']) {
+    $attempt['writable'] = @is_writable($dir);
+  } else {
     $lastErr = error_get_last();
-    api_fail(500, 'Failed to create site-data storage directory', [
-      'storeDir' => $storeDir,
-      'lastPhpError' => $lastErr ? ($lastErr['message'] ?? 'unknown') : null
-    ]);
+    $attempt['error'] = $lastErr ? ($lastErr['message'] ?? 'unknown') : 'unknown';
+  }
+  $attemptLog[] = $attempt;
+  if ($attempt['exists'] && $attempt['writable']) {
+    $storeDir = $dir;
+    break;
   }
 }
+
+if ($storeDir === null) {
+  api_fail(500, 'Failed to resolve writable site-data storage directory', [ 'attempts' => $attemptLog ]);
+}
+
+$storeFile = rtrim($storeDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'site-data.json';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 

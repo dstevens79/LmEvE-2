@@ -130,6 +130,40 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
   const [selectedBlueprint, setSelectedBlueprint] = useState<any | null>(null);
   const [manufacturingTasks] = useKV<ManufacturingTask[]>('manufacturing-tasks', []);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Per-user base station selection (persisted via site-data with local fallback)
+  const [baseStationId, setBaseStationId] = useState<number | null>(user?.userBaseStationId ?? null);
+  const SITE_DATA_FALLBACK_PREFIX = 'lmeve-site-data-fallback:';
+  const baseKey = React.useMemo(() => {
+    const uid = user?.characterId ? `char:${user.characterId}` : (user?.id ? `user:${user.id}` : 'anon');
+    return `user-base-station:${uid}`;
+  }, [user?.characterId, user?.id]);
+  const loadSiteData = async (key: string) => {
+    try {
+      const resp = await fetch(`/api/site-data.php?key=${encodeURIComponent(key)}`);
+      if (resp.ok) {
+        const json = await resp.json();
+        return json?.value ?? null;
+      }
+      try { console.warn('site-data load (assets) non-OK', await resp.json()); } catch {}
+    } catch {}
+    try { const raw = localStorage.getItem(`${SITE_DATA_FALLBACK_PREFIX}${key}`); return raw ? JSON.parse(raw) : null; } catch { return null; }
+  };
+  const saveSiteData = async (key: string, value: any) => {
+    try {
+      const resp = await fetch('/api/site-data.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, value }) });
+      if (resp.ok) return;
+      try { console.warn('site-data save (assets) non-OK', await resp.json()); } catch {}
+    } catch {}
+    try { localStorage.setItem(`${SITE_DATA_FALLBACK_PREFIX}${key}`, JSON.stringify(value)); } catch {}
+  };
+  // Hydrate base station id on mount
+  useEffect(() => {
+    (async () => {
+      if (!user) return;
+      const v = await loadSiteData(baseKey);
+      if (typeof v === 'number') setBaseStationId(v);
+    })();
+  }, [user, baseKey]);
 
   const stations = useMemo<Station[]>(() => {
     const locationMap = new Map<number, Station>();
@@ -145,6 +179,39 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
     
     return Array.from(locationMap.values()).sort((stationA, stationB) => stationA.name.localeCompare(stationB.name));
   }, [assets]);
+
+  // Determine allowed divisions at a station based on user roles and station context
+  const getAllowedDivisions = (stationId: number | null): Set<number> => {
+    if (!user || !stationId) return new Set<number>();
+    // Determine context: HQ vs Base vs Other
+    const isHQ = user.corpHomeStationId && stationId === user.corpHomeStationId;
+    const isBase = baseStationId && stationId === baseStationId;
+    const contextRoles = isHQ ? (user.eveRolesAtHQ || []) : isBase ? (user.eveRolesAtBase || []) : (user.eveRolesAtOther || []);
+    const union = new Set<string>([...(user.eveRoles || []), ...contextRoles].map(r => String(r)));
+    const containsAny = (subs: string[]) => {
+      for (const r of union) {
+        const rl = r.toLowerCase();
+        if (subs.some(s => rl === s || rl.includes(s))) return true;
+      }
+      return false;
+    };
+    // Directors/CEOs can see all
+    if (containsAny(['director', 'chief_executive_officer', 'ceo'])) {
+      return new Set<number>([1,2,3,4,5,6,7]);
+    }
+    const allowed = new Set<number>();
+    for (let d = 1; d <= 7; d++) {
+      const patterns = [
+        `hangar_take_${d}`,
+        `hangar_can_take${d}`,
+        `hangar_${d}_take`,
+      ];
+      if (containsAny(patterns)) {
+        allowed.add(d);
+      }
+    }
+    return allowed;
+  };
 
   const hangars = useMemo<CorpHangar[]>(() => {
     if (!selectedStation) return [];
@@ -177,7 +244,11 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
       });
     });
     
-    return Array.from(hangarMap.entries()).map(([division, items]) => {
+    // Apply division visibility based on roles
+    const allowed = getAllowedDivisions(selectedStation);
+    return Array.from(hangarMap.entries())
+      .filter(([division]) => allowed.has(division))
+      .map(([division, items]) => {
       const totalVolume = items.reduce((sum, i) => sum + (i.volume || 0), 0);
       const totalValue = items.reduce((sum, i) => sum + i.estimatedValue, 0);
       
@@ -193,7 +264,10 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
 
   const hangarItems = useMemo<AssetItem[]>(() => {
     if (!selectedStation || selectedHangar === null) return [];
-    
+    // If user cannot see this division at this station, hide items
+    const allowed = getAllowedDivisions(selectedStation);
+  if (!allowed.has(selectedHangar)) return [];
+
     return assets
       .filter(a => {
         if (a.locationId !== selectedStation) return false;
@@ -362,7 +436,7 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
     return {
       count: items.length,
       totalQuantity: items.reduce((sum, i) => sum + i.quantity, 0),
-      totalVolume: items.reduce((sum, i) => sum + i.volume, 0),
+      totalVolume: items.reduce((sum, i) => sum + (i.volume || 0), 0),
       totalValue: items.reduce((sum, i) => sum + i.estimatedValue, 0),
     };
   };
@@ -501,6 +575,20 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
               </Select>
             </div>
           )}
+          {selectedStation && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                setBaseStationId(selectedStation);
+                await saveSiteData(baseKey, selectedStation);
+                toast.success('Set as your Base station');
+              }}
+              title="Set selected station as my Base"
+            >
+              Set as My Base
+            </Button>
+          )}
         </div>
       </div>
 
@@ -550,7 +638,11 @@ export function Assets({ onLoginClick, isMobileView }: TabComponentProps) {
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y divide-border">
-              {hangars.map((hangar) => {
+              {hangars.length === 0 ? (
+                <div className="px-4 py-3 text-sm text-muted-foreground">
+                  {user ? 'No visible hangars at this station with your Hangar Take roles.' : 'No hangars found.'}
+                </div>
+              ) : hangars.map((hangar) => {
                 const isSelected = selectedHangar === hangar.division;
                 return (
                   <button

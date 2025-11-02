@@ -56,13 +56,42 @@ function api_limit(array $payload, int $default = 100, int $max = 1000): int {
 
 // ---- Server settings helpers ----
 
-function api_settings_path(): string {
-    // Align with settings.php location: /server/storage/settings.json
-    return __DIR__ . '/../../../server/storage/settings.json';
+/**
+ * Resolve a writable storage directory for server-side files with fallbacks:
+ * 1) Preferred repo path: /server/storage
+ * 2) Environment variable LMEVE_STORAGE_DIR, if set
+ * 3) System temp directory: sys_get_temp_dir()/lmeve2-storage
+ * Returns the first directory that exists and is writable; attempts to create as needed.
+ */
+function api_storage_dir(): ?string {
+    $preferredDir = __DIR__ . '/../../../server/storage';
+    $candidates = [];
+    $candidates[] = $preferredDir;
+    $envDir = getenv('LMEVE_STORAGE_DIR');
+    if ($envDir && $envDir !== '') $candidates[] = $envDir;
+    $candidates[] = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'lmeve2-storage';
+
+    foreach ($candidates as $dir) {
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+            clearstatcache();
+        }
+        if (is_dir($dir) && @is_writable($dir)) {
+            return $dir;
+        }
+    }
+    return null;
+}
+
+function api_settings_path(): ?string {
+    $dir = api_storage_dir();
+    if ($dir === null) return null;
+    return rtrim($dir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'settings.json';
 }
 
 function api_load_server_settings(): ?array {
     $file = api_settings_path();
+    if ($file === null) return null;
     if (!file_exists($file)) return null;
     $raw = @file_get_contents($file);
     if ($raw === false) return null;

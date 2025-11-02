@@ -343,6 +343,15 @@ export function createUserWithRole(
     refreshToken: userData.refreshToken,
     tokenExpiry: userData.tokenExpiry,
     scopes: userData.scopes || [],
+    characterScopes: userData.characterScopes || [],
+    corporationScopes: userData.corporationScopes || [],
+    // EVE roles and station context
+    eveRoles: userData.eveRoles || [],
+    eveRolesAtHQ: userData.eveRolesAtHQ || [],
+    eveRolesAtBase: userData.eveRolesAtBase || [],
+    eveRolesAtOther: userData.eveRolesAtOther || [],
+    corpHomeStationId: userData.corpHomeStationId,
+    userBaseStationId: userData.userBaseStationId,
     lastLogin: now,
     sessionExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
     isActive: true,

@@ -363,8 +363,7 @@ export class ESIAuthService {
         characterData.character_id, 
         tokenResponse.access_token
       );
-
-  const validation = validateESIUser(characterData, corporationRoles, corporations);
+  const validation = validateESIUser(characterData, corporationRoles.roles, corporations);
       
       // Determine effective role with explicit CEO detection via corporation ceo_id
       let effectiveRole = validation.suggestedRole;
@@ -422,8 +421,13 @@ export class ESIAuthService {
       });
 
       let corporationName = '';
+      let corpHomeStationId: number | undefined = undefined;
       try {
-        corporationName = await this.getCorporationName(characterData.corporation_id);
+        const corpInfo = await this.getCorporationInfo(characterData.corporation_id);
+        corporationName = corpInfo?.name || (await this.getCorporationName(characterData.corporation_id));
+        if (typeof corpInfo?.home_station_id === 'number') {
+          corpHomeStationId = corpInfo.home_station_id;
+        }
       } catch (error) {
         console.warn('Failed to get corporation name:', error);
         corporationName = 'Unknown Corporation';
@@ -451,7 +455,12 @@ export class ESIAuthService {
         tokenExpiry: new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString(),
         scopes: userScopes,
         characterScopes: characterOnlyScopes,
-        corporationScopes: corpOnlyScopes
+        corporationScopes: corpOnlyScopes,
+        eveRoles: corporationRoles.roles,
+        eveRolesAtHQ: corporationRoles.roles_at_hq,
+        eveRolesAtBase: corporationRoles.roles_at_base,
+        eveRolesAtOther: corporationRoles.roles_at_other,
+        corpHomeStationId: corpHomeStationId
       };
 
       const user = createUserWithRole(userData, effectiveRole);
@@ -673,7 +682,7 @@ export class ESIAuthService {
   /**
    * Get character's corporation roles
    */
-  private async getCharacterRoles(characterId: number, accessToken: string): Promise<string[]> {
+  private async getCharacterRoles(characterId: number, accessToken: string): Promise<{ roles: string[]; roles_at_hq: string[]; roles_at_base: string[]; roles_at_other: string[]; }> {
     console.log('🔄 Getting character roles');
     
     try {
@@ -689,18 +698,23 @@ export class ESIAuthService {
 
       if (!response.ok) {
         console.warn('Failed to get character roles, using default');
-        return [];
+        return { roles: [], roles_at_hq: [], roles_at_base: [], roles_at_other: [] };
       }
 
       const rolesData = await response.json();
-      const roles = rolesData.roles || [];
+      const payload = {
+        roles: rolesData.roles || [],
+        roles_at_hq: rolesData.roles_at_hq || [],
+        roles_at_base: rolesData.roles_at_base || [],
+        roles_at_other: rolesData.roles_at_other || []
+      };
       
-      console.log('✅ Character roles retrieved:', roles);
-      return roles;
+      console.log('✅ Character roles retrieved:', payload);
+      return payload;
       
     } catch (error) {
       console.warn('Error getting character roles:', error);
-      return [];
+      return { roles: [], roles_at_hq: [], roles_at_base: [], roles_at_other: [] };
     }
   }
 

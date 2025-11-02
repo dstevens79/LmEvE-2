@@ -807,6 +807,13 @@ export interface LMeveUser {
   scopes?: string[];
   characterScopes?: string[];       // Character-only scopes
   corporationScopes?: string[];     // Corporation scopes (requires corp roles)
+  // EVE corporation role details for hangar gating
+  eveRoles?: string[];              // Generic roles array (from roles)
+  eveRolesAtHQ?: string[];          // roles_at_hq from ESI
+  eveRolesAtBase?: string[];        // roles_at_base from ESI
+  eveRolesAtOther?: string[];       // roles_at_other from ESI
+  corpHomeStationId?: number;       // Corporation home_station_id (HQ)
+  userBaseStationId?: number;       // User-selected base station id (app-managed)
   
   // Session management
   lastLogin: string;
