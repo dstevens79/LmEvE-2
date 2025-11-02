@@ -70,10 +70,21 @@ if ($res = @$mysqli->query('SELECT VERSION() AS v')) {
 }
 
 // Check target DB access
-$hasLmeveDb = false; $canSelectLmeve = false;
+$hasLmeveDb = false; $canSelectLmeve = false; $usersTableExists = false; $adminExists = false;
 if (@$mysqli->select_db($db)) {
     $hasLmeveDb = true;
     if ($res = @$mysqli->query('SELECT 1 AS ok')) { $canSelectLmeve = true; $res->close(); }
+    // Check for users table and admin account existence
+    if ($res = @$mysqli->query("SHOW TABLES LIKE 'users'")) {
+        if ($res->num_rows > 0) { $usersTableExists = true; }
+        $res->close();
+    }
+    if ($usersTableExists) {
+        if ($res = @$mysqli->query("SELECT 1 FROM `users` WHERE `username`='admin' LIMIT 1")) {
+            if ($res->num_rows > 0) { $adminExists = true; }
+            $res->close();
+        }
+    }
 }
 
 // Check SDE DB access
@@ -98,6 +109,10 @@ echo json_encode([
     'sdeDatabase' => $sdeDb,
     'hasLmeveDb' => $hasLmeveDb,
     'canSelectLmeve' => $canSelectLmeve,
+    'usersTableExists' => $usersTableExists,
+    'adminExists' => $adminExists,
+    // Back-compat for clients expecting `userExists` to indicate admin presence
+    'userExists' => $adminExists,
     'hasSdeDb' => $hasSdeDb,
     'canSelectSde' => $canSelectSde,
 ]);

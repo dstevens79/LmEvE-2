@@ -185,7 +185,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
       };
       
       const databaseManager = new DatabaseManager(dbConfig);
-      const result = await databaseManager.testConnection();
+  const result = await databaseManager.testConnection();
 
       if (result.success) {
         setIsConnected(true);
@@ -213,10 +213,12 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         addConnectionLog('✅ Database connection successful');
         addConnectionLog(`Connected to: ${databaseSettings?.host}:${databaseSettings?.port}`);
         
+        // Backend now returns userExists=true when default admin account exists in lmeve2.users
         if (result.userExists) {
-          addConnectionLog(`✅ User '${databaseSettings?.username}' exists and authenticated`);
+          addConnectionLog(`✅ Default admin account is present in '${databaseSettings?.database || 'lmeve2'}'.users`);
         } else {
-          addConnectionLog(`⚠️ User '${databaseSettings?.username}' authenticated but may need setup`);
+          addConnectionLog(`⚠️ Default admin account is missing in '${databaseSettings?.database || 'lmeve2'}'.users`);
+          addConnectionLog(`ℹ️  Run the DB installer or seed the admin (admin/12345) to enable local sign-in`);
         }
         
         toast.success('Database connection test successful');

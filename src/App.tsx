@@ -37,6 +37,7 @@ import {
   Receipt
 } from '@phosphor-icons/react';
 import { useLocalKV, loadSettingsFromServer, useGeneralSettings, useDatabaseSettings } from '@/lib/persistenceService';
+import { useSDEManager } from '@/lib/sdeService';
 import { TabType } from '@/lib/types';
 import { DatabaseProvider } from '@/lib/DatabaseContext';
 import { LMeveDataProvider } from '@/lib/LMeveDataContext';
@@ -89,6 +90,25 @@ function AppContent() {
   } = useAuth();
   const [generalSettings] = useGeneralSettings();
   const [databaseSettings] = useDatabaseSettings();
+  // Global, lightweight status for quick inline display in desktop nav
+  const [dbConnected] = useLocalKV<boolean>('lmeve-database-connected', false);
+  const { sdeStatus, checkForUpdates } = useSDEManager();
+  const [serverHostname, setServerHostname] = React.useState<string | null>(null);
+  const [serverPublicIp, setServerPublicIp] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const resp = await fetch('/api/host-info.php', { method: 'POST' });
+        if (resp.ok) {
+          const json = await resp.json();
+          setServerHostname(json?.server?.hostname || null);
+          setServerPublicIp(json?.server?.publicIp || null);
+        }
+      } catch {}
+    })();
+    // Opportunistically trigger SDE status check (respects internal cooldowns)
+    try { checkForUpdates(); } catch {}
+  }, []);
   const needsDBSetup = React.useMemo(() => {
     const hostOk = !!databaseSettings?.host;
     const portOk = !!databaseSettings?.port;
@@ -714,6 +734,36 @@ function AppContent() {
           {!isMobileView && (
             <div className="w-64 bg-card border-r border-border flex flex-col">
               <div className="p-4 space-y-2 flex-1 overflow-y-auto">
+                {/* Inline system status + network info (compact) */}
+                <div className="mb-2 space-y-2">
+                  <div className="text-xs text-muted-foreground flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${dbConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span>Database</span>
+                    </span>
+                    <span className="font-medium">{dbConnected ? 'Online' : 'Offline'}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${sdeStatus?.isInstalled ? (sdeStatus?.isUpdateAvailable ? 'bg-red-500' : 'bg-green-500') : 'bg-gray-400'}`} />
+                      <span>SDE</span>
+                    </span>
+                    <span className="font-medium">
+                      {sdeStatus?.isInstalled ? (sdeStatus?.isUpdateAvailable ? 'Outdated' : 'Current') : 'Unknown'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    <div className="flex items-center justify-between">
+                      <span>Server</span>
+                      <span className="font-medium truncate max-w-[10rem]" title={serverHostname || undefined}>{serverHostname || 'Unknown'}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>External IP</span>
+                      <span className="font-medium">{serverPublicIp || 'Unknown'}</span>
+                    </div>
+                  </div>
+                  <div className="border-b border-border pt-1" />
+                </div>
                 {/* Main navigation tabs */}
                 {tabs.map((tab) => {
                   const IconComponent = tab.icon;
