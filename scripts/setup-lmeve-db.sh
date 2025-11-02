@@ -206,6 +206,8 @@ detect_db_server() {
             mysql|mysqld) DB_SERVER_NAME="MySQL" ;;
         esac
     fi
+    # Ensure success status so set -e doesn't abort the caller
+    return 0
 }
 
 # Detect if specific databases exist by directory
@@ -216,6 +218,8 @@ detect_db_existence() {
     datadir=$(get_datadir)
     [ -d "${datadir}/${LMEVE_DB}" ] && LMEVE_DB_PRESENT="Y"
     [ -d "${datadir}/${SDE_DB}" ] && SDE_DB_PRESENT="Y"
+    # Always succeed; negative checks should not abort under set -e
+    return 0
 }
 
 # Silently install pv in background so SDE import can show progress
@@ -367,12 +371,15 @@ draw_menu() {
     # expose MENU_MAX to main loop
 }
 
-# Start background install of pv (if missing) before first menu draw
-ensure_pv_background
+# (Disabled) background install of pv before menu to keep pre-menu side-effect free
+# ensure_pv_background
 
 # Take a one-time snapshot before menu to avoid flapping detection
+# Make snapshot non-fatal regardless of detection results
+set +e
 detect_db_server
 detect_db_existence
+set -e
 DB_SERVER_PRESENT_SNAPSHOT="$DB_SERVER_PRESENT"
 DB_SERVER_NAME_SNAPSHOT="$DB_SERVER_NAME"
 DB_SERVICE_UNIT_SNAPSHOT="$DB_SERVICE_UNIT"
