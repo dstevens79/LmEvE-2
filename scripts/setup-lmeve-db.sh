@@ -32,8 +32,6 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# (Removed large banner to make room for a dynamic right-side panel and left pre-flight block)
-
 # Utility: terminal width
 term_cols() {
     # Use ${COLUMNS:-} to avoid set -u abort when COLUMNS is unset
