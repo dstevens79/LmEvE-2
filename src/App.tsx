@@ -36,7 +36,7 @@ import {
   Key,
   Receipt
 } from '@phosphor-icons/react';
-import { useLocalKV, loadSettingsFromServer, useGeneralSettings } from '@/lib/persistenceService';
+import { useLocalKV, loadSettingsFromServer, useGeneralSettings, useDatabaseSettings } from '@/lib/persistenceService';
 import { TabType } from '@/lib/types';
 import { DatabaseProvider } from '@/lib/DatabaseContext';
 import { LMeveDataProvider } from '@/lib/LMeveDataContext';
@@ -88,6 +88,14 @@ function AppContent() {
     hydrateSessionFromServer
   } = useAuth();
   const [generalSettings] = useGeneralSettings();
+  const [databaseSettings] = useDatabaseSettings();
+  const needsDBSetup = React.useMemo(() => {
+    const hostOk = !!databaseSettings?.host;
+    const portOk = !!databaseSettings?.port;
+    const userOk = !!databaseSettings?.username;
+    const passOk = !!databaseSettings?.password;
+    return !(hostOk && portOk && userOk && passOk);
+  }, [databaseSettings]);
   const [isESICallback, setIsESICallback] = useState(false);
   const [forceRender, setForceRender] = useState(0);
   
@@ -183,15 +191,34 @@ function AppContent() {
       timestamp: Date.now()
     });
     
-    // Reset tab to dashboard when user logs out or on any tab that requires auth
+    // If DB is not configured, prefer Settings > Database rather than forcing Dashboard
     if (!currentUser) {
-      if (activeTab !== 'dashboard') {
-        console.log('🔄 User not authenticated - resetting to dashboard tab');
-        setActiveTab('dashboard');
-        setSettingsExpanded(false);
+      if (needsDBSetup) {
+        if (activeTab !== 'settings') {
+          console.log('🛠️ No DB credentials detected - opening Settings > Database');
+          setActiveTab('settings');
+          setActiveSettingsTab('database');
+          setSettingsExpanded(true);
+        }
+      } else {
+        // Reset tab to dashboard when user logs out or on any tab that requires auth
+        if (activeTab !== 'dashboard') {
+          console.log('🔄 User not authenticated - resetting to dashboard tab');
+          setActiveTab('dashboard');
+          setSettingsExpanded(false);
+        }
       }
     }
-  }, [currentUser, currentAuth, forceRender, authTrigger, activeTab]);
+  }, [currentUser, currentAuth, forceRender, authTrigger, activeTab, needsDBSetup, setActiveSettingsTab, setSettingsExpanded, setActiveTab]);
+
+  // On first load, if DB settings are missing, proactively switch to Settings > Database
+  React.useEffect(() => {
+    if (needsDBSetup) {
+      setActiveTab('settings');
+      setActiveSettingsTab('database');
+      setSettingsExpanded(true);
+    }
+  }, [needsDBSetup, setActiveTab, setActiveSettingsTab, setSettingsExpanded]);
 
   // Check if this is an ESI callback
   useEffect(() => {
@@ -942,6 +969,14 @@ function AppContent() {
               <div className="h-full overflow-y-auto">
                 <div className={`${isMobileView ? 'px-4 py-4' : 'container mx-auto px-6 py-6'}`}>
                   {!currentUser ? (
+                    // If no DB credentials are configured, show Settings > Database immediately
+                    needsDBSetup ? (
+                      <Settings 
+                        activeTab={'database'}
+                        onTabChange={handleSettingsTabChange}
+                        isMobileView={isMobileView}
+                      />
+                    ) : (
                     // Always show dashboard with login prompt when not authenticated
                     activeTab === 'dashboard' ? (
                       <div className="flex items-center justify-center h-full">
@@ -992,7 +1027,7 @@ function AppContent() {
                           </div>
                         </div>
                       </div>
-                    )
+                    ))
                   ) : activeTab === 'settings' ? (
                     <Settings 
                       activeTab={activeSettingsTab || 'general'} 
