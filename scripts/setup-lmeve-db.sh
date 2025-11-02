@@ -110,9 +110,6 @@ if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
     echo -e "${YELLOW}    Proceeding on $PRETTY_NAME (untested).${NC}"
 fi
 
-# -----------------------------------------------------
-# Pre-flight: system snapshot (CPU, RAM, OS, DB status)
-# -----------------------------------------------------
 get_cpu_model() {
     if command -v lscpu >/dev/null 2>&1; then
         lscpu | awk -F: '/Model name/ {gsub(/^ +/, "", $2); print $2; exit}'
