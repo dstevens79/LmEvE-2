@@ -213,12 +213,20 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         addConnectionLog('✅ Database connection successful');
         addConnectionLog(`Connected to: ${databaseSettings?.host}:${databaseSettings?.port}`);
         
-        // Backend now returns userExists=true when default admin account exists in lmeve2.users
-        if (result.userExists) {
-          addConnectionLog(`✅ Default admin account is present in '${databaseSettings?.database || 'lmeve2'}'.users`);
+        // Explicit admin validation reporting
+        if (typeof (result as any).usersTableExists !== 'undefined') {
+          addConnectionLog(`Users table check: ${(result as any).usersTableExists ? 'FOUND' : 'NOT FOUND'}`);
+        }
+        addConnectionLog(`Admin user lookup: ${result.adminExists ? 'FOUND' : 'NOT FOUND'}`);
+        if (result.adminExists && result.adminPasswordInfo) {
+          const info = result.adminPasswordInfo;
+          addConnectionLog(
+            `Admin password status: set=${info.set ? 'YES' : 'NO'}; type=${info.type}; matches default 12345=${info.matchesDefault ? 'YES' : 'NO'}`
+          );
+        } else if (result.adminExists && !result.adminPasswordInfo) {
+          addConnectionLog('Admin password status: (no details reported by server)');
         } else {
-          addConnectionLog(`⚠️ Default admin account is missing in '${databaseSettings?.database || 'lmeve2'}'.users`);
-          addConnectionLog(`ℹ️  Run the DB installer or seed the admin (admin/12345) to enable local sign-in`);
+          addConnectionLog(`ℹ️  Admin account missing. Seed admin (admin/12345) to enable local sign-in`);
         }
         
         toast.success('Database connection test successful');

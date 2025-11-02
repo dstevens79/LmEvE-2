@@ -70,7 +70,7 @@ if ($res = @$mysqli->query('SELECT VERSION() AS v')) {
 }
 
 // Check target DB access
-$hasLmeveDb = false; $canSelectLmeve = false; $usersTableExists = false; $adminExists = false;
+$hasLmeveDb = false; $canSelectLmeve = false; $usersTableExists = false; $adminExists = false; $adminPasswordInfo = null;
 if (@$mysqli->select_db($db)) {
     $hasLmeveDb = true;
     if ($res = @$mysqli->query('SELECT 1 AS ok')) { $canSelectLmeve = true; $res->close(); }
@@ -80,8 +80,37 @@ if (@$mysqli->select_db($db)) {
         $res->close();
     }
     if ($usersTableExists) {
-        if ($res = @$mysqli->query("SELECT 1 FROM `users` WHERE `username`='admin' LIMIT 1")) {
-            if ($res->num_rows > 0) { $adminExists = true; }
+        if ($res = @$mysqli->query("SELECT `password` FROM `users` WHERE `username`='admin' LIMIT 1")) {
+            if ($row = $res->fetch_assoc()) {
+                $adminExists = true;
+                $stored = (string)($row['password'] ?? '');
+                $type = 'empty';
+                if ($stored !== '') {
+                    if (strpos($stored, '$2y$') === 0 || strpos($stored, '$2a$') === 0) {
+                        $type = 'bcrypt';
+                    } elseif (strlen($stored) === 64 && ctype_xdigit($stored)) {
+                        $type = 'sha256';
+                    } else {
+                        $type = 'plaintext_or_other';
+                    }
+                }
+                // Determine if matches the default '12345' without exposing the secret
+                $matchesDefault = false;
+                if ($stored !== '') {
+                    if ($type === 'bcrypt') {
+                        $matchesDefault = password_verify('12345', $stored);
+                    } elseif ($type === 'sha256') {
+                        $matchesDefault = hash_equals($stored, hash('sha256', '12345'));
+                    } else {
+                        $matchesDefault = hash_equals($stored, '12345');
+                    }
+                }
+                $adminPasswordInfo = [
+                    'set' => $stored !== '',
+                    'type' => $type,
+                    'matchesDefault' => (bool)$matchesDefault,
+                ];
+            }
             $res->close();
         }
     }
@@ -113,6 +142,7 @@ echo json_encode([
     'adminExists' => $adminExists,
     // Back-compat for clients expecting `userExists` to indicate admin presence
     'userExists' => $adminExists,
+    'adminPasswordInfo' => $adminPasswordInfo,
     'hasSdeDb' => $hasSdeDb,
     'canSelectSde' => $canSelectSde,
 ]);

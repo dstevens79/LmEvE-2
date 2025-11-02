@@ -115,7 +115,7 @@ export class DatabaseManager {
     this.status.connected = false;
   }
 
-  async testConnection(): Promise<{ success: boolean; latency?: number; error?: string; validated?: boolean; userExists?: boolean }> {
+  async testConnection(): Promise<{ success: boolean; latency?: number; error?: string; validated?: boolean; userExists?: boolean; adminExists?: boolean; usersTableExists?: boolean; adminPasswordInfo?: { set: boolean; type: string; matchesDefault: boolean } }> {
     try {
       console.log(`🔍 Testing database connection: ${this.config.username}@${this.config.host}:${this.config.port}/${this.config.database}`);
       
@@ -163,7 +163,10 @@ export class DatabaseManager {
         success: true,
         latency: typeof result.latency !== 'undefined' ? result.latency : result.latencyMs,
         validated: true,
-        userExists: result.userExists 
+        userExists: result.userExists,
+        adminExists: typeof result.adminExists !== 'undefined' ? result.adminExists : result.userExists,
+        usersTableExists: result.usersTableExists,
+        adminPasswordInfo: result.adminPasswordInfo
       };
       
     } catch (error) {
