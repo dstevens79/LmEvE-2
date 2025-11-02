@@ -1,5 +1,5 @@
 import { eveApi, type CharacterInfo, type CorporationInfo, fetchESI } from '@/lib/eveApi';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,23 +57,19 @@ import {
   CaretDown,
   CaretRight,
   Question,
-  Activity,
-  Settings as SettingsIcon,
-  RefreshCw
+  Settings as SettingsIcon
 } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/auth-provider';
 import { initializeESIAuth, getESIAuthService } from '@/lib/esi-auth';
 import { CorpSettings } from '@/lib/types';
 import { toast } from 'sonner';
 // merged into the eveApi import above to include fetchESI
-import { useSDEManager, type SDEDatabaseStats } from '@/lib/sdeService';
 import { DatabaseManager, DatabaseSetupManager } from '@/lib/database';
 import { runDatabaseValidationTests } from '@/lib/databaseTestCases';
 import { hasPermission } from '@/lib/roles';
 import { useGeneralSettings,
   useDatabaseSettings,
   useESISettings,
-  useSDESettings,
   useSyncSettings,
   useNotificationSettings,
   useIncomeSettings, 
@@ -170,11 +166,11 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     });
   }, [getAllUsers]);
   
-  const { sdeStatus, checkForUpdates, downloadSDE, updateDatabase, getDatabaseStats } = useSDEManager();
+  // SDE manager removed from this tab
   const [generalSettings, setGeneralSettings] = useGeneralSettings();
   const [databaseSettings, setDatabaseSettings] = useDatabaseSettings();
   const [esiSettings, setESISettings] = useESISettings();
-  const [sdeSettings, setSDESettings] = useSDESettings();
+  // Removed SDE manager usage in Settings tab (managed elsewhere)
   const [syncSettings, setSyncSettings] = useSyncSettings();
   const [notificationSettings, setNotificationSettings] = useNotificationSettings();
   const [incomeSettings, setIncomeSettings] = useIncomeSettings();
@@ -468,21 +464,15 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionLogs, setConnectionLogs] = useState<string[]>([]);
   const [showConnectionLogs, setShowConnectionLogs] = useState(true);
+  // Auto-scroll for connection logs
+  const connectionLogsEndRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    connectionLogsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [connectionLogs]);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showSetupCommands, setShowSetupCommands] = useState(false);
   
-  // SDE Management - using the existing useSDEManager hook imported above
-  const [sdeStats, setSDEStats] = useState<SDEDatabaseStats>({
-    isConnected: false,
-    tableCount: 0,
-    totalRecords: 0,
-    totalSize: '0 MB',
-    lastUpdate: '',
-    currentVersion: 'Unknown',
-    availableVersion: 'Checking...',
-    lastUpdateCheck: undefined,
-    isOutdated: false
-  });
+  // Removed SDE stats state (not displayed in this tab)
   
   // Database connection state (persisted latch)
   const [persistedDbConnected, setPersistedDbConnected] = useLocalKV<boolean>('lmeve-database-connected', false);
@@ -506,26 +496,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
   const [serverPublicIp, setServerPublicIp] = useState<string | null>(null);
   const [serverHostname, setServerHostname] = useState<string | null>(null);
   const [clientIp, setClientIp] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Fetch server/client host information for display
-    (async () => {
-      try {
-        const resp = await fetch('/api/host-info.php', { method: 'POST' });
-        if (resp.ok) {
-          const json = await resp.json();
-          if (json.ok) {
-            setServerLocalIps(Array.isArray(json.server?.localAddrs) ? json.server.localAddrs : []);
-            setServerPublicIp(json.server?.publicIp || null);
-            setServerHostname(json.server?.hostname || null);
-            setClientIp(json.client?.ip || null);
-          }
-        }
-      } catch (_) {
-        // best-effort only
-      }
-    })();
-  }, []);
+  // Removed legacy Network Info fetch/state (not shown in UI anymore)
 
   
 
@@ -611,16 +582,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     }
   };
 
-  const saveSDESettings = async () => {
-    try {
-  setSDESettings({ ...sdeSettings });
-  syncServerSettings();
-      toast.success('SDE settings saved successfully');
-    } catch (error) {
-      console.error('Failed to save SDE settings:', error);
-      toast.error('Failed to save SDE settings');
-    }
-  };
+  // Removed SDE settings save (no longer configurable here)
 
   const saveSyncSettings = async () => {
     try {
@@ -746,9 +708,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     setESISettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const updateSDESetting = (key: keyof typeof sdeSettings, value: any) => {
-    setSDESettings(prev => ({ ...prev, [key]: value }));
-  };
+  // Removed SDE settings updates (no longer configurable here)
 
   const updateSyncSetting = (key: keyof typeof syncSettings, value: any) => {
     setSyncSettings(prev => ({ ...prev, [key]: value }));
@@ -1690,148 +1650,7 @@ echo "See README.md for detailed setup instructions"
     }
   };
 
-  // Enhanced SDE Check Handler - Real Fuzzwork API check
-  const handleCheckSDE = async () => {
-    try {
-      toast.info('Checking for SDE updates from Fuzzwork...');
-      
-      const addLog = (message: string) => {
-        const timestamp = new Date().toLocaleTimeString();
-        setConnectionLogs(prev => [...prev, `[${timestamp}] ${message}`]);
-      };
-
-      addLog('🔍 Fetching latest Fuzzwork SDE metadata...');
-      
-      // Make actual request to Fuzzwork to get latest SDE information
-      let latestVersion = 'Unknown';
-      let releaseDate = 'Unknown';
-      
-      try {
-        // Check Fuzzwork's latest dump page for metadata
-        addLog('🌐 Connecting to www.fuzzwork.co.uk...');
-        
-        // Simulate checking the latest version by checking the filename pattern
-        // In a real implementation, this would parse the HTML or use an API
-        const currentDate = new Date();
-        const year = currentDate.getFullYear();
-        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-        const day = String(currentDate.getDate()).padStart(2, '0');
-        
-        // Format as typical Fuzzwork version: YYYY-MM-DD-N
-        latestVersion = `${year}-${month}-${day}-1`;
-        releaseDate = currentDate.toISOString().split('T')[0];
-        
-        addLog(`📡 Successfully contacted Fuzzwork servers`);
-        addLog(`📦 Latest SDE version available: ${latestVersion}`);
-        addLog(`📅 SDE release date: ${releaseDate}`);
-        
-      } catch (networkError) {
-        addLog('⚠️ Network error contacting Fuzzwork - using fallback check');
-        latestVersion = '2025-01-17-1'; // Fallback version
-        releaseDate = '2025-01-17';
-      }
-      
-      // Get current installed version (if any)
-      const currentVersion = sdeStatus.currentVersion || '2025-01-10-1';
-      const currentInstallDate = sdeStatus.installedDate || null;
-      
-      addLog(`💾 Currently installed version: ${currentVersion}`);
-      if (currentInstallDate) {
-        addLog(`📅 Installed on: ${new Date(currentInstallDate).toLocaleDateString()}`);
-      }
-      
-      // Compare versions by date (simple string comparison works for YYYY-MM-DD format)
-      const latestDatePart = latestVersion.split('-').slice(0, 3).join('-');
-      const currentDatePart = currentVersion.split('-').slice(0, 3).join('-');
-      const isOutdated = currentDatePart < latestDatePart;
-      
-      if (isOutdated) {
-        const daysDiff = currentInstallDate 
-          ? Math.floor((Date.now() - new Date(currentInstallDate).getTime()) / (1000 * 60 * 60 * 24))
-          : null;
-        
-        addLog(`⚠️ Your SDE is ${daysDiff ? `${daysDiff} days` : 'significantly'} outdated`);
-        addLog('💡 Consider updating to get the latest EVE Universe data');
-        toast.warning(`SDE update available: ${latestVersion} (current: ${currentVersion})`);
-        
-        // Update SDE status
-  setSDEStats(prev => ({
-          ...prev,
-          isUpdateAvailable: true,
-          latestVersion,
-          lastChecked: new Date().toISOString()
-        }));
-      } else {
-        addLog('✅ Your SDE is current with the latest Fuzzwork release');
-        toast.success(`SDE is up to date: ${currentVersion}`);
-        
-  setSDEStats(prev => ({
-          ...prev,
-          isUpdateAvailable: false,
-          latestVersion,
-          lastChecked: new Date().toISOString()
-        }));
-      }
-      
-      // Enhanced SDE installation check
-      if (!sdeStatus.isInstalled) {
-        addLog('❌ No SDE installation detected in EveStaticData database');
-        addLog('💡 Run the database setup process to install the SDE');
-        addLog('⚡ SDE provides ship, item, universe, and market data for LMeve');
-      } else {
-        const stats = sdeStats || { tableCount: 167, totalRecords: 2456891, totalSize: '342.7 MB' };
-        addLog(`📊 SDE contains ${stats.tableCount || 'unknown'} tables`);
-        addLog(`📈 Total records: ${stats.totalRecords?.toLocaleString() || 'unknown'}`);
-        addLog(`💽 Database size: ${stats.totalSize || 'unknown'}`);
-        addLog('✅ SDE is properly installed and accessible');
-      }
-      
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-  addConnectionLog(`❌ SDE check failed: ${errorMsg}`);
-      toast.error(`SDE check failed: ${errorMsg}`);
-    }
-  };
-
-  // Update SDE Handler
-  const [isUpdatingSDE, setIsUpdatingSDE] = React.useState(false);
-  
-  const handleUpdateSDE = async () => {
-    const addLog = (message: string) => {
-      const timestamp = new Date().toLocaleTimeString();
-      setConnectionLogs(prev => [...prev, `[${timestamp}] ${message}`]);
-    };
-    
-    try {
-      setIsUpdatingSDE(true);
-      toast.info('Starting SDE update...');
-
-      addLog('📥 Downloading latest SDE from Fuzzwork...');
-      addLog('⏳ This may take several minutes (SDE is ~500MB)...');
-      addLog('⚠️ Please do not close this window during the update');
-      
-      // Simulate the update process (replace with actual implementation)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      addLog('✅ SDE download completed');
-      addLog('🔄 Importing SDE into database...');
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      addLog('✅ SDE update completed successfully');
-      toast.success('SDE updated successfully');
-      
-      // Refresh SDE status
-      await handleCheckSDE();
-      
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      addLog(`❌ SDE update failed: ${errorMsg}`);
-      toast.error(`SDE update failed: ${errorMsg}`);
-    } finally {
-      setIsUpdatingSDE(false);
-    }
-  };
+  // Removed legacy SDE check/update handlers
 
   const handleRemoteSetup = async () => {
     if (remoteAccess.sshStatus !== 'online') {
@@ -1999,48 +1818,7 @@ echo "See README.md for detailed setup instructions"
 
 
 
-  // Load SDE database stats on component mount
-  React.useEffect(() => {
-    const loadSDEStats = async () => {
-      if (databaseSettings?.host && databaseSettings?.username && databaseSettings?.password) {
-        try {
-          // Simulate checking EveStaticData database
-          const sdeDbConfig = {
-            ...databaseSettings,
-            database: 'EveStaticData'
-          };
-          
-          const manager = new DatabaseManager(sdeDbConfig);
-          const testResult = await manager.testConnection();
-          
-          if (testResult.success && testResult.validated) {
-            // Simulate getting database stats
-            setSDEStats(prev => ({
-              ...prev,
-              isConnected: true,
-              tableCount: 167,
-              totalRecords: 2456891,
-              totalSize: '342.7 MB',
-              lastUpdate: '2024-01-15T10:30:00Z',
-              currentVersion: '2024-01-15-1'
-            }));
-          } else {
-            setSDEStats(prev => ({
-              ...prev,
-              isConnected: false
-            }));
-          }
-        } catch (error) {
-          setSDEStats(prev => ({
-            ...prev,
-            isConnected: false
-          }));
-        }
-      }
-    };
-    
-    loadSDEStats();
-  }, [databaseSettings]);
+  // Removed SDE stats loader effect
 
   // REAL database connection test using the strict DatabaseManager
   const handleTestDbConnection = async () => {
@@ -2487,24 +2265,7 @@ echo "See README.md for detailed setup instructions"
     }
   }, [esiConfig.clientId, esiConfig.clientSecret, esiSettings.clientId, esiSettings.clientSecret, setESISettings]);
 
-  // Load SDE stats when component mounts
-  useEffect(() => {
-    const loadSDEStats = async () => {
-      if (sdeStatus.isInstalled) {
-        const stats = await getDatabaseStats();
-        setSDEStats(stats);
-      }
-    };
-    
-    loadSDEStats();
-  }, [sdeStatus.isInstalled, getDatabaseStats]);
-
-  // Check for SDE updates on mount (throttled in service)
-  useEffect(() => {
-    checkForUpdates();
-    // Intentionally run once on mount; the service itself throttles subsequent checks
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Removed SDE stats and update checks
 
   // Simplified database manager effect
   useEffect(() => {
@@ -2602,7 +2363,6 @@ echo "See README.md for detailed setup instructions"
     saveGeneralSettings();
     saveDatabaseSettings();
     saveESISettings();
-    saveSDESettings();
     saveSyncSettings();
     saveNotificationSettings();
     saveIncomeSettings();
@@ -2811,156 +2571,7 @@ echo "See README.md for detailed setup instructions"
     }
   };
 
-  const handleRefreshStatus = async () => {
-    toast.info('Refreshing system status...');
-    
-    // Refresh database connection
-    if (databaseSettings.host && databaseSettings.port && databaseSettings.username && databaseSettings.password) {
-      await handleTestDbConnection();
-    }
-    
-    // Check SSH status for remote hosts
-    if (databaseSettings.host && 
-        databaseSettings.host !== 'localhost' && 
-        databaseSettings.host !== '127.0.0.1' && 
-        remoteAccess.sshConnected) {
-      // Simulate SSH status check
-      try {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setRemoteAccess(prev => ({ 
-          ...prev, 
-          sshStatus: Math.random() > 0.3 ? 'online' : 'offline',
-          lastSSHCheck: new Date().toISOString() 
-        }));
-      } catch (error) {
-        setRemoteAccess(prev => ({ 
-          ...prev, 
-          sshStatus: 'offline',
-          lastSSHCheck: new Date().toISOString() 
-        }));
-      }
-    }
-    
-    // Check SDE status
-    try {
-      await checkForUpdates();
-    } catch (error) {
-      console.error('SDE check failed:', error);
-    }
-    
-    // Check EVE Online server status
-    try {
-      await checkEVEServerStatus();
-    } catch (error) {
-      console.error('EVE server check failed:', error);
-    }
-    
-    // Check corporation ESI status  
-    try {
-      await checkCorporationESIStatus();
-    } catch (error) {
-      console.error('Corporation ESI check failed:', error);
-    }
-    
-    toast.success('Status refreshed');
-  };
-
-  const checkEVEServerStatus = async () => {
-    try {
-      // Query EVE Online ESI server status directly
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      const res = await fetchESI('/status/?datasource=tranquility', { signal: controller.signal });
-      clearTimeout(timeout);
-
-      if (res.ok) {
-        const data = await res.json();
-        const players = typeof data.players === 'number' ? data.players : 0;
-        setEveServerStatus({
-          status: 'online',
-          players,
-          lastCheck: new Date().toISOString()
-        });
-        return;
-      }
-
-      // Treat 5xx or 503 as offline, others as unknown
-      const offline = res.status >= 500 || res.status === 503;
-      setEveServerStatus({
-        status: offline ? 'offline' : 'unknown',
-        players: 0,
-        lastCheck: new Date().toISOString()
-      });
-    } catch (error) {
-      // Abort or network error => unknown
-      setEveServerStatus(prev => ({
-        ...prev,
-        status: 'unknown',
-        players: 0,
-        lastCheck: new Date().toISOString()
-      }));
-    }
-  };
-
-  const checkCorporationESIStatus = async () => {
-    try {
-      // Check if there are any registered corporations with valid ESI scopes
-      const corporations = getRegisteredCorporations();
-      const hasActiveCorp = corporations.length > 0;
-      
-      // Check if any corporation has CEO/Director level authentication
-      // This would require checking ESI tokens for specific scopes
-      const hasCEODirectorAuth = corporations.some(corp => {
-        // In a real implementation, check if the corporation has the required scopes
-        // For now, assume some corporations have proper auth
-        return corp.isActive && Math.random() > 0.3; // Simulate 70% have proper auth
-      });
-
-      setCorporationESIStatus({
-        hasActiveCorporation: hasActiveCorp,
-        corporationCount: corporations.length,
-        hasCEODirectorAuth,
-        lastAuthCheck: new Date().toISOString()
-      });
-      
-    } catch (error) {
-      setCorporationESIStatus(prev => ({
-        ...prev,
-        hasActiveCorporation: false,
-        hasCEODirectorAuth: false,
-        lastAuthCheck: new Date().toISOString()
-      }));
-    }
-  };
-
-  // Auto-refresh status on component mount and periodically
-  React.useEffect(() => {
-    // Initial status check when component mounts
-    const performInitialChecks = async () => {
-      try {
-        await checkEVEServerStatus();
-        await checkCorporationESIStatus();
-      } catch (error) {
-        console.error('Initial status checks failed:', error);
-      }
-    };
-    
-    performInitialChecks();
-    
-    // Set up periodic refresh every 30 minutes for EVE server and corp auth status
-    const refreshInterval = setInterval(async () => {
-      try {
-        await checkEVEServerStatus();
-        await checkCorporationESIStatus();
-      } catch (error) {
-        console.error('Periodic status refresh failed:', error);
-      }
-    }, 30 * 60 * 1000); // 30 minutes
-    
-    return () => {
-      clearInterval(refreshInterval);
-    };
-  }, []);
+  // Removed legacy system status refresh and checks
 
   return (
     <div className="space-y-6">
@@ -3308,93 +2919,12 @@ echo "See README.md for detailed setup instructions"
                   <Database size={20} />
                   Database Configuration
                 </div>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-2">
-                      <Question size={16} />
-                      Setup Requirements
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle className="flex items-center gap-2">
-                        <Info size={20} />
-                        Database Setup Requirements
-                      </DialogTitle>
-                      <DialogDescription>
-                        Follow these steps to properly configure your database environment
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="border border-border rounded-lg p-4">
-                        <h4 className="font-semibold mb-2 flex items-center gap-2">
-                          <Database size={16} />
-                          Database Prerequisites
-                        </h4>
-                        <ul className="space-y-1 text-sm text-muted-foreground ml-4">
-                          <li>• MySQL/MariaDB server installed and running</li>
-                          <li>• Administrative (sudo) access to the database server</li>
-                          <li>• Network connectivity to the database server</li>
-                          <li>• Sufficient privileges to create databases and users</li>
-                        </ul>
-                      </div>
-                      
-                      <div className="border border-border rounded-lg p-4">
-                        <h4 className="font-semibold mb-2 flex items-center gap-2">
-                          <Key size={16} />
-                          EVE Online ESI Application
-                        </h4>
-                        <ol className="space-y-1 text-sm text-muted-foreground ml-4">
-                          <li>1. Visit <code className="bg-background px-1 rounded">https://developers.eveonline.com</code></li>
-                          <li>2. Create a new application with callback URL: <code className="bg-background px-1 rounded">{window.location.origin}/</code></li>
-                          <li>3. Copy the Client ID and Client Secret to the fields above</li>
-                          <li>4. Ensure your application has the required scopes for LMeve</li>
-                        </ol>
-                      </div>
-                      
-                      <div className="border border-border rounded-lg p-4">
-                        <h4 className="font-semibold mb-2 flex items-center gap-2">
-                          <Network size={16} />
-                          Remote Database Setup (Optional)
-                        </h4>
-                        <p className="text-sm text-muted-foreground mb-2">
-                          If your database is on a remote server, you'll need:
-                        </p>
-                        <ul className="space-y-1 text-sm text-muted-foreground ml-4">
-                          <li>• SSH access to the database server</li>
-                          <li>• SSH key-based authentication configured</li>
-                          <li>• Proper firewall rules for database access</li>
-                          <li>• Database server configured to accept remote connections</li>
-                        </ul>
-                      </div>
-                      
-                      <div className="border border-border rounded-lg p-4">
-                        <h4 className="font-semibold mb-2 flex items-center gap-2">
-                          <Archive size={16} />
-                          EVE Static Data Export (SDE)
-                        </h4>
-                        <p className="text-sm text-muted-foreground">
-                          LMeve requires the EVE Static Data Export for ship, item, and universe data. 
-                          This will be automatically downloaded and configured during the database setup process.
-                        </p>
-                      </div>
-
-                      <Alert>
-                        <Info size={16} />
-                        <AlertDescription>
-                          The automated setup process will handle database creation, user setup, and SDE import. 
-                          Ensure you have the administrative credentials ready before starting.
-                        </AlertDescription>
-                      </Alert>
-                    </div>
-                  </DialogContent>
-                </Dialog>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
 
               {/* Compact Database Connection Configuration */}
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Database Connection - Compact */}
                 <div className="lg:col-span-1 space-y-4">
                   <div className="border border-border rounded-lg p-3">
@@ -3402,7 +2932,6 @@ echo "See README.md for detailed setup instructions"
                       <div className={`w-2 h-2 rounded-full ${dbStatus.connected ? 'bg-green-500' : 'bg-red-500'}`} />
                       <h4 className="text-sm font-medium">Database</h4>
                     </div>
-                    
                     <div className="space-y-3">
                       <div className="space-y-2">
                         <Label htmlFor="dbHost" className="text-xs">Host</Label>
@@ -3453,7 +2982,6 @@ echo "See README.md for detailed setup instructions"
                       <div className={`w-2 h-2 rounded-full ${databaseSettings.sudoUsername && databaseSettings.sudoPassword ? 'bg-green-500' : 'bg-red-500'}`} />
                       <h4 className="text-sm font-medium">DB Users</h4>
                     </div>
-                    
                     <div className="space-y-3">
                       {/* Admin User */}
                       <div className="space-y-2">
@@ -3516,310 +3044,114 @@ echo "See README.md for detailed setup instructions"
                   </div>
                 </div>
 
-                {/* SDE Update Section */}
-                <div className="lg:col-span-1 space-y-4">
-                  {dbStatus.connected && 
-                   esiConfig?.clientId && 
-                   esiConfig?.clientSecret && (
-                    <div className="border border-border rounded-lg p-3">
+                {/* Connection Logs + Actions (Right column) */}
+                <div className="lg:col-span-1 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Connection Logs</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={clearConnectionLogs}
+                      disabled={connectionLogs.length === 0}
+                      className="h-8 px-3 text-xs"
+                    >
+                      <X size={12} className="mr-1" />
+                      Clear
+                    </Button>
+                  </div>
+                  <div className="bg-muted/30 border border-border rounded p-4 h-64 overflow-y-auto font-mono text-xs">
+                    {connectionLogs.length === 0 ? (
+                      <div className="flex items-center justify-center h-full text-muted-foreground">
+                        No logs available
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {connectionLogs.map((log, index) => (
+                          <div 
+                            key={index} 
+                            className={`leading-relaxed ${
+                              log.includes('❌') || log.includes('💥') ? 'text-red-300' :
+                              log.includes('⚠️') ? 'text-yellow-300' :
+                              log.includes('✅') || log.includes('🎉') ? 'text-green-300' :
+                              log.includes('🔍') || log.includes('🌐') || log.includes('🔌') || 
+                              log.includes('🧪') ? 'text-blue-300' : 'text-foreground'
+                            }`}
+                          >
+                            {log}
+                          </div>
+                        ))}
+                        <div ref={connectionLogsEndRef} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions under logs */}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        console.log('🧪 Test connection button clicked');
+                        handleTestDbConnection();
+                      }}
+                      disabled={testingConnection}
+                      className="flex-1 hover:bg-accent/10 active:bg-accent/20 transition-colors"
+                    >
+                      {testingConnection ? (
+                        <>
+                          <ArrowClockwise size={16} className="mr-2 animate-spin" />
+                          Testing...
+                        </>
+                      ) : (
+                        <>
+                          <Play size={16} className="mr-2" />
+                          Test Connection
+                        </>
+                      )}
+                    </Button>
+
+                    {dbStatus.connected ? (
                       <Button
-                        onClick={async () => {
-                          try {
-                            toast.info('Updating SDE database...');
-                            const addLog = (message: string) => {
-                              const timestamp = new Date().toLocaleTimeString();
-                              setConnectionLogs(prev => [...prev, `[${timestamp}] ${message}`]);
-                            };
-                            
-                            addLog('📥 Downloading latest SDE from Fuzzwork...');
-                            addLog('🌐 Fetching: https://www.fuzzwork.co.uk/dump/mysql-latest.tar.bz2');
-                            await new Promise(resolve => setTimeout(resolve, 3000));
-                            
-                            addLog('📦 Extracting SDE archive...');
-                            await new Promise(resolve => setTimeout(resolve, 1500));
-                            
-                            addLog('🗄️ Updating EveStaticData database tables...');
-                            addLog('📊 Importing type definitions, ship data, universe data...');
-                            await new Promise(resolve => setTimeout(resolve, 2000));
-                            
-                            addLog('🧹 Cleaning up temporary files...');
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                            
-                            addLog('✅ SDE update completed successfully');
-                            toast.success('SDE updated to latest version');
-                            
-                            // Note: sdeStatus comes from useSDEManager; updating state is handled by that service
-                          } catch (error) {
-                            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                            toast.error('SDE update failed');
-                          }
-                        }}
+                        variant="outline"
                         size="sm"
-                        className="w-full text-xs h-8 bg-green-600 hover:bg-green-700 text-white"
-                        disabled={!sdeStatus.isUpdateAvailable}
+                        onClick={handleDisconnectDb}
+                        className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/10"
                       >
-                        <Download size={12} className="mr-1" />
-                        {sdeStatus.isUpdateAvailable ? 'Update SDE' : 'SDE Current'}
+                        <Stop size={16} className="mr-2" />
+                        Disconnect
                       </Button>
-                    </div>
-                  )}
-                </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={handleConnectDb}
+                        className="flex-1 bg-accent hover:bg-accent/90"
+                      >
+                        <Play size={16} className="mr-2" />
+                        Connect
+                      </Button>
+                    )}
 
-                {/* Quick Actions Above System Status */}
-                <div className="lg:col-span-1 space-y-4">
-                  <div className="flex gap-2 mb-4">
                     <Button
-                      onClick={handleRefreshStatus}
-                      variant="outline"
+                      onClick={saveDatabaseSettings}
+                      variant="secondary"
                       size="sm"
-                      className="flex-1 text-xs h-8"
+                      className="flex-1"
                     >
-                      <RefreshCw size={12} className="mr-1" />
-                      Refresh Status
+                      Save
                     </Button>
-                    
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCheckSDE}
-                      className="flex-1 text-xs h-8"
-                    >
-                      <CloudArrowDown size={12} className="mr-1" />
-                      Check SDE
-                    </Button>
-                    
+
                     <Button
                       variant="outline"
+                      onClick={() => {
+                        // Reset to current saved values
+                        window.location.reload();
+                      }}
                       size="sm"
-                      onClick={handleUpdateSDE}
-                      disabled={sdeStatus === 'current' || isUpdatingSDE}
-                      className="flex-1 text-xs h-8"
+                      className="flex-1"
                     >
-                      <Download size={12} className="mr-1" />
-                      {isUpdatingSDE ? 'Updating...' : 'Update SDE'}
+                      Reset
                     </Button>
                   </div>
-                
-                  {/* Status Overview Panel */}
-                  <div className="border border-border rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Activity size={16} />
-                      <h4 className="text-sm font-medium">System Status</h4>
-                    </div>
-                    
-                    {/* Status Indicators */}
-                    <div className="space-y-2 mb-3">
-                      <StatusIndicator 
-                        label="Database Status" 
-                        status={dbStatus.connected ? 'online' : 'offline'} 
-                      />
-                      
-                      <StatusIndicator 
-                        label="ESI Status" 
-                        status={esiConfig?.clientId && esiConfig?.clientSecret ? 'online' : 'offline'} 
-                      />
-                      
-                      <StatusIndicator 
-                        label="EVE Server" 
-                        status={eveServerStatus.status} 
-                      />
-                      
-                      <StatusIndicator 
-                        label="Corp ESI Auth" 
-                        status={
-                          corporationESIStatus.hasCEODirectorAuth 
-                            ? 'online'    // green - corp has active ESI scopes
-                            : corporationESIStatus.hasActiveCorporation 
-                            ? 'unknown'   // yellow - corp exists but auth unclear
-                            : 'offline'   // red - no corporation configured
-                        } 
-                      />
-                      
-                      <StatusIndicator 
-                        label="Overall Status" 
-                        status={
-                          dbStatus.connected && 
-                          esiConfig?.clientId && 
-                          esiConfig?.clientSecret &&
-                          eveServerStatus.status === 'online'
-                            ? 'online' 
-                            : 'offline'
-                        } 
-                      />
-                    </div>
-                    
-                    {/* Additional Status Information */}
-                    <div className="space-y-1 text-xs border-t border-border pt-2">
-                      {eveServerStatus.players > 0 && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">EVE Players:</span>
-                          <span className="text-foreground">{eveServerStatus.players.toLocaleString()}</span>
-                        </div>
-                      )}
-                      
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Registered Corps:</span>
-                        <span className="text-foreground">{corporationESIStatus.corporationCount}</span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">SDE Latest:</span>
-                        <span className="text-foreground">{sdeStatus?.latestVersion || 'Unknown'}</span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">SDE Current:</span>
-                        <span className="text-foreground">{sdeStatus?.currentVersion || 'Unknown'}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Network Info Panel */}
-                  <div className="border border-border rounded-lg p-3 mt-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Network size={16} />
-                      <h4 className="text-sm font-medium">Network Info</h4>
-                    </div>
-                    <div className="text-xs text-muted-foreground space-y-1">
-                      {serverHostname && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Server:</span>
-                          <span className="text-foreground">{serverHostname}</span>
-                        </div>
-                      )}
-                      {serverLocalIps.length > 0 && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Internal IPs:</span>
-                          <span className="text-foreground truncate max-w-[10rem] text-right" title={serverLocalIps.join(', ')}>
-                            {serverLocalIps.join(', ')}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">External IP:</span>
-                        <span className="text-foreground">{serverPublicIp || 'Unknown'}</span>
-                      </div>
-                      {clientIp && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Your IP:</span>
-                          <span className="text-foreground">{clientIp}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Connection Controls Row */}
-              <div className="flex gap-3 max-w-2xl">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    console.log('🧪 Test connection button clicked');
-                    handleTestDbConnection();
-                  }}
-                  disabled={testingConnection}
-                  className="flex-1 hover:bg-accent/10 active:bg-accent/20 transition-colors"
-                >
-                  {testingConnection ? (
-                    <>
-                      <ArrowClockwise size={16} className="mr-2 animate-spin" />
-                      Testing...
-                    </>
-                  ) : (
-                    <>
-                      <Play size={16} className="mr-2" />
-                      Test Connection
-                    </>
-                  )}
-                </Button>
-                
-                {dbStatus.connected ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleDisconnectDb}
-                    className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/10"
-                  >
-                    <Stop size={16} className="mr-2" />
-                    Disconnect
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    onClick={handleConnectDb}
-                    className="flex-1 bg-accent hover:bg-accent/90"
-                  >
-                    <Play size={16} className="mr-2" />
-                    Connect
-                  </Button>
-                )}
-                
-                <Button
-                  onClick={saveDatabaseSettings}
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1"
-                >
-                  Save
-                </Button>
-                
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    // Reset to current saved values
-                    window.location.reload();
-                  }}
-                  size="sm"
-                  className="flex-1"
-                >
-                  Reset
-                </Button>
-              </div>
-
-              {/* Connection Logs - Full Width */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Connection Logs</Label>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={clearConnectionLogs}
-                    disabled={connectionLogs.length === 0}
-                    className="h-8 px-3 text-xs"
-                  >
-                    <X size={12} className="mr-1" />
-                    Clear
-                  </Button>
-                </div>
-                <div className="bg-muted/30 border border-border rounded p-4 h-64 overflow-y-auto font-mono text-xs">
-                  {connectionLogs.length === 0 ? (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                      No logs available
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      {connectionLogs.map((log, index) => (
-                        <div 
-                          key={index} 
-                          className={`leading-relaxed ${
-                            log.includes('❌') || log.includes('💥') ? 'text-red-300' :
-                            log.includes('⚠️') ? 'text-yellow-300' :
-                            log.includes('✅') || log.includes('🎉') ? 'text-green-300' :
-                            log.includes('🔍') || log.includes('🌐') || log.includes('🔌') || 
-                            log.includes('🔐') || log.includes('🗄️') || log.includes('🔑') || 
-                            log.includes('🎯') ? 'text-blue-300' :
-                            log.includes('⚡') ? 'text-purple-300' :
-                            log.includes('🏁') ? 'text-gray-400' :
-                            'text-foreground'
-                          }`}
-                        >
-                          {log}
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -4349,8 +3681,7 @@ echo "See README.md for detailed setup instructions"
                             <div>
                               <p className="font-medium mb-1">Configuration:</p>
                               <p className="text-muted-foreground">
-                                ESI Client: {corp.esiClientId ? 'Custom' : 'Global'}<br />
-                                Members: {corp.memberCount || 0}
+                                ESI Client: {corp.esiClientId ? 'Custom' : 'Global'}
                               </p>
                             </div>
                           </div>
@@ -4403,45 +3734,6 @@ echo "See README.md for detailed setup instructions"
               <SyncSetupPanel />
               
               <Separator className="my-6" />
-              {/* Master Poller Status */}
-              <div className="p-4 bg-accent/5 border border-accent/20 rounded-lg">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Terminal size={18} className="text-accent" />
-                    <span className="font-medium">Master Poller</span>
-                  </div>
-                  <Badge variant={syncSettings.masterPoller?.enabled ? "default" : "secondary"}>
-                    {syncSettings.masterPoller?.enabled ? "Active" : "Inactive"}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Central orchestration process that manages and schedules all individual data sync processes (poller.php equivalent)
-                </p>
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Last Run</p>
-                    <p className="font-medium">{syncSettings.masterPoller?.lastRun ? new Date(syncSettings.masterPoller.lastRun).toLocaleTimeString() : 'Never'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Next Run</p>
-                    <p className="font-medium">{syncSettings.masterPoller?.nextRun ? new Date(syncSettings.masterPoller.nextRun).toLocaleTimeString() : 'Not scheduled'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Interval</p>
-                    <p className="font-medium">{syncSettings.masterPoller?.interval || 5} min</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 mt-3">
-                  <Switch
-                    checked={syncSettings.masterPoller?.enabled || false}
-                    onCheckedChange={(checked) => setSyncSettings(prev => ({
-                      ...prev,
-                      masterPoller: { ...prev.masterPoller, enabled: checked }
-                    }))}
-                  />
-                  <Label className="text-sm">Enable Master Poller</Label>
-                </div>
-              </div>
 
               {/* ESI Route Validation */}
               <div className="border-t border-border pt-6 space-y-4">
@@ -4485,10 +3777,10 @@ echo "See README.md for detailed setup instructions"
                   <div className="p-3 bg-muted/30 rounded-lg">
                     <div className="text-sm font-medium mb-2">Last Validation Results:</div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                      {Object.entries(routeUpdateResults).map(([process, result]) => (
+                      {(Object.entries(routeUpdateResults) as Array<[string, string]>).map(([process, result]) => (
                         <div key={process} className="flex items-center gap-1">
                           <span className="capitalize">{process}:</span>
-                          <span className={result.startsWith('✓') ? 'text-green-400' : 'text-red-400'}>
+                          <span className={(result as string).startsWith('✓') ? 'text-green-400' : 'text-red-400'}>
                             {result}
                           </span>
                         </div>
@@ -4503,7 +3795,7 @@ echo "See README.md for detailed setup instructions"
                 <div className="flex items-center justify-between">
                   <h4 className="font-medium">Individual Sync Processes</h4>
                   <Badge variant="outline">
-                    {Object.values(syncSettings.syncIntervals || {}).filter(interval => interval > 0).length} Enabled
+                    {(Object.values(syncSettings.syncIntervals || {}) as number[]).filter((interval) => interval > 0).length} Enabled
                   </Badge>
                 </div>
                 
@@ -5310,10 +4602,7 @@ echo "See README.md for detailed setup instructions"
                       updateSyncInterval('market', 10);
                       updateSyncInterval('killmails', 120);
                       updateSyncInterval('income', 30);
-                      setSyncSettings(prev => ({
-                        ...prev,
-                        masterPoller: { ...prev.masterPoller, interval: 5, enabled: true }
-                      }));
+                      // Master poller settings removed; intervals reset only
                       toast.success('Reset to LMeve defaults');
                     }}
                   >
@@ -5346,10 +4635,7 @@ echo "See README.md for detailed setup instructions"
                       updateSyncInterval('market', 0);
                       updateSyncInterval('killmails', 0);
                       updateSyncInterval('income', 0);
-                      setSyncSettings(prev => ({
-                        ...prev,
-                        masterPoller: { ...prev.masterPoller, enabled: false }
-                      }));
+                      // Master poller settings removed; disabling all processes only
                       toast.success('All sync processes disabled');
                     }}
                   >
@@ -7198,9 +6484,7 @@ echo "See README.md for detailed setup instructions"
                   <Label>ESI Configuration Status</Label>
                   <div className="p-3 border border-border rounded bg-muted/50 font-mono text-sm">
                     <div>Client ID: {esiConfig.clientId ? 'Configured' : 'Not Set'}</div>
-                    <div>Secret: {esiConfig.secretKey ? 'Configured' : 'Not Set'}</div>
-                    <div>Base URL: {esiConfig.baseUrl || 'https://login.eveonline.com'}</div>
-                    <div>User Agent: {esiConfig.userAgent || 'Not Set'}</div>
+                    <div>Secret: {esiConfig.clientSecret ? 'Configured' : 'Not Set'}</div>
                   </div>
                 </div>
               </div>

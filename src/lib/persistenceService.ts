@@ -230,6 +230,12 @@ export interface NotificationSettings {
     embedFormat?: boolean;
     includeThumbnails?: boolean;
     throttleMinutes?: number;
+    templates?: {
+      manufacturing?: { enabled?: boolean; message?: string };
+      queues?: { enabled?: boolean; message?: string };
+      killmails?: { enabled?: boolean; message?: string };
+      markets?: { enabled?: boolean; message?: string };
+    };
   };
   eveMail?: {
     enabled?: boolean;
@@ -242,6 +248,12 @@ export interface NotificationSettings {
     onlyToOnlineCharacters?: boolean;
     cspaChargeCheck?: boolean;
     throttleMinutes?: number;
+    templates?: {
+      manufacturing?: { enabled?: boolean; message?: string };
+      queues?: { enabled?: boolean; message?: string };
+      killmails?: { enabled?: boolean; message?: string };
+      markets?: { enabled?: boolean; message?: string };
+    };
   };
   quietHours: {
     enabled: boolean;
