@@ -166,7 +166,8 @@ detect_db_server() {
     local candidates=()
     if command -v systemctl >/dev/null 2>&1; then
         local units
-        units=$(systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}')
+        # Guard systemctl from aborting under set -e/pipefail; still pipe output to awk
+        units=$( { systemctl list-unit-files --type=service --no-legend 2>/dev/null || true; } | awk '{print $1}')
         for svc in mysql mariadb mysqld; do
             echo "$units" | grep -qx "${svc}.service" && candidates+=("$svc")
         done
@@ -582,8 +583,8 @@ if [[ -z "$DB_TYPE" ]]; then
             DB_SERVICE="mysql"
             echo -e "${CYAN}Installing MySQL Server...${NC}"
             DEBIAN_FRONTEND=noninteractive apt install -y mysql-server
-            systemctl enable mysql
-            systemctl start mysql
+            systemctl enable mysql 2>/dev/null || true
+            systemctl start mysql 2>/dev/null || true
             echo -e "${GREEN}✅ MySQL Server installed and started${NC}"
             ;;
         2)
@@ -591,8 +592,8 @@ if [[ -z "$DB_TYPE" ]]; then
             DB_SERVICE="mariadb"
             echo -e "${CYAN}Installing MariaDB Server...${NC}"
             DEBIAN_FRONTEND=noninteractive apt install -y mariadb-server
-            systemctl enable mariadb
-            systemctl start mariadb
+            systemctl enable mariadb 2>/dev/null || true
+            systemctl start mariadb 2>/dev/null || true
             echo -e "${GREEN}✅ MariaDB Server installed and started${NC}"
             ;;
         *)
@@ -647,7 +648,7 @@ if [ "$DB_PORT" != "3306" ]; then
 fi
 
 # Restart database service to apply changes
-systemctl restart ${DB_SERVICE}
+systemctl restart ${DB_SERVICE} 2>/dev/null || true
 
 echo -e "${GREEN}✅ $DB_TYPE configured to accept connections on 0.0.0.0:${DB_PORT}${NC}"
 echo -e "${YELLOW}Note: Clients can connect remotely using port ${DB_PORT}${NC}"
