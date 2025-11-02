@@ -44,12 +44,17 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     getDatabaseStats
   } = useSDEManager();
 
-  // Update helper functions
-  const updateDatabaseSettings = (updates: any) => {
-    setDatabaseSettings(current => ({
-      ...current,
-      ...updates
-    }));
+  // Local form state to avoid per-keystroke server syncs
+  const [dbForm, setDbForm] = useState(databaseSettings);
+  useEffect(() => {
+    setDbForm(databaseSettings);
+  }, [databaseSettings]);
+
+  const updateDbForm = (updates: Partial<typeof dbForm>) => {
+    setDbForm(current => ({ ...current, ...updates }));
+  };
+  const commitDbForm = () => {
+    setDatabaseSettings({ ...dbForm });
   };
 
   const updateSDESettings = (updates: any) => {
@@ -62,19 +67,42 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   // Database connection state (persisted)
   const [isConnected, setIsConnected] = useLocalKV<boolean>('lmeve-database-connected', false);
 
-  // Server-backed setup status helpers (site-relative, not browser local storage)
+  // Server-backed setup status helpers (site-relative) with graceful fallback
+  const SITE_DATA_FALLBACK_PREFIX = 'lmeve-site-data-fallback:';
+  const warnedSiteDataFailureRef = useRef(false);
   const loadSetupStatus = async (): Promise<any> => {
     try {
       const resp = await fetch('/api/site-data.php?key=setup-status');
-      if (!resp.ok) return {};
-      const json = await resp.json();
-      return json?.value ?? {};
+      if (resp.ok) {
+        const json = await resp.json();
+        return json?.value ?? {};
+      }
+      try {
+        const diag = await resp.json();
+        if (!warnedSiteDataFailureRef.current) {
+          console.warn('site-data.php load diagnostics:', diag);
+          warnedSiteDataFailureRef.current = true;
+        }
+      } catch {}
+    } catch {}
+    try {
+      const raw = localStorage.getItem(`${SITE_DATA_FALLBACK_PREFIX}setup-status`);
+      return raw ? JSON.parse(raw) : {};
     } catch { return {}; }
   };
   const saveSetupStatus = async (value: any) => {
     try {
-      await fetch('/api/site-data.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'setup-status', value }) });
+      const resp = await fetch('/api/site-data.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'setup-status', value }) });
+      if (resp.ok) return;
+      try {
+        const diag = await resp.json();
+        if (!warnedSiteDataFailureRef.current) {
+          console.warn('site-data.php save diagnostics:', diag);
+          warnedSiteDataFailureRef.current = true;
+        }
+      } catch {}
     } catch {}
+    try { localStorage.setItem(`${SITE_DATA_FALLBACK_PREFIX}setup-status`, JSON.stringify(value)); } catch {}
   };
 
   // Keep system status indicator in sync with persisted connection state
@@ -171,36 +199,32 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   const addConnectionLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     const logEntry = `[${timestamp}] ${message}`;
-    setConnectionLogs(prev => [...prev.slice(-19), logEntry]);
+    setConnectionLogs(prev => [...prev.slice(-199), logEntry]);
   };
 
   const handleTestConnection = async () => {
-    if (!databaseSettings?.host || !databaseSettings?.port || 
-        !databaseSettings?.username || !databaseSettings?.password) {
+    if (!dbForm?.host || !dbForm?.port || !dbForm?.username || !dbForm?.password) {
       toast.error('Please fill in all database connection fields');
       return;
     }
 
     setTestingConnection(true);
     addConnectionLog('Starting database connection test...');
-    
     try {
-      // Create DatabaseManager with proper configuration
       const dbConfig = {
-        host: databaseSettings.host,
-        port: parseInt(String(databaseSettings.port)),
-        username: databaseSettings.username,
-        password: databaseSettings.password,
-        database: databaseSettings.database || 'mysql',
+        host: dbForm.host,
+        port: parseInt(String(dbForm.port)),
+        username: dbForm.username,
+        password: dbForm.password,
+        database: dbForm.database || 'mysql',
         ssl: false,
         connectionPoolSize: 10,
         queryTimeout: 30,
         autoReconnect: true,
         charset: 'utf8mb4'
       };
-      
-      const databaseManager = new DatabaseManager(dbConfig);
-  const result = await databaseManager.testConnection();
+      const manager = new DatabaseManager(dbConfig);
+      const result = await manager.testConnection();
 
       if (result.success) {
         setIsConnected(true);
@@ -209,7 +233,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
           await fetch('/api/settings.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ database: { ...databaseSettings } })
+            body: JSON.stringify({ database: { ...dbForm } })
           });
         } catch {}
         try {
@@ -225,24 +249,22 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         } catch {}
         setSystemStatus(prev => ({ ...prev, databaseConnection: 'online' }));
         addConnectionLog('✅ Database connection successful');
-        addConnectionLog(`Connected to: ${databaseSettings?.host}:${databaseSettings?.port}`);
-        
-        // Explicit admin validation reporting
+
         if (typeof (result as any).usersTableExists !== 'undefined') {
           addConnectionLog(`Users table check: ${(result as any).usersTableExists ? 'FOUND' : 'NOT FOUND'}`);
         }
-        addConnectionLog(`Admin user lookup: ${result.adminExists ? 'FOUND' : 'NOT FOUND'}`);
-        if (result.adminExists && result.adminPasswordInfo) {
-          const info = result.adminPasswordInfo;
-          addConnectionLog(
-            `Admin password status: set=${info.set ? 'YES' : 'NO'}; type=${info.type}; matches default 12345=${info.matchesDefault ? 'YES' : 'NO'}`
-          );
-        } else if (result.adminExists && !result.adminPasswordInfo) {
+        if ((result as any).adminExists !== undefined) {
+          addConnectionLog(`Admin user lookup: ${(result as any).adminExists ? 'FOUND' : 'NOT FOUND'}`);
+        }
+        if ((result as any).adminExists && (result as any).adminPasswordInfo) {
+          const info = (result as any).adminPasswordInfo;
+          addConnectionLog(`Admin password status: set=${info.set ? 'YES' : 'NO'}; type=${info.type}; matches default 12345=${info.matchesDefault ? 'YES' : 'NO'}`);
+        } else if ((result as any).adminExists && !(result as any).adminPasswordInfo) {
           addConnectionLog('Admin password status: (no details reported by server)');
         } else {
-          addConnectionLog(`ℹ️  Admin account missing. Seed admin (admin/12345) to enable local sign-in`);
+          addConnectionLog('ℹ️  Admin account missing. Seed admin (admin/12345) to enable local sign-in');
         }
-        
+
         toast.success('Database connection test successful');
       } else {
         setIsConnected(false);
@@ -272,11 +294,11 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     addConnectionLog('Starting database connect...');
     try {
       const dbConfig = {
-        host: databaseSettings.host,
-        port: parseInt(String(databaseSettings.port)),
-        username: databaseSettings.username,
-        password: databaseSettings.password,
-        database: databaseSettings.database || 'mysql',
+        host: dbForm.host,
+        port: parseInt(String(dbForm.port)),
+        username: dbForm.username,
+        password: dbForm.password,
+        database: dbForm.database || 'mysql',
         ssl: false,
         connectionPoolSize: 10,
         queryTimeout: 30,
@@ -431,8 +453,9 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                   <Label htmlFor="dbHost">Host</Label>
                   <Input
                     id="dbHost"
-                    value={databaseSettings?.host || ''}
-                    onChange={(e) => updateDatabaseSettings({ host: e.target.value })}
+                    value={dbForm?.host || ''}
+                    onChange={(e) => updateDbForm({ host: e.target.value })}
+                    onBlur={commitDbForm}
                     placeholder="localhost or IP address"
                     disabled={isConnected}
                   />
@@ -441,8 +464,9 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                   <Label htmlFor="dbPort">Port</Label>
                   <Input
                     id="dbPort"
-                    value={databaseSettings?.port || '3306'}
-                    onChange={(e) => updateDatabaseSettings({ port: e.target.value })}
+                    value={dbForm?.port || '3306'}
+                    onChange={(e) => updateDbForm({ port: e.target.value as any })}
+                    onBlur={commitDbForm}
                     placeholder="3306"
                     disabled={isConnected}
                   />
@@ -453,8 +477,9 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                 <Label htmlFor="dbName">Database Name</Label>
                 <Input
                   id="dbName"
-                  value={databaseSettings?.database || 'lmeve2'}
-                  onChange={(e) => updateDatabaseSettings({ database: e.target.value })}
+                  value={dbForm?.database || 'lmeve2'}
+                  onChange={(e) => updateDbForm({ database: e.target.value })}
+                  onBlur={commitDbForm}
                   placeholder="lmeve2"
                   disabled={isConnected}
                 />
@@ -473,14 +498,16 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                   <div className="grid grid-cols-2 gap-4 mt-2">
                     <Input
                       placeholder="root"
-                      value={databaseSettings?.sudoUsername || ''}
-                      onChange={(e) => updateDatabaseSettings({ sudoUsername: e.target.value })}
+                      value={dbForm?.sudoUsername || ''}
+                      onChange={(e) => updateDbForm({ sudoUsername: e.target.value })}
+                      onBlur={commitDbForm}
                     />
                     <Input
                       type="password"
                       placeholder="sudo password"
-                      value={databaseSettings?.sudoPassword || ''}
-                      onChange={(e) => updateDatabaseSettings({ sudoPassword: e.target.value })}
+                      value={dbForm?.sudoPassword || ''}
+                      onChange={(e) => updateDbForm({ sudoPassword: e.target.value })}
+                      onBlur={commitDbForm}
                     />
                   </div>
                 </div>
@@ -490,15 +517,17 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                   <div className="grid grid-cols-2 gap-4 mt-2">
                     <Input
                       placeholder="lmeve"
-                      value={databaseSettings?.username || ''}
-                      onChange={(e) => updateDatabaseSettings({ username: e.target.value })}
+                      value={dbForm?.username || ''}
+                      onChange={(e) => updateDbForm({ username: e.target.value })}
+                      onBlur={commitDbForm}
                       disabled={isConnected}
                     />
                     <Input
                       type="password"
                       placeholder="application password"
-                      value={databaseSettings?.password || ''}
-                      onChange={(e) => updateDatabaseSettings({ password: e.target.value })}
+                      value={dbForm?.password || ''}
+                      onChange={(e) => updateDbForm({ password: e.target.value })}
+                      onBlur={commitDbForm}
                       disabled={isConnected}
                     />
                   </div>
@@ -508,71 +537,8 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
           </Card>
         </div>
 
-        {/* System Status & Control Panel */}
+        {/* Control Panel */}
         <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">System Status</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <StatusIndicator label="Database" status={systemStatus.databaseConnection} />
-                <StatusIndicator label="SDE Version" status={systemStatus.sdeVersion} />
-              </div>
-              
-              <Separator />
-              
-              {/* Removed Database Schema section as requested */}
-
-              {/* Network Info */}
-              <div className="space-y-2">
-                <Label>Network Info</Label>
-                <div className="text-xs text-muted-foreground space-y-1">
-                  {serverHostname && (
-                    <div><span className="font-medium text-foreground">Server:</span> {serverHostname}</div>
-                  )}
-                  {serverLocalIps.length > 0 && (
-                    <div><span className="font-medium text-foreground">Internal IPs:</span> {serverLocalIps.join(', ')}</div>
-                  )}
-                  <div>
-                    <span className="font-medium text-foreground">External IP:</span> {serverPublicIp || 'Unknown'}
-                  </div>
-                  {clientIp && (
-                    <div><span className="font-medium text-foreground">Your IP:</span> {clientIp}</div>
-                  )}
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label>SDE Source</Label>
-                <Select 
-                  value={sdeSettings?.sdeSource || 'fuzzwork'} 
-                  onValueChange={(value) => updateSDESettings({ sdeSource: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="fuzzwork">Latest Fuzzwork SDE</SelectItem>
-                    <SelectItem value="custom">Custom SDE File</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>SDE Latest Version</Label>
-                  <Button variant="outline" size="sm" onClick={checkSDEStatus}>
-                    <RefreshCw size={14} />
-                  </Button>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {sdeStatus?.latestVersion || 'Unknown'}{sdeStatus?.lastChecked ? ` (checked ${new Date(sdeStatus.lastChecked).toLocaleDateString()})` : ''}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Control Pad</CardTitle>
@@ -604,7 +570,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
                 
                 <Button 
                   onClick={handleUpdateSDE}
-                  disabled={sdeStatus?.isUpdating || sdeStatus?.isDownloading || systemStatus.sdeVersion === 'current'}
+                  disabled={sdeStatus?.isUpdating || sdeStatus?.isDownloading}
                   variant="outline"
                 >
                   {sdeStatus?.isUpdating || sdeStatus?.isDownloading ? 'Updating SDE...' : 'Update SDE'}

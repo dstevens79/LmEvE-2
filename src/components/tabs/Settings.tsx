@@ -306,18 +306,49 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     lastAuthCheck: null as string | null
   });
 
+  // Site-data helpers with graceful fallback when server storage isn't ready
+  const SITE_DATA_FALLBACK_PREFIX = 'lmeve-site-data-fallback:';
+  const warnedSiteDataFailureRef = React.useRef(false);
   const loadSiteData = async (key: string) => {
     try {
       const resp = await fetch(`/api/site-data.php?key=${encodeURIComponent(key)}`);
-      if (!resp.ok) return null;
-      const json = await resp.json();
-      return json?.value ?? null;
-    } catch { return null; }
+      if (resp.ok) {
+        const json = await resp.json();
+        return json?.value ?? null;
+      }
+      // If server returned diagnostics, log once for debugging
+      try {
+        const diag = await resp.json();
+        console.warn('site-data.php load diagnostics:', diag);
+      } catch {}
+    } catch {}
+    // Fallback to local ephemeral storage so UI can continue working
+    try {
+      const raw = localStorage.getItem(`${SITE_DATA_FALLBACK_PREFIX}${key}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
   };
   const saveSiteData = async (key: string, value: any) => {
     try {
-      await fetch('/api/site-data.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, value }) });
+      const resp = await fetch('/api/site-data.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value })
+      });
+      if (resp.ok) return;
+      // Not OK – attempt to read diagnostics and warn once
+      try {
+        const diag = await resp.json();
+        if (!warnedSiteDataFailureRef.current) {
+          console.warn('site-data.php save diagnostics:', diag);
+          warnedSiteDataFailureRef.current = true;
+        }
+      } catch {}
     } catch {}
+    // Persist to local ephemeral storage as a temporary fallback
+    try { localStorage.setItem(`${SITE_DATA_FALLBACK_PREFIX}${key}`, JSON.stringify(value)); } catch {}
   };
   const setEveServerStatus = (next: typeof eveServerStatus) => {
     _setEveServerStatus(next);

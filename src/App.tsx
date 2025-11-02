@@ -68,6 +68,8 @@ function AppContent() {
       const ok = await loadSettingsFromServer();
       if (ok) window.location.reload();
     })();
+    // Legacy cleanup: remove browser-only setup status in favor of server-backed site-data
+    try { localStorage.removeItem('lmeve-setup-status'); } catch {}
   }, []);
   const [activeTab, setActiveTab] = useLocalKV<TabType>('active-tab', 'dashboard');
   const [activeSettingsTab, setActiveSettingsTab] = useLocalKV<string>('active-settings-tab', 'general');
@@ -104,6 +106,9 @@ function AppContent() {
   const [evePlayersOnline, setEvePlayersOnline] = React.useState<number>(0);
   const [registeredPilots, setRegisteredPilots] = React.useState<number>(0);
   const [registeredCorpsCount, setRegisteredCorpsCount] = React.useState<number>(0);
+  // SDE status (throttled via server)
+  const [sdeLatestVersion, setSdeLatestVersion] = React.useState<string | null>(null);
+  const [sdeIsOutdated, setSdeIsOutdated] = React.useState<boolean | null>(null);
   React.useEffect(() => {
     (async () => {
       try {
@@ -140,6 +145,25 @@ function AppContent() {
         setEsiServiceStatus('offline');
       }
       // EVE Tranquility server status (players online)
+      // SDE latest version (server-throttled)
+      try {
+        const r = await fetch('/api/sde-latest.php');
+        if (r.ok) {
+          const j = await r.json();
+          if (j && typeof j.latestVersion === 'string') {
+            setSdeLatestVersion(j.latestVersion);
+            // Compare with installed version if available
+            const installed = (sdeStatus as any)?.currentVersion as string | undefined;
+            if (installed && typeof installed === 'string') {
+              const iDate = installed.split('-').slice(0,3).join('-');
+              const lDate = j.latestVersion;
+              setSdeIsOutdated(iDate < lDate);
+            } else {
+              setSdeIsOutdated(null);
+            }
+          }
+        }
+      } catch {}
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 5000);
@@ -795,11 +819,48 @@ function AppContent() {
                 {/* System Status (merged block) */}
                 <div className="mb-3 space-y-2 text-xs">
                   <div className="text-foreground font-semibold">--=System Status=--</div>
-                  <div className="flex items-center justify-between text-muted-foreground"><span>Database</span><span className="font-medium">{dbConnected ? 'Online' : 'Offline'}</span></div>
-                  <div className="flex items-center justify-between text-muted-foreground"><span>ESI</span><span className="font-medium">{esiServiceStatus === 'online' ? 'Online' : esiServiceStatus === 'offline' ? 'Offline' : 'Unknown'}</span></div>
-                  <div className="flex items-center justify-between text-muted-foreground"><span>EVE Server</span><span className="font-medium">{eveServerStatus === 'online' ? 'Online' : eveServerStatus === 'offline' ? 'Offline' : 'Unknown'}</span></div>
-                  <div className="flex items-center justify-between text-muted-foreground"><span>Corp ESI</span><span className="font-medium">{(esiConfig?.clientId && registeredCorps.length > 0) ? 'Online' : 'Offline'}</span></div>
-                  <div className="flex items-center justify-between text-muted-foreground"><span>Overall</span><span className="font-medium">{(dbConnected && esiServiceStatus === 'online' && eveServerStatus === 'online') ? 'Online' : 'Offline'}</span></div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Database</span>
+                    <span className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${dbConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className="font-medium">{dbConnected ? 'Online' : 'Offline'}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>ESI</span>
+                    <span className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${esiServiceStatus === 'online' ? 'bg-green-500' : esiServiceStatus === 'offline' ? 'bg-red-500' : 'bg-yellow-500'}`} />
+                      <span className="font-medium">{esiServiceStatus === 'online' ? 'Online' : esiServiceStatus === 'offline' ? 'Offline' : 'Unknown'}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>EVE Server</span>
+                    <span className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${eveServerStatus === 'online' ? 'bg-green-500' : eveServerStatus === 'offline' ? 'bg-red-500' : 'bg-yellow-500'}`} />
+                      <span className="font-medium">{eveServerStatus === 'online' ? 'Online' : eveServerStatus === 'offline' ? 'Offline' : 'Unknown'}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Corp ESI</span>
+                    <span className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${(esiConfig?.clientId && registeredCorps.length > 0) ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className="font-medium">{(esiConfig?.clientId && registeredCorps.length > 0) ? 'Online' : 'Offline'}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>SDE</span>
+                    <span className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${sdeIsOutdated === null ? 'bg-yellow-500' : sdeIsOutdated ? 'bg-red-500' : 'bg-green-500'}`} />
+                      <span className="font-medium">{sdeIsOutdated === null ? 'Unknown' : sdeIsOutdated ? 'Outdated' : 'Current'}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Overall</span>
+                    <span className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${(dbConnected && esiServiceStatus === 'online' && eveServerStatus === 'online') ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className="font-medium">{(dbConnected && esiServiceStatus === 'online' && eveServerStatus === 'online') ? 'Online' : 'Offline'}</span>
+                    </span>
+                  </div>
                   <div className="text-foreground font-semibold pt-1">-==Eve Status=--</div>
                   <div className="flex items-center justify-between text-muted-foreground"><span>Pilots Online</span><span className="font-medium">{evePlayersOnline.toLocaleString()}</span></div>
                   <div className="flex items-center justify-between text-muted-foreground"><span>Registered Corps</span><span className="font-medium">{registeredCorpsCount}</span></div>

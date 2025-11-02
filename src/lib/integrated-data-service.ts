@@ -463,7 +463,7 @@ class IntegratedDataService {
       console.log('📝 Using mock planetary colony data (system not yet configured)');
       const mockColonies: PlanetaryColony[] = [
         {
-          id: '1',
+          id: 1,
           planetId: 40161465,
           planetName: 'Auga VII',
           planetType: 'barren',
@@ -472,12 +472,10 @@ class IntegratedDataService {
           upgradeLevel: 5,
           numberOfPins: 15,
           lastUpdate: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-          expiryTime: new Date(Date.now() + 18 * 60 * 60 * 1000).toISOString(),
-          productionStatus: 'active',
-          extractorStatus: 'running'
+          expiryTime: new Date(Date.now() + 18 * 60 * 60 * 1000).toISOString()
         },
         {
-          id: '2',
+          id: 2,
           planetId: 40161466,
           planetName: 'Auga VIII',
           planetType: 'temperate',
@@ -486,9 +484,7 @@ class IntegratedDataService {
           upgradeLevel: 4,
           numberOfPins: 12,
           lastUpdate: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-          expiryTime: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
-          productionStatus: 'active',
-          extractorStatus: 'running'
+          expiryTime: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
         }
       ];
       source.mock = true;
@@ -560,22 +556,26 @@ class IntegratedDataService {
         {
           typeId: 34,
           typeName: 'Tritanium',
+          regionId: 10000002,
+          region: 'The Forge',
           buyPrice: 5.45,
           sellPrice: 5.55,
           averagePrice: 5.50,
           volume: 1000000000,
           orderCount: 1500,
-          lastUpdated: new Date().toISOString()
+          lastUpdate: new Date().toISOString()
         },
         {
           typeId: 35,
           typeName: 'Pyerite',
+          regionId: 10000002,
+          region: 'The Forge',
           buyPrice: 4.95,
           sellPrice: 5.05,
           averagePrice: 5.00,
           volume: 500000000,
           orderCount: 1200,
-          lastUpdated: new Date().toISOString()
+          lastUpdate: new Date().toISOString()
         }
       ];
       source.mock = true;
@@ -652,38 +652,40 @@ class IntegratedDataService {
       console.log('📝 Using mock wallet transaction data (system not yet configured)');
       const mockTransactions: WalletTransaction[] = [
         {
-          id: '1',
+          id: 1,
+          transactionId: 7000001,
           date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          divisionId: 1,
-          amount: 50000000,
-          balance: 1000000000,
-          description: 'Market sale',
-          firstPartyId: options.corporationId,
-          secondPartyId: 90000003,
-          firstPartyName: 'Sample Corporation',
-          secondPartyName: 'Buyer Character',
           typeId: 638,
           typeName: 'Raven',
           quantity: 1,
-          location: 'Jita IV - Moon 4',
-          locationId: 60003760
+          unitPrice: 145000000,
+          amount: 145000000,
+          clientId: 91000001,
+          clientName: 'External Buyer',
+          locationId: 60003760,
+          locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+          isBuy: false,
+          isPersonal: false,
+          journalRefId: 8000001,
+          divisionId: 1
         },
         {
-          id: '2',
+          id: 2,
+          transactionId: 7000002,
           date: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-          divisionId: 1,
-          amount: -25000000,
-          balance: 950000000,
-          description: 'Market purchase',
-          firstPartyId: options.corporationId,
-          secondPartyId: 90000004,
-          firstPartyName: 'Sample Corporation',
-          secondPartyName: 'Seller Character',
           typeId: 34,
           typeName: 'Tritanium',
           quantity: 1000000,
-          location: 'Jita IV - Moon 4',
-          locationId: 60003760
+          unitPrice: 5.5,
+          amount: 5500000,
+          clientId: 90000004,
+          clientName: 'Seller Character',
+          locationId: 60003760,
+          locationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+          isBuy: true,
+          isPersonal: false,
+          journalRefId: 8000002,
+          divisionId: 1
         }
       ];
       source.mock = true;
@@ -692,29 +694,6 @@ class IntegratedDataService {
         source,
         timestamp: new Date().toISOString()
       };
-    }
-
-    return {
-      data: [],
-      source: { ...source, database: true },
-      timestamp: new Date().toISOString(),
-      error: 'System not configured and database unavailable'
-    };
-  }
-
-  async fetchWalletBalance(options: FetchOptions): Promise<FetchResult<WalletDivision>> {
-    const cacheKey = this.getCacheKey('wallet_balance', options);
-    const source: DataSource = { esi: false, database: false, cache: false, mock: false };
-
-    if (options.useCache !== false) {
-      const cached = this.getFromCache<WalletDivision[]>(cacheKey);
-      if (cached) {
-        return {
-          data: cached,
-          source: { ...source, cache: true },
-          timestamp: new Date().toISOString()
-        };
-      }
     }
 
     return {
@@ -772,14 +751,20 @@ class IntegratedDataService {
       console.log('📝 Using mock wallet balance data (system not yet configured)');
       const mockDivisions: WalletDivision[] = [
         {
+          id: 1,
           divisionId: 1,
           divisionName: 'Master Wallet',
-          balance: 1000000000
+          balance: 1000000000,
+          corporationId: options.corporationId,
+          lastUpdate: new Date().toISOString()
         },
         {
+          id: 2,
           divisionId: 2,
           divisionName: 'Secondary Wallet',
-          balance: 500000000
+          balance: 500000000,
+          corporationId: options.corporationId,
+          lastUpdate: new Date().toISOString()
         }
       ];
       source.mock = true;
