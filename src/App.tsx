@@ -95,6 +95,8 @@ function AppContent() {
   const { sdeStatus, checkForUpdates } = useSDEManager();
   const [serverHostname, setServerHostname] = React.useState<string | null>(null);
   const [serverPublicIp, setServerPublicIp] = React.useState<string | null>(null);
+  const [manualLoginCount, setManualLoginCount] = React.useState<number>(0);
+  const [ssoLoginCount, setSsoLoginCount] = React.useState<number>(0);
   React.useEffect(() => {
     (async () => {
       try {
@@ -105,17 +107,32 @@ function AppContent() {
           setServerPublicIp(json?.server?.publicIp || null);
         }
       } catch {}
+      // Pull minimal app metrics to drive first-run UX
+      try {
+        const m = await fetch('/api/app-metrics.php', { method: 'GET' });
+        if (m.ok) {
+          const data = await m.json();
+          if (data && typeof data === 'object') {
+            if (typeof data.manualLoginCount === 'number') setManualLoginCount(data.manualLoginCount);
+            if (typeof data.ssoLoginCount === 'number') setSsoLoginCount(data.ssoLoginCount);
+          }
+        }
+      } catch {}
     })();
     // Opportunistically trigger SDE status check (respects internal cooldowns)
     try { checkForUpdates(); } catch {}
   }, []);
+  // Prefer server-observed first-run signal: no successful logins recorded yet
   const needsDBSetup = React.useMemo(() => {
+    const firstRun = (manualLoginCount + ssoLoginCount) === 0;
+    if (firstRun) return true;
+    // Fallback to local check if metrics unavailable
     const hostOk = !!databaseSettings?.host;
     const portOk = !!databaseSettings?.port;
     const userOk = !!databaseSettings?.username;
     const passOk = !!databaseSettings?.password;
     return !(hostOk && portOk && userOk && passOk);
-  }, [databaseSettings]);
+  }, [manualLoginCount, ssoLoginCount, databaseSettings]);
   const [isESICallback, setIsESICallback] = useState(false);
   const [forceRender, setForceRender] = useState(0);
   
