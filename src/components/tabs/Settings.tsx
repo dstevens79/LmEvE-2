@@ -2218,8 +2218,7 @@ echo "See README.md for detailed setup instructions"
         }));
         setPersistedDbConnected(true);
         try {
-          const setupRaw = localStorage.getItem('lmeve-setup-status');
-          const setup = setupRaw ? JSON.parse(setupRaw) : {};
+          const setup = (await loadSiteData('setup-status')) || {};
           const updated = {
             hasEverBeenGreen: !!setup.hasEverBeenGreen || true,
             esiConfigured: !!setup.esiConfigured,
@@ -2227,7 +2226,7 @@ echo "See README.md for detailed setup instructions"
             isFullyConfigured: !!setup.esiConfigured && true,
             lastUpdated: new Date().toISOString()
           };
-          localStorage.setItem('lmeve-setup-status', JSON.stringify({ ...setup, ...updated }));
+          await saveSiteData('setup-status', { ...setup, ...updated });
         } catch {}
         addConnectionLog(`✅ Database connection established successfully!`);
         toast.success('Connected to database');
@@ -2254,15 +2253,14 @@ echo "See README.md for detailed setup instructions"
     }));
     setPersistedDbConnected(false);
     try {
-      const setupRaw = localStorage.getItem('lmeve-setup-status');
-      const setup = setupRaw ? JSON.parse(setupRaw) : {};
+      const setup = (await loadSiteData('setup-status')) || {};
       const updated = {
         ...setup,
         databaseConnected: false,
         isFullyConfigured: false,
         lastUpdated: new Date().toISOString()
       };
-      localStorage.setItem('lmeve-setup-status', JSON.stringify(updated));
+      await saveSiteData('setup-status', updated);
     } catch {}
     toast.info('Disconnected from database');
   };

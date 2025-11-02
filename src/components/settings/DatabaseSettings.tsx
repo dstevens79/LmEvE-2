@@ -62,6 +62,21 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   // Database connection state (persisted)
   const [isConnected, setIsConnected] = useLocalKV<boolean>('lmeve-database-connected', false);
 
+  // Server-backed setup status helpers (site-relative, not browser local storage)
+  const loadSetupStatus = async (): Promise<any> => {
+    try {
+      const resp = await fetch('/api/site-data.php?key=setup-status');
+      if (!resp.ok) return {};
+      const json = await resp.json();
+      return json?.value ?? {};
+    } catch { return {}; }
+  };
+  const saveSetupStatus = async (value: any) => {
+    try {
+      await fetch('/api/site-data.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'setup-status', value }) });
+    } catch {}
+  };
+
   // Keep system status indicator in sync with persisted connection state
   useEffect(() => {
     setSystemStatus(prev => ({
@@ -198,8 +213,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
           });
         } catch {}
         try {
-          const setupRaw = localStorage.getItem('lmeve-setup-status'); 
-          const setup = setupRaw ? JSON.parse(setupRaw) : {};
+          const setup = await loadSetupStatus();
           const updated = {
             hasEverBeenGreen: !!setup.hasEverBeenGreen,
             esiConfigured: !!setup.esiConfigured,
@@ -207,7 +221,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
             isFullyConfigured: !!setup.esiConfigured && true,
             lastUpdated: new Date().toISOString()
           };
-          localStorage.setItem('lmeve-setup-status', JSON.stringify({ ...setup, ...updated }));
+          await saveSetupStatus({ ...setup, ...updated });
         } catch {}
         setSystemStatus(prev => ({ ...prev, databaseConnection: 'online' }));
         addConnectionLog('✅ Database connection successful');
@@ -284,8 +298,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
           });
         } catch {}
         try {
-          const setupRaw = localStorage.getItem('lmeve-setup-status');
-          const setup = setupRaw ? JSON.parse(setupRaw) : {};
+          const setup = await loadSetupStatus();
           const updated = {
             hasEverBeenGreen: !!setup.hasEverBeenGreen || true,
             esiConfigured: !!setup.esiConfigured,
@@ -293,7 +306,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
             isFullyConfigured: !!setup.esiConfigured && true,
             lastUpdated: new Date().toISOString()
           };
-          localStorage.setItem('lmeve-setup-status', JSON.stringify({ ...setup, ...updated }));
+          await saveSetupStatus({ ...setup, ...updated });
         } catch {}
         setSystemStatus(prev => ({ ...prev, databaseConnection: 'online' }));
         addConnectionLog('✅ Connected and locked settings');
@@ -311,18 +324,17 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     }
   };
 
-  const handleDisconnect = () => {
+  const handleDisconnect = async () => {
     setIsConnected(false);
     try {
-      const setupRaw = localStorage.getItem('lmeve-setup-status');
-      const setup = setupRaw ? JSON.parse(setupRaw) : {};
+      const setup = await loadSetupStatus();
       const updated = {
         ...setup,
         databaseConnected: false,
         isFullyConfigured: false,
         lastUpdated: new Date().toISOString()
       };
-      localStorage.setItem('lmeve-setup-status', JSON.stringify(updated));
+      await saveSetupStatus(updated);
     } catch {}
     setSystemStatus(prev => ({ ...prev, databaseConnection: 'offline' }));
     addConnectionLog('🔌 Disconnected. Settings unlocked');
