@@ -44,6 +44,11 @@ async function saveSiteData(key: string, value: any) {
 
 const DatabaseTabContainer: React.FC = () => {
   const [databaseSettings, setDatabaseSettings] = useDatabaseSettings();
+  
+  // Track the real unmasked password separately - never let it get overwritten by '***' from server
+  const [realPassword, setRealPassword] = React.useState<string>(databaseSettings.password || '');
+  const [realSudoPassword, setRealSudoPassword] = React.useState<string>(databaseSettings.sudoPassword || '');
+  
   // Track last-saved settings snapshot to compute "dirty" state (strict model)
   const lastSavedRef = React.useRef<DatabaseSettings | null>(null);
   React.useEffect(() => {
@@ -90,6 +95,11 @@ const DatabaseTabContainer: React.FC = () => {
   const syncServerSettings = async () => {
     try {
       const backup = await exportAllSettings();
+      // Inject real unmasked passwords before sending to server
+      if (backup.settings?.database) {
+        if (realPassword) backup.settings.database.password = realPassword;
+        if (realSudoPassword) backup.settings.database.sudoPassword = realSudoPassword;
+      }
       await fetch('/api/settings.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -112,6 +122,9 @@ const DatabaseTabContainer: React.FC = () => {
   };
 
   const updateDatabaseSetting = (key: keyof DatabaseSettings, value: any) => {
+    // Track real passwords separately
+    if (key === 'password') setRealPassword(value);
+    if (key === 'sudoPassword') setRealSudoPassword(value);
     setDatabaseSettings(prev => ({ ...prev, [key]: value }));
   };
 
@@ -121,7 +134,8 @@ const DatabaseTabContainer: React.FC = () => {
       return;
     }
 
-    const { host, port, database, username, password } = databaseSettings;
+    const { host, port, database, username } = databaseSettings;
+    const password = realPassword; // Use real unmasked password
     if (!host || !port || !database || !username || !password) {
       const error = 'All database fields are required: host, port, database, username, password';
       toast.error(error);
