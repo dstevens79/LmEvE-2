@@ -182,9 +182,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
     console.log('🔐 Attempting manual login (DB):', username);
     setIsLoading(true);
     try {
+      // Prefer live DB credentials captured during a successful Test/Connect in this session
+      let liveDb: Partial<{ host: string; port: number|string; database: string; username: string; password: string }> = {};
+      try {
+        const raw = sessionStorage.getItem('lmeve-live-db-creds');
+        if (raw) liveDb = JSON.parse(raw);
+      } catch {}
+
+      // Merge: session live creds override the hook snapshot (server-masked)
+      const mergedDb = {
+        host: liveDb.host ?? databaseSettings?.host,
+        port: liveDb.port ?? databaseSettings?.port,
+        database: liveDb.database ?? databaseSettings?.database,
+        username: liveDb.username ?? databaseSettings?.username,
+        password: liveDb.password ?? databaseSettings?.password,
+      };
+
       // Basic client-side validation to avoid silent no-ops
-      const hostOk = !!databaseSettings?.host;
-      const userOk = !!databaseSettings?.username;
+      const hostOk = !!mergedDb.host;
+      const userOk = !!mergedDb.username;
       if (!hostOk || !userOk) {
         throw new Error('Database is not configured (missing host/username). Open Settings > Database to configure.');
       }
@@ -192,11 +208,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // Build query string from current database settings so server selects the correct DB
       const qs = new URLSearchParams();
       try {
-        if (databaseSettings?.host) qs.set('host', String(databaseSettings.host));
-        if (databaseSettings?.port) qs.set('port', String(databaseSettings.port));
-        if (databaseSettings?.username) qs.set('username', String(databaseSettings.username));
-        if (databaseSettings?.password) qs.set('password', String(databaseSettings.password));
-        if (databaseSettings?.database) qs.set('database', String(databaseSettings.database));
+        if (mergedDb.host) qs.set('host', String(mergedDb.host));
+        if (mergedDb.port) qs.set('port', String(mergedDb.port));
+        if (mergedDb.username) qs.set('username', String(mergedDb.username));
+        if (mergedDb.password) qs.set('password', String(mergedDb.password));
+        if (mergedDb.database) qs.set('database', String(mergedDb.database));
       } catch {}
 
       const url = `/api/auth/manual-login.php${qs.toString() ? `?${qs.toString()}` : ''}`;
@@ -265,7 +281,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [setUsers, setCurrentUser, triggerAuthChange]);
+  }, [setUsers, setCurrentUser, triggerAuthChange, databaseSettings]);
 
   // ESI SSO login
   const loginWithESI = useCallback(async (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic', scopesOverride?: string[]) => {

@@ -156,6 +156,11 @@ const DatabaseTabContainer: React.FC = () => {
         }
         toast.success('✅ Connection validated');
 
+        // Persist live DB credentials for this session so other modules (e.g., login) can use them
+        try {
+          sessionStorage.setItem('lmeve-live-db-creds', JSON.stringify({ host, port: Number(port), database, username, password }));
+        } catch {}
+
         // Probe server-side authoritative details
         try {
           addConnectionLog('🧪 Server DB probe via /api/test-connection.php ...');
@@ -268,6 +273,7 @@ const DatabaseTabContainer: React.FC = () => {
         }));
         setPersistedDbConnected(true);
         try { window.dispatchEvent(new CustomEvent('lmeve-db-connected', { detail: true })); } catch {}
+  try { sessionStorage.setItem('lmeve-live-db-creds', JSON.stringify({ host, port: Number(port), database, username, password })); } catch {}
         try {
           const setup = (await loadSiteData('setup-status')) || {};
           const updated = {
@@ -318,6 +324,7 @@ const DatabaseTabContainer: React.FC = () => {
     setDbStatus(prev => ({ ...prev, connected: false, lastError: null }));
     setPersistedDbConnected(false);
   try { window.dispatchEvent(new CustomEvent('lmeve-db-connected', { detail: false })); } catch {}
+    try { sessionStorage.removeItem('lmeve-live-db-creds'); } catch {}
     try {
       const setup = (await loadSiteData('setup-status')) || {};
       const updated = {
