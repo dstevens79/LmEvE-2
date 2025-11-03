@@ -44,6 +44,20 @@ async function saveSiteData(key: string, value: any) {
 
 const DatabaseTabContainer: React.FC = () => {
   const [databaseSettings, setDatabaseSettings] = useDatabaseSettings();
+  // Track last-saved settings snapshot to compute "dirty" state (strict model)
+  const lastSavedRef = React.useRef<DatabaseSettings | null>(null);
+  React.useEffect(() => {
+    if (!lastSavedRef.current) {
+      // Initial mount: treat current settings as saved baseline
+      lastSavedRef.current = { ...databaseSettings } as DatabaseSettings;
+    }
+  }, []);
+  const isDirty = React.useMemo(() => {
+    const a = databaseSettings as any;
+    const b = (lastSavedRef.current || {}) as any;
+    const keys: (keyof DatabaseSettings)[] = ['host','port','database','username','password','sudoUsername','sudoPassword'];
+    return keys.some(k => String(a?.[k] ?? '') !== String(b?.[k] ?? ''));
+  }, [databaseSettings]);
 
   // Connection/logs state localized to the tab
   const [testingConnection, setTestingConnection] = React.useState(false);
@@ -91,6 +105,8 @@ const DatabaseTabContainer: React.FC = () => {
     setDatabaseSettings({ ...databaseSettings });
     syncServerSettings();
     toast.success('Database settings saved successfully');
+    // Update last-saved snapshot to current values after successful save
+    lastSavedRef.current = { ...databaseSettings } as DatabaseSettings;
   };
 
   const updateDatabaseSetting = (key: keyof DatabaseSettings, value: any) => {
@@ -359,6 +375,70 @@ const DatabaseTabContainer: React.FC = () => {
           dbConnected={!!dbStatus.connected}
           onUpdate={(key, value) => updateDatabaseSetting(key as any, value)}
         />
+
+        {/* Action Bar under configuration (spans the two config columns) */}
+        <div className="lg:col-span-2 -mt-2">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleTestDbConnection}
+              disabled={testingConnection}
+              className="hover:bg-accent/10 active:bg-accent/20 transition-colors"
+            >
+              {testingConnection ? (
+                <>
+                  <ArrowClockwise size={16} className="mr-2 animate-spin" />
+                  Testing...
+                </>
+              ) : (
+                <>
+                  <CaretRight size={16} className="mr-2" />
+                  Test Connection
+                </>
+              )}
+            </Button>
+
+            {dbStatus.connected ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDisconnectDb}
+                className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+              >
+                Disconnect
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={handleConnectDb}
+                className="bg-accent hover:bg-accent/90"
+              >
+                Connect
+              </Button>
+            )}
+
+            <Button
+              onClick={saveDatabase}
+              size="sm"
+              className={isDirty
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-green-600/70 text-white cursor-default opacity-70'}
+              disabled={!isDirty}
+              title={isDirty ? 'Persist configuration to server settings' : 'Saved'}
+            >
+              {isDirty ? 'Save' : 'Saved'}
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={() => window.location.reload()}
+              size="sm"
+            >
+              Reset
+            </Button>
+          </div>
+        </div>
 
         {/* Connection Logs + Actions (Right column) */}
         <ConnectionLogsPanel

@@ -8,11 +8,11 @@ export interface ConnectionLogsPanelProps {
   testing: boolean;
   connected: boolean;
   onClear: () => void;
-  onTest: () => void;
-  onConnect: () => void;
-  onDisconnect: () => void;
-  onSave: () => void;
-  onReset: () => void;
+  onTest: () => void; // kept for compatibility (actions moved)
+  onConnect: () => void; // kept
+  onDisconnect: () => void; // kept
+  onSave: () => void; // kept
+  onReset: () => void; // kept
   extraActions?: React.ReactNode;
 }
 
@@ -72,68 +72,6 @@ export const ConnectionLogsPanel: React.FC<ConnectionLogsPanelProps> = ({
             <div ref={endRef} />
           </div>
         )}
-      </div>
-
-  {/* Actions under logs */}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onTest}
-          disabled={testing}
-          className="flex-1 hover:bg-accent/10 active:bg-accent/20 transition-colors"
-        >
-          {testing ? (
-            <>
-              <ArrowClockwise size={16} className="mr-2 animate-spin" />
-              Testing...
-            </>
-          ) : (
-            <>
-              <Play size={16} className="mr-2" />
-              Test Connection
-            </>
-          )}
-        </Button>
-
-        {connected ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onDisconnect}
-            className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/10"
-          >
-            <Stop size={16} className="mr-2" />
-            Disconnect
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            onClick={onConnect}
-            className="flex-1 bg-accent hover:bg-accent/90"
-          >
-            <Play size={16} className="mr-2" />
-            Connect
-          </Button>
-        )}
-
-        <Button
-          onClick={onSave}
-          variant="secondary"
-          size="sm"
-          className="flex-1"
-        >
-          Save
-        </Button>
-
-        <Button
-          variant="outline"
-          onClick={onReset}
-          size="sm"
-          className="flex-1"
-        >
-          Reset
-        </Button>
       </div>
 
       {extraActions && (

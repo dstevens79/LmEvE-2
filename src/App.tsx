@@ -62,6 +62,38 @@ import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
 import { Buyback } from '@/components/tabs/Buyback';
 
 function AppContent() {
+  // One-time browser-side reset for stale installations
+  React.useEffect(() => {
+    try {
+      const RESET_FLAG = 'lmeve-first-load-v2';
+      if (!localStorage.getItem(RESET_FLAG)) {
+        // Remove known LMeve localStorage/sessionStorage keys from previous installs
+        const localPrefixes = ['lmeve-', 'esi-'];
+        const sessionKeys = [
+          'lmeve-session-tokens',
+          'lmeve-live-db-creds',
+          'esi-auth-state',
+          'esi-login-attempt',
+          'esi-corp-consent',
+          'settings-hydrated'
+        ];
+        // Clear localStorage keys by prefix
+        const lsToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k) continue;
+          if (localPrefixes.some(p => k.startsWith(p))) lsToRemove.push(k);
+        }
+        lsToRemove.forEach(k => localStorage.removeItem(k));
+        // Clear specific sessionStorage keys
+        sessionKeys.forEach(k => sessionStorage.removeItem(k));
+        // Mark completed
+        localStorage.setItem(RESET_FLAG, String(Date.now()));
+        console.log('🧹 One-time browser reset completed');
+      }
+    } catch {}
+  }, []);
+
   // One-time settings hydration on first load only if local storage is empty; avoid reload loops
   React.useEffect(() => {
     (async () => {
