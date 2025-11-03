@@ -144,9 +144,13 @@ const DatabaseTabContainer: React.FC = () => {
           addConnectionLog('✅ API is reachable');
         } else {
           addConnectionLog(`⚠️ API health responded with HTTP ${h.status}`);
+          addConnectionLog('⛔ Aborting DB test: backend health failed');
+          return;
         }
       } catch (e) {
         addConnectionLog(`⚠️ API health check failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+        addConnectionLog('⛔ Aborting DB test: backend not reachable');
+        return;
       }
 
       const config = {
