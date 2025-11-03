@@ -45,9 +45,28 @@ async function saveSiteData(key: string, value: any) {
 const DatabaseTabContainer: React.FC = () => {
   const [databaseSettings, setDatabaseSettings] = useDatabaseSettings();
   
-  // Track the real unmasked password separately - never let it get overwritten by '***' from server
-  const [realPassword, setRealPassword] = React.useState<string>(databaseSettings.password || '');
-  const [realSudoPassword, setRealSudoPassword] = React.useState<string>(databaseSettings.sudoPassword || '');
+  // Track real unmasked passwords entered by user (persisted in sessionStorage for this session)
+  // Initialize from sessionStorage if available, otherwise null
+  const [realPassword, setRealPassword] = React.useState<string | null>(() => {
+    try {
+      const stored = sessionStorage.getItem('lmeve-temp-db-password');
+      return stored || null;
+    } catch {
+      return null;
+    }
+  });
+  const [realSudoPassword, setRealSudoPassword] = React.useState<string | null>(() => {
+    try {
+      const stored = sessionStorage.getItem('lmeve-temp-sudo-password');
+      return stored || null;
+    } catch {
+      return null;
+    }
+  });
+  
+  // Computed effective password: use user-entered if available, otherwise server value
+  const effectivePassword = realPassword !== null ? realPassword : (databaseSettings.password || '');
+  const effectiveSudoPassword = realSudoPassword !== null ? realSudoPassword : (databaseSettings.sudoPassword || '');
   
   // Track last-saved settings snapshot to compute "dirty" state (strict model)
   const lastSavedRef = React.useRef<DatabaseSettings | null>(null);
@@ -95,10 +114,10 @@ const DatabaseTabContainer: React.FC = () => {
   const syncServerSettings = async () => {
     try {
       const backup = await exportAllSettings();
-      // Inject real unmasked passwords before sending to server
+      // Inject real unmasked passwords before sending to server (only if user entered new ones)
       if (backup.settings?.database) {
-        if (realPassword) backup.settings.database.password = realPassword;
-        if (realSudoPassword) backup.settings.database.sudoPassword = realSudoPassword;
+        if (realPassword !== null) backup.settings.database.password = realPassword;
+        if (realSudoPassword !== null) backup.settings.database.sudoPassword = realSudoPassword;
       }
       await fetch('/api/settings.php', {
         method: 'POST',
@@ -122,9 +141,23 @@ const DatabaseTabContainer: React.FC = () => {
   };
 
   const updateDatabaseSetting = (key: keyof DatabaseSettings, value: any) => {
-    // Track real passwords separately
-    if (key === 'password') setRealPassword(value);
-    if (key === 'sudoPassword') setRealSudoPassword(value);
+    // Track real passwords separately and persist for this session
+    if (key === 'password') {
+      setRealPassword(value);
+      try {
+        sessionStorage.setItem('lmeve-temp-db-password', value);
+      } catch {
+        // Ignore storage errors
+      }
+    }
+    if (key === 'sudoPassword') {
+      setRealSudoPassword(value);
+      try {
+        sessionStorage.setItem('lmeve-temp-sudo-password', value);
+      } catch {
+        // Ignore storage errors
+      }
+    }
     setDatabaseSettings(prev => ({ ...prev, [key]: value }));
   };
 
@@ -135,9 +168,17 @@ const DatabaseTabContainer: React.FC = () => {
     }
 
     const { host, port, database, username } = databaseSettings;
-    const password = realPassword; // Use real unmasked password
+    const password = effectivePassword; // Use effective password (user-entered or server value)
     if (!host || !port || !database || !username || !password) {
       const error = 'All database fields are required: host, port, database, username, password';
+      toast.error(error);
+      addConnectionLog(`❌ ${error}`);
+      return;
+    }
+    
+    // If password is still '***', user hasn't entered a real password yet
+    if (password === '***') {
+      const error = 'Please enter the database password (current value is masked)';
       toast.error(error);
       addConnectionLog(`❌ ${error}`);
       return;
@@ -347,6 +388,17 @@ const DatabaseTabContainer: React.FC = () => {
   const handleDisconnectDb = async () => {
     setDbStatus(prev => ({ ...prev, connected: false, lastError: null }));
     setPersistedDbConnected(false);
+    
+    // Clear session-stored passwords
+    try {
+      sessionStorage.removeItem('lmeve-temp-db-password');
+      sessionStorage.removeItem('lmeve-temp-sudo-password');
+    } catch {
+      // Ignore storage errors
+    }
+    setRealPassword(null);
+    setRealSudoPassword(null);
+    
     try { window.dispatchEvent(new CustomEvent('lmeve-db-connected', { detail: false })); } catch {}
     try {
       const setup = (await loadSiteData('setup-status')) || {};
