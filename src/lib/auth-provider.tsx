@@ -190,28 +190,59 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // Add a timeout to prevent indefinite hang
       const controller = new AbortController();
-      const timer = window.setTimeout(() => controller.abort(), 10000);
+      const timer = window.setTimeout(() => {
+        console.warn('⏰ Login request timeout (10s) - aborting...');
+        controller.abort();
+      }, 10000);
+      
       let resp: Response;
       try {
+        const fetchStart = performance.now();
+        console.log('📤 Sending login request to:', url);
+        
         resp = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
           signal: controller.signal,
         });
+        
+        const fetchDuration = Math.round(performance.now() - fetchStart);
+        console.log(`📥 Login response received: HTTP ${resp.status} (${fetchDuration}ms)`);
+      } catch (fetchError: any) {
+        clearTimeout(timer);
+        
+        // Enhanced diagnostics for fetch failures
+        if (fetchError?.name === 'AbortError') {
+          console.error('❌ Login fetch ABORTED - likely timeout or user cancellation');
+          throw new Error('Login request timed out. Ensure the PHP API is running and database settings are correct.');
+        } else if (fetchError instanceof TypeError) {
+          console.error('❌ Login fetch NETWORK ERROR:', fetchError.message);
+          console.error('💡 Possible causes: Server down, incorrect URL, CORS issue, or network disconnection');
+          throw new Error(`Network error during login: ${fetchError.message}`);
+        } else {
+          console.error('❌ Login fetch ERROR:', fetchError);
+          throw fetchError;
+        }
       } finally {
-        window.clearTimeout(timer);
+        clearTimeout(timer);
       }
 
       // Try to parse JSON regardless of HTTP code; server may return HTTP 200 with ok:false
       let json: any = null;
-      try { json = await resp.json(); } catch {}
+      try { 
+        json = await resp.json();
+        console.log('📋 Login response parsed:', { ok: json?.ok, hasUser: !!json?.user, error: json?.error });
+      } catch (parseError) {
+        console.warn('⚠️ Failed to parse login response as JSON:', parseError);
+      }
 
       // Prefer server error message when provided
       if (!resp.ok || (json && json.ok === false)) {
         const statusInfo = `HTTP ${resp.status}`;
         const serverErr = json && (json.error || json.message);
         // MySQL connect failed or other DB/setup errors come through here
+        console.error(`❌ Login failed: ${serverErr || statusInfo}`);
         throw new Error(serverErr ? `${serverErr} (${statusInfo})` : `Login failed (${statusInfo})`);
       }
 
@@ -219,6 +250,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (!row) {
         // Provide clearer guidance when server responded but no user payload is present
         const serverErr = json && (json.error || json.message);
+        console.error('❌ Login response missing user data');
         throw new Error(serverErr || 'Invalid server response');
       }
       const roleFromServer = (row.role || 'corp_member') as UserRole;
@@ -244,13 +276,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         window.dispatchEvent(new CustomEvent('lmeve-login-success'));
       } catch {}
     } catch (error: any) {
-      // Map AbortError to a friendly timeout message
-      if (error?.name === 'AbortError' || /aborted/i.test(String(error?.message))) {
-        const hint = 'Login request timed out. Ensure the PHP API is running and database settings are correct.';
-        const e = new Error(hint);
-        console.error('❌ Manual login failed (timeout):', e);
-        throw e;
-      }
       console.error('❌ Manual login failed:', error);
       throw error;
     } finally {

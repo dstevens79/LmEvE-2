@@ -177,7 +177,7 @@ const DatabaseTabContainer: React.FC = () => {
       return;
     }
 
-    setConnectionLogs([]);
+    // Don't clear logs - preserve for debugging repeated tests
     setTestingConnection(true);
     setLastSuccessfulTest(null);
     
@@ -185,22 +185,52 @@ const DatabaseTabContainer: React.FC = () => {
       addConnectionLog('🔍 Starting database validation...');
       addConnectionLog(`🎯 Target: ${username}@${host}:${port}/${database}`);
 
-      // Simple health check - no AbortController complexity
+      // Health check with timeout and detailed diagnostics
       addConnectionLog('🌐 Checking API health...');
+      const healthController = new AbortController();
+      const healthTimeout = setTimeout(() => {
+        addConnectionLog('⏰ API health check timeout (5s) - aborting request');
+        healthController.abort();
+      }, 5000);
+      
       try {
+        const healthStart = performance.now();
         const healthRes = await fetch('/api/health.php', {
           method: 'GET',
           cache: 'no-cache',
-          headers: { 'Cache-Control': 'no-cache' }
+          headers: { 'Cache-Control': 'no-cache' },
+          signal: healthController.signal
         });
+        clearTimeout(healthTimeout);
+        const healthDuration = Math.round(performance.now() - healthStart);
+        
         if (!healthRes.ok) {
-          addConnectionLog(`⚠️ API health check failed: HTTP ${healthRes.status}`);
+          addConnectionLog(`⚠️ API health check failed: HTTP ${healthRes.status} (${healthDuration}ms)`);
+          try {
+            const errorText = await healthRes.text();
+            if (errorText) addConnectionLog(`📄 Response: ${errorText.substring(0, 200)}`);
+          } catch {}
+          toast.error('API health check failed');
           return;
         }
-        addConnectionLog('✅ API is reachable');
-      } catch (healthError) {
-        addConnectionLog(`⚠️ API health check error: ${healthError instanceof Error ? healthError.message : String(healthError)}`);
-        addConnectionLog(`⚠️ Error type: ${healthError?.constructor?.name || 'unknown'}`);
+        addConnectionLog(`✅ API is reachable (${healthDuration}ms)`);
+      } catch (healthError: any) {
+        clearTimeout(healthTimeout);
+        const isAbort = healthError?.name === 'AbortError';
+        const isTimeout = isAbort || /timeout/i.test(String(healthError?.message));
+        
+        if (isTimeout) {
+          addConnectionLog('❌ API health check TIMED OUT - server may be overloaded or unresponsive');
+          addConnectionLog('💡 Suggestion: Check that PHP-FPM/web server is running and not hung');
+        } else if (healthError instanceof TypeError && /fetch/i.test(healthError.message)) {
+          addConnectionLog('❌ API health check NETWORK ERROR - cannot reach server');
+          addConnectionLog(`📄 Details: ${healthError.message}`);
+          addConnectionLog('💡 Suggestion: Verify web server is running and accessible');
+        } else {
+          addConnectionLog(`❌ API health check error: ${healthError instanceof Error ? healthError.message : String(healthError)}`);
+          addConnectionLog(`🔍 Error type: ${healthError?.constructor?.name || 'unknown'}`);
+        }
+        toast.error('API health check failed - see logs');
         return;
       }
 
