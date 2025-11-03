@@ -36,7 +36,7 @@ import {
   Key,
   Receipt
 } from '@phosphor-icons/react';
-import { useLocalKV, loadSettingsFromServer, useGeneralSettings, useDatabaseSettings } from '@/lib/persistenceService';
+import { useLocalKV, bootstrapSettingsFromServerIfEmpty, useGeneralSettings, useDatabaseSettings } from '@/lib/persistenceService';
 import { useSDEManager } from '@/lib/sdeService';
 import { TabType } from '@/lib/types';
 import { DatabaseProvider } from '@/lib/DatabaseContext';
@@ -62,11 +62,19 @@ import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
 import { Buyback } from '@/components/tabs/Buyback';
 
 function AppContent() {
-  // Always hydrate settings from server on startup to ensure disk-backed configs are loaded
+  // One-time settings hydration on first load only if local storage is empty; avoid reload loops
   React.useEffect(() => {
     (async () => {
-      const ok = await loadSettingsFromServer();
-      if (ok) window.location.reload();
+      try {
+        // Skip if we've already hydrated once this session
+        if (sessionStorage.getItem('settings-hydrated') === '1') return;
+        const result = await bootstrapSettingsFromServerIfEmpty();
+        if (result === 'loaded') {
+          sessionStorage.setItem('settings-hydrated', '1');
+          // Reload once to let components pick up hydrated values without repeated cycles
+          window.location.reload();
+        }
+      } catch {}
     })();
     // Legacy cleanup: remove browser-only setup status in favor of server-backed site-data
     try { localStorage.removeItem('lmeve-setup-status'); } catch {}
