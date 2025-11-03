@@ -62,36 +62,66 @@ import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
 import { Buyback } from '@/components/tabs/Buyback';
 
 function AppContent() {
-  // One-time browser-side reset for stale installations
+  // NUCLEAR RESET: Clear ALL browser data on first load to eliminate stale state issues
   React.useEffect(() => {
     try {
-      const RESET_FLAG = 'lmeve-first-load-v2';
-      if (!localStorage.getItem(RESET_FLAG)) {
-        // Remove known LMeve localStorage/sessionStorage keys from previous installs
-        const localPrefixes = ['lmeve-', 'esi-'];
-        const sessionKeys = [
-          'lmeve-session-tokens',
-          'lmeve-live-db-creds',
-          'esi-auth-state',
-          'esi-login-attempt',
-          'esi-corp-consent',
-          'settings-hydrated'
-        ];
-        // Clear localStorage keys by prefix
-        const lsToRemove: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (!k) continue;
-          if (localPrefixes.some(p => k.startsWith(p))) lsToRemove.push(k);
+      const RESET_FLAG = 'lmeve-reset-v3'; // Increment version to force re-reset
+      const resetMarker = localStorage.getItem(RESET_FLAG);
+      
+      if (!resetMarker) {
+        console.log('🧹 NUCLEAR RESET: Clearing ALL browser storage...');
+        
+        // 1. Clear ALL localStorage (will restore reset flag after)
+        const keysToPreserve: string[] = [];
+        localStorage.clear();
+        
+        // 2. Clear ALL sessionStorage
+        sessionStorage.clear();
+        
+        // 3. Clear IndexedDB databases
+        if (window.indexedDB && window.indexedDB.databases) {
+          window.indexedDB.databases().then(databases => {
+            databases.forEach(db => {
+              if (db.name) {
+                console.log(`🗑️ Deleting IndexedDB: ${db.name}`);
+                window.indexedDB.deleteDatabase(db.name);
+              }
+            });
+          }).catch(() => {});
         }
-        lsToRemove.forEach(k => localStorage.removeItem(k));
-        // Clear specific sessionStorage keys
-        sessionKeys.forEach(k => sessionStorage.removeItem(k));
-        // Mark completed
+        
+        // 4. Clear service worker caches
+        if ('caches' in window) {
+          caches.keys().then(cacheNames => {
+            cacheNames.forEach(cacheName => {
+              console.log(`🗑️ Deleting cache: ${cacheName}`);
+              caches.delete(cacheName);
+            });
+          }).catch(() => {});
+        }
+        
+        // 5. Unregister service workers
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(registrations => {
+            registrations.forEach(registration => {
+              console.log('🗑️ Unregistering service worker');
+              registration.unregister();
+            });
+          }).catch(() => {});
+        }
+        
+        // Mark reset as complete
         localStorage.setItem(RESET_FLAG, String(Date.now()));
-        console.log('🧹 One-time browser reset completed');
+        
+        console.log('🧹 NUCLEAR RESET completed - browser storage cleared');
+        console.log('🔄 Reloading page to start fresh...');
+        
+        // Force reload to start completely fresh
+        window.location.reload();
       }
-    } catch {}
+    } catch (err) {
+      console.error('❌ Reset error:', err);
+    }
   }, []);
 
   // One-time settings hydration on first load only if local storage is empty; avoid reload loops
