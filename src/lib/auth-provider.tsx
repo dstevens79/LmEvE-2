@@ -239,6 +239,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setCurrentUser(fullUser);
       console.log('✅ Manual login successful via DB:', username);
       triggerAuthChange();
+      // Trigger metrics refresh so UI updates login counts immediately
+      try {
+        window.dispatchEvent(new CustomEvent('lmeve-login-success'));
+      } catch {}
     } catch (error: any) {
       // Map AbortError to a friendly timeout message
       if (error?.name === 'AbortError' || /aborted/i.test(String(error?.message))) {

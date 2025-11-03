@@ -160,6 +160,26 @@ function AppContent() {
     return () => window.removeEventListener('lmeve-db-connected' as any, handler as any);
   }, [setDbConnected]);
 
+  // Listen for login success to refresh metrics immediately
+  React.useEffect(() => {
+    const refreshMetrics = async () => {
+      try {
+        const m = await fetch('/api/app-metrics.php', { method: 'GET' });
+        if (m.ok) {
+          const data = await m.json();
+          if (data && typeof data === 'object') {
+            if (typeof data.manualLoginCount === 'number') setManualLoginCount(data.manualLoginCount);
+            if (typeof data.ssoLoginCount === 'number') setSsoLoginCount(data.ssoLoginCount);
+            if (typeof data.registeredPilotsCount === 'number') setRegisteredPilots(data.registeredPilotsCount);
+            if (typeof data.registeredCorpsCount === 'number') setRegisteredCorpsCount(data.registeredCorpsCount);
+          }
+        }
+      } catch {}
+    };
+    window.addEventListener('lmeve-login-success' as any, refreshMetrics as any);
+    return () => window.removeEventListener('lmeve-login-success' as any, refreshMetrics as any);
+  }, []);
+
   React.useEffect(() => {
     (async () => {
       try {
