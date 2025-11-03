@@ -697,7 +697,7 @@ function AppContent() {
                     )}
                     <div className="flex items-center gap-2">
                       {/* Test Login Button - Development Only */}
-                      {process.env.NODE_ENV === 'development' && (
+                      {(import.meta as any)?.env?.DEV && (
                         <Button 
                           size="sm" 
                           variant="outline" 
@@ -759,7 +759,7 @@ function AppContent() {
                   // Unauthenticated user section
                   <div className="flex items-center gap-2">
                     {/* Test Login Button - Development Only */}
-                    {process.env.NODE_ENV === 'development' && (
+                    {(import.meta as any)?.env?.DEV && (
                       <Button 
                         size="sm" 
                         variant="outline" 

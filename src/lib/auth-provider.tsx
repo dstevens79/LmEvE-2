@@ -182,6 +182,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     console.log('🔐 Attempting manual login (DB):', username);
     setIsLoading(true);
     try {
+      // Basic client-side validation to avoid silent no-ops
+      const hostOk = !!databaseSettings?.host;
+      const userOk = !!databaseSettings?.username;
+      if (!hostOk || !userOk) {
+        throw new Error('Database is not configured (missing host/username). Open Settings > Database to configure.');
+      }
+
       // Build query string from current database settings so server selects the correct DB
       const qs = new URLSearchParams();
       try {
@@ -193,11 +200,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } catch {}
 
       const url = `/api/auth/manual-login.php${qs.toString() ? `?${qs.toString()}` : ''}`;
+
+      // Add a timeout to prevent indefinite hang
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 10000);
       const resp = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
+        body: JSON.stringify({ username, password }),
+        signal: controller.signal,
+      }).finally(() => window.clearTimeout(timer));
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         const statusInfo = `HTTP ${resp.status}`;
