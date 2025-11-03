@@ -183,17 +183,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // We never pass DB credentials here - the server uses its saved config.
   const loginWithCredentials = useCallback(async (username: string, password: string) => {
     console.log('🔐 Attempting manual login (DB):', username);
+    
+    // Guard against concurrent requests
+    if (isLoading) {
+      console.warn('⚠️ Login already in progress, ignoring duplicate request');
+      return;
+    }
+    
     setIsLoading(true);
     try {
       // Server uses saved DB settings (single source of truth)
       const url = `/api/auth/manual-login.php`;
 
-      // Add a timeout to prevent indefinite hang
       const controller = new AbortController();
       const timer = window.setTimeout(() => {
-        console.warn('⏰ Login request timeout (10s) - aborting...');
+        console.warn('⏰ Login request timeout (15s) - aborting...');
         controller.abort();
-      }, 10000);
+      }, 15000);
       
       let resp: Response;
       try {
@@ -214,8 +220,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         
         // Enhanced diagnostics for fetch failures
         if (fetchError?.name === 'AbortError') {
-          console.error('❌ Login fetch ABORTED - likely timeout or user cancellation');
-          throw new Error('Login request timed out. Ensure the PHP API is running and database settings are correct.');
+          console.error('❌ Login fetch ABORTED - likely timeout');
+          console.error('💡 First login may take longer due to MySQL connection initialization');
+          console.error('💡 Please try again - subsequent attempts should be faster');
+          throw new Error('Login request timed out. Please try again - first login may take longer to initialize database connection.');
         } else if (fetchError instanceof TypeError) {
           console.error('❌ Login fetch NETWORK ERROR:', fetchError.message);
           console.error('💡 Possible causes: Server down, incorrect URL, CORS issue, or network disconnection');

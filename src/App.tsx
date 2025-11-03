@@ -242,18 +242,23 @@ function AppContent() {
     }, 10 * 60 * 1000);
     return () => window.clearInterval(interval);
   }, []);
-  // Registered Pilots now provided by server app-metrics
-  // Prefer server-observed first-run signal: no successful logins recorded yet
+  // Database setup completion check
+  // Only require setup if DB is NOT connected AND no credentials saved
   const needsDBSetup = React.useMemo(() => {
-    const firstRun = (manualLoginCount + ssoLoginCount) === 0;
-    if (firstRun) return true;
-    // Fallback to local check if metrics unavailable
+    // If database is connected, setup is complete
+    if (dbConnected) return false;
+    
+    // Check if credentials are configured
     const hostOk = !!databaseSettings?.host;
     const portOk = !!databaseSettings?.port;
     const userOk = !!databaseSettings?.username;
     const passOk = !!databaseSettings?.password;
-    return !(hostOk && portOk && userOk && passOk);
-  }, [manualLoginCount, ssoLoginCount, databaseSettings]);
+    const hasCredentials = hostOk && portOk && userOk && passOk;
+    
+    // If credentials exist but not connected, don't force setup (user can test/connect manually)
+    // Only force setup if NO credentials exist at all
+    return !hasCredentials;
+  }, [dbConnected, databaseSettings]);
   const [isESICallback, setIsESICallback] = useState(false);
   const [forceRender, setForceRender] = useState(0);
   
@@ -480,6 +485,11 @@ function AppContent() {
       console.log('🔐 Quick login attempt:', loginUsername);
       await loginWithCredentials(loginUsername.trim(), loginPassword.trim());
       console.log('✅ Quick login successful');
+      
+      // Navigate to dashboard after successful login
+      setActiveTab('dashboard');
+      setSettingsExpanded(false);
+      
       toast.success('Login successful!');
     } catch (error) {
       console.error('❌ Quick login failed:', error);
