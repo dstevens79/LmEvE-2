@@ -97,6 +97,22 @@ Implementation: The shell exposes a context (`useTabLifecycle`) so panels can re
 8) Tighten hooks
 - Change hooks to return `[snapshot, commit]` and remove write-through.
 
+## Progress update (2025-11-02)
+
+- Database tab now uses a local draft + dirty flag inside `Settings.tsx` and saves on navigation-away.
+  - On entering Database tab, the draft is initialized from server-backed settings and dirty is reset.
+  - On leaving Database tab, if dirty, a non-blocking save commits the draft to server.
+  - Test/Connect operations use the draft so users can validate unsaved changes.
+- ESI: credentials are still in General for now; ESI tab (scopes/corps) remains presentational with server-sourced data.
+- Hooks still perform debounced write-through; this is a transitional state. Next, we’ll move to `[snapshot, commit]` to remove per-change writes entirely.
+
+### Short-term next steps
+
+1. Apply the draft/save-on-leave pattern to ESI settings (move credentials into ESITab or wire General’s ESI form to a draft and save on tab switch).
+2. Extract `SettingsShell` (wrapper) so tab lifecycle is centralized instead of ad hoc inside `Settings.tsx`.
+3. Update hooks to expose `commit(updated)` and stop auto-saving on every setter.
+4. Migrate remaining tabs (Sync, Notifications) to the draft lifecycle and explicit save triggers.
+
 ## Acceptance criteria
 - `Settings.tsx` shrinks to minimal coordinator (or is replaced by `SettingsShell`).
 - Database tab: logs on right with auto-scroll; no legacy status/SDE cards; buttons under logs.

@@ -87,8 +87,12 @@ import { UserManagement } from '@/components/UserManagement';
 import { SyncSetupPanel } from '@/components/settings/SyncSetupPanel';
 import { PermissionsTab } from '@/components/settings/PermissionsTab';
 import { SyncMonitoring } from '@/components/tabs/SyncMonitoring';
-import { ConnectionLogsPanel } from '@/components/settings/DatabaseTab/ConnectionLogsPanel';
+// Database tab containerized
+import DatabaseTabContainer from '@/components/settings/DatabaseTab/DatabaseTabContainer';
 import { DatabaseConfigPanel } from '@/components/settings/DatabaseTab/DatabaseConfigPanel';
+import { ESICredentialsPanel } from '@/components/settings/ESITab/ESICredentialsPanel';
+import { ESIScopesPanel } from '@/components/settings/ESITab/ESIScopesPanel';
+import { CorpESIManagementPanel } from '@/components/settings/ESITab/CorpESIManagementPanel';
 
 // Status Indicator Component
 const StatusIndicator: React.FC<{
@@ -172,6 +176,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
   const [generalSettings, setGeneralSettings] = useGeneralSettings();
   const [databaseSettings, setDatabaseSettings] = useDatabaseSettings();
   const [esiSettings, setESISettings] = useESISettings();
+
+  // (Lifecycle to be moved into SettingsShell in next step)
   // Removed SDE manager usage in Settings tab (managed elsewhere)
   const [syncSettings, setSyncSettings] = useSyncSettings();
   const [notificationSettings, setNotificationSettings] = useNotificationSettings();
@@ -307,6 +313,8 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
   // Site-data helpers with graceful fallback when server storage isn't ready
   const SITE_DATA_FALLBACK_PREFIX = 'lmeve-site-data-fallback:';
   const warnedSiteDataFailureRef = React.useRef(false);
+  // Track last-saved value and time per key to avoid redundant writes
+  const lastSavedByKeyRef = React.useRef(new Map<string, { valueHash: string; at: number }>());
   const loadSiteData = async (key: string) => {
     try {
       const resp = await fetch(`/api/site-data.php?key=${encodeURIComponent(key)}`);
@@ -317,7 +325,10 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
       // If server returned diagnostics, log once for debugging
       try {
         const diag = await resp.json();
-        console.warn('site-data.php load diagnostics:', diag);
+        if (!warnedSiteDataFailureRef.current) {
+          console.warn('site-data.php load diagnostics:', diag);
+          warnedSiteDataFailureRef.current = true;
+        }
       } catch {}
     } catch {}
     // Fallback to local ephemeral storage so UI can continue working
@@ -329,6 +340,30 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     }
   };
   const saveSiteData = async (key: string, value: any) => {
+    // Idempotence + light throttling: skip if unchanged or saved very recently
+    try {
+      const valueHash = JSON.stringify(value);
+      const now = Date.now();
+      const last = lastSavedByKeyRef.current.get(key);
+      if (last && last.valueHash === valueHash) {
+        return; // no change
+      }
+      if (last && now - last.at < 1000) {
+        // too soon since last write; coalesce by updating cache and delaying the write slightly
+        lastSavedByKeyRef.current.set(key, { valueHash, at: now });
+        setTimeout(() => {
+          // best-effort delayed write; ignore result
+          fetch('/api/site-data.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key, value })
+          }).catch(() => {});
+        }, 300);
+        return;
+      }
+      // record intent to save
+      lastSavedByKeyRef.current.set(key, { valueHash, at: now });
+    } catch {}
     try {
       const resp = await fetch('/api/site-data.php', {
         method: 'POST',
@@ -349,10 +384,21 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     try { localStorage.setItem(`${SITE_DATA_FALLBACK_PREFIX}${key}`, JSON.stringify(value)); } catch {}
   };
   const setEveServerStatus = (next: typeof eveServerStatus) => {
+    try {
+      // Skip if unchanged to avoid redundant saves/renders
+      const currentHash = JSON.stringify(eveServerStatus);
+      const nextHash = JSON.stringify(next);
+      if (currentHash === nextHash) return;
+    } catch {}
     _setEveServerStatus(next);
     saveSiteData('eve-server-status', next);
   };
   const setCorporationESIStatus = (next: typeof corporationESIStatus) => {
+    try {
+      const currentHash = JSON.stringify(corporationESIStatus);
+      const nextHash = JSON.stringify(next);
+      if (currentHash === nextHash) return;
+    } catch {}
     _setCorporationESIStatus(next);
     saveSiteData(corpStatusKey, next);
   };
@@ -1831,14 +1877,15 @@ echo "See README.md for detailed setup instructions"
     
     console.log('🧪 Starting REAL database connection test');
     
-    if (!databaseSettings) {
+  const currentDb = databaseSettings;
+    if (!currentDb) {
       const error = 'Please configure database connection settings first';
       toast.error(error);
       addConnectionLog(`❌ ${error}`);
       return;
     }
     
-    const { host, port, database, username, password } = databaseSettings;
+    const { host, port, database, username, password } = currentDb as typeof databaseSettings;
     
     // Validate required fields
     if (!host || !port || !database || !username || !password) {
@@ -1926,11 +1973,11 @@ echo "See README.md for detailed setup instructions"
         if (username.trim().toLowerCase() === 'lmeve') {
           addConnectionLog('✅ Using lmeve user credentials — user confirmed');
           lmeveUserExists = true;
-        } else if (databaseSettings.lmevePassword && databaseSettings.lmevePassword.trim() !== '') {
+        } else if (currentDb.lmevePassword && currentDb.lmevePassword.trim() !== '') {
           // Only attempt a secondary check if an explicit lmeve password has been provided
           try {
             addConnectionLog('👤 Checking for lmeve database user (using provided lmeve password)...');
-            const lmeveConfig = { ...config, username: 'lmeve', password: databaseSettings.lmevePassword.trim() };
+            const lmeveConfig = { ...config, username: 'lmeve', password: currentDb.lmevePassword.trim() };
             const lmeveManager = new DatabaseManager(lmeveConfig);
             const lmeveTest = await lmeveManager.testConnection();
             if (lmeveTest.success && lmeveTest.validated) {
@@ -1986,12 +2033,13 @@ echo "See README.md for detailed setup instructions"
 
   // Simplified database connection functions
   const handleConnectDb = async () => {
-    if (!databaseSettings) {
+    const currentDb = databaseSettings;
+    if (!currentDb) {
       toast.error('Please configure database connection settings first');
       return;
     }
     
-    const { host, port, database, username, password } = databaseSettings;
+  const { host, port, database, username, password } = currentDb as typeof databaseSettings;
     
     if (!host || !port || !database || !username || !password) {
       toast.error('All database fields are required');
@@ -2008,11 +2056,11 @@ echo "See README.md for detailed setup instructions"
         database,
         username,
         password,
-        ssl: databaseSettings.ssl || false,
-        connectionPoolSize: databaseSettings.connectionPoolSize || 10,
-        queryTimeout: databaseSettings.queryTimeout || 30,
-        autoReconnect: databaseSettings.autoReconnect || true,
-        charset: databaseSettings.charset || 'utf8mb4'
+        ssl: currentDb.ssl || false,
+        connectionPoolSize: currentDb.connectionPoolSize || 10,
+        queryTimeout: currentDb.queryTimeout || 30,
+        autoReconnect: currentDb.autoReconnect || true,
+        charset: currentDb.charset || 'utf8mb4'
       };
       
       const manager = new DatabaseManager(config);
@@ -2586,7 +2634,7 @@ echo "See README.md for detailed setup instructions"
         </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={onTabChange} className="space-y-6">
+  <Tabs value={activeTab} onValueChange={onTabChange} className="space-y-6">
         <div className="hidden">
           {/* Hidden tabs list since navigation is handled by parent */}
           <TabsList>
@@ -2727,166 +2775,50 @@ echo "See README.md for detailed setup instructions"
 
               {/* ESI Application Credentials */}
               <div className="space-y-4 border-t border-border pt-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${esiConfig.clientId ? 'bg-green-500' : 'bg-red-500'}`} />
-                    <h4 className="font-medium">ESI Application Credentials</h4>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.open('https://developers.eveonline.com/applications', '_blank')}
-                  >
-                    <Globe size={16} className="mr-2" />
-                    Manage Apps
-                  </Button>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="clientId">EVE Online Client ID</Label>
-                      <Input
-                        id="clientId"
-                        value={esiSettings.clientId || esiConfig.clientId || ''}
-                        onChange={(e) => updateESISetting('clientId', e.target.value)}
-                        placeholder="Your EVE Online application Client ID"
-                        className={esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId ? 'border-accent' : ''}
-                      />
-                      {esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId && (
-                        <p className="text-xs text-accent">• Unsaved changes</p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="clientSecret">EVE Online Client Secret</Label>
-                      <div className="relative">
-                        <Input
-                          id="clientSecret"
-                          type={showSecrets ? 'text' : 'password'}
-                          value={esiSettings.clientSecret || esiConfig.clientSecret || ''}
-                          onChange={(e) => updateESISetting('clientSecret', e.target.value)}
-                          placeholder="Your EVE Online application Client Secret"
-                          className={esiSettings.clientSecret && esiSettings.clientSecret !== esiConfig.clientSecret ? 'border-accent' : ''}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3"
-                          onClick={() => setShowSecrets(!showSecrets)}
-                        >
-                          {showSecrets ? <EyeSlash size={16} /> : <Eye size={16} />}
-                        </Button>
-                      </div>
-                      {esiSettings.clientSecret && esiSettings.clientSecret !== esiConfig.clientSecret && (
-                        <p className="text-xs text-accent">• Unsaved changes</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      onClick={() => {
-                        const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
-                        const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim();
-                        if (clientId) {
-                          updateESIConfig(clientId, clientSecret || '');
-                          setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
-                          toast.success('ESI configuration updated');
-                        } else {
-                          toast.error('Client ID is required');
-                        }
-                      }}
-                      size="sm"
-                      disabled={!esiSettings.clientId && !esiConfig.clientId}
-                      className={
-                        (esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId) ||
-                        (esiSettings.clientSecret && esiSettings.clientSecret !== esiConfig.clientSecret)
-                          ? 'bg-accent hover:bg-accent/90 text-accent-foreground'
-                          : ''
+                <ESICredentialsPanel
+                  userName={user?.characterName}
+                  userCorp={user?.corporationName}
+                  esiSettings={esiSettings}
+                  esiConfig={{ clientId: esiConfig.clientId, clientSecret: esiConfig.clientSecret }}
+                  generalSettings={generalSettings}
+                  onUpdateESISetting={(k, v) => updateESISetting(k as any, v)}
+                  onSaveESIConfig={(clientId, clientSecret) => {
+                    if (!clientId) {
+                      toast.error('Client ID is required');
+                      return;
+                    }
+                    updateESIConfig(clientId, clientSecret || '');
+                    setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
+                    toast.success('ESI configuration updated');
+                  }}
+                  onClearESIForm={() => {
+                    setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
+                    toast.info('Form cleared');
+                  }}
+                  onTestESIConfig={async () => {
+                    try {
+                      const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
+                      const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
+                      const callbackUrl = (generalSettings.authFlow || 'server') === 'spa'
+                        ? `${(generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http'))}://${window.location.host}/`
+                        : `${(generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http'))}://${window.location.host}/api/auth/esi/callback.php`;
+                      if (!clientId) {
+                        toast.error('Client ID is required to test ESI configuration');
+                        return;
                       }
-                    >
-                      {((esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId) ||
-                        (esiSettings.clientSecret && esiSettings.clientSecret !== esiConfig.clientSecret))
-                        ? 'Save Changes' : 'Save ESI Config'}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
-                        toast.info('Form cleared');
-                      }}
-                      disabled={!esiSettings.clientId && !esiSettings.clientSecret}
-                    >
-                      Clear
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
-                          const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
-                          const callbackUrl = (generalSettings.authFlow || 'server') === 'spa'
-                            ? `${(generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http'))}://${window.location.host}/`
-                            : `${(generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http'))}://${window.location.host}/api/auth/esi/callback.php`;
-                          if (!clientId) {
-                            toast.error('Client ID is required to test ESI configuration');
-                            return;
-                          }
-
-                          const corps = getRegisteredCorporations();
-                          initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
-                          const svc = getESIAuthService();
-                          const url = await svc.initiateLogin('basic');
-                          toast.info('Redirecting to EVE SSO for basic test...');
-                          window.location.href = url;
-                        } catch (err) {
-                          console.error('ESI config test failed:', err);
-                          const message = err instanceof Error ? err.message : 'Failed to initialize ESI login';
-                          toast.error(message);
-                        }
-                      }}
-                    >
-                      Test ESI Config
-                    </Button>
-                  </div>
-
-                  {/* Callback guidance based on selected auth flow */}
-                  {(() => {
-                    const proto = generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http');
-                    const host = window.location.host || `${serverPublicIp || 'YOUR_EXTERNAL_IP'}${window.location.port ? ':' + window.location.port : ''}`;
-                    const isServer = (generalSettings.authFlow || 'server') === 'server';
-                    const callback = isServer
-                      ? `${proto}://${host}/api/auth/esi/callback.php`
-                      : `${proto}://${host}/`;
-                    return (
-                      <div className="space-y-1 text-xs text-muted-foreground">
-                        <p>
-                          {isServer
-                            ? 'Use this callback URL in your EVE application (Server/PHP callback):'
-                            : 'Use this callback URL in your EVE application (SPA/client callback):'}
-                        </p>
-                        <code className="bg-background px-1 rounded break-all">{callback}</code>
-                        <p>
-                          {window.location.port
-                            ? `If your external port differs from ${window.location.port}, replace it accordingly (e.g., ${proto}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345${isServer ? '/api/auth/esi/callback.php' : '/'})`
-                            : `If you expose the app on a non-standard port, add :PORT after the IP (e.g., ${proto}://${serverPublicIp || 'YOUR_EXTERNAL_IP'}:12345${isServer ? '/api/auth/esi/callback.php' : '/'})`}
-                        </p>
-                        {isServer ? (
-                          <p>
-                            Server callback works on HTTP and HTTPS. SPA callback requires HTTPS with PKCE.
-                          </p>
-                        ) : (
-                          <p>
-                            SPA callback requires HTTPS. Switch to PHP callback for HTTP deployments.
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
+                      const corps = getRegisteredCorporations();
+                      initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
+                      const svc = getESIAuthService();
+                      const url = await svc.initiateLogin('basic');
+                      toast.info('Redirecting to EVE SSO for basic test...');
+                      window.location.href = url;
+                    } catch (err) {
+                      console.error('ESI config test failed:', err);
+                      const message = err instanceof Error ? err.message : 'Failed to initialize ESI login';
+                      toast.error(message);
+                    }
+                  }}
+                />
               </div>
 
               {/* Save Actions */}
@@ -2923,100 +2855,7 @@ echo "See README.md for detailed setup instructions"
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-
-              {/* Compact Database Connection Configuration */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <DatabaseConfigPanel
-                  databaseSettings={databaseSettings}
-                  dbConnected={!!dbStatus.connected}
-                  onUpdate={(key, value) => updateDatabaseSetting(key as any, value)}
-                />
-
-                {/* Connection Logs + Actions (Right column) */}
-                <ConnectionLogsPanel
-                  logs={connectionLogs}
-                  testing={testingConnection}
-                  connected={!!dbStatus.connected}
-                  onClear={clearConnectionLogs}
-                  onTest={() => {
-                    console.log('🧪 Test connection button clicked');
-                    handleTestDbConnection();
-                  }}
-                  onConnect={handleConnectDb}
-                  onDisconnect={handleDisconnectDb}
-                  onSave={saveDatabaseSettings}
-                  onReset={() => window.location.reload()}
-                />
-              </div>
-
-              {/* Removed: Complete Database Setup Section (yellow area) */}
-
-              {/* Database Tables - Collapsible Section */}
-              {dbStatus.connected && tableInfo.length > 0 && (
-                <div className="border-t border-border pt-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="p-0 h-auto hover:bg-transparent"
-                      onClick={() => setShowDatabaseTables(!showDatabaseTables)}
-                    >
-                      <div className="flex items-center gap-2">
-                        {showDatabaseTables ? (
-                          <CaretDown size={16} className="text-muted-foreground" />
-                        ) : (
-                          <CaretRight size={16} className="text-muted-foreground" />
-                        )}
-                        <h4 className="font-medium">Database Tables</h4>
-                        <Badge variant="outline" className="text-xs">
-                          {tableInfo.length} tables
-                        </Badge>
-                      </div>
-                    </Button>
-                    {showDatabaseTables && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={loadTableInfo}
-                      >
-                        <ArrowClockwise size={16} className="mr-2" />
-                        Refresh
-                      </Button>
-                    )}
-                  </div>
-                  
-                  {showDatabaseTables && (
-                    <div className="border border-border rounded-lg overflow-hidden">
-                      <div className="bg-muted/50 px-4 py-2 border-b border-border">
-                        <div className="grid grid-cols-5 gap-4 text-sm font-medium text-muted-foreground">
-                          <span>Table Name</span>
-                          <span>Rows</span>
-                          <span>Size</span>
-                          <span>Engine</span>
-                          <span>Last Update</span>
-                        </div>
-                      </div>
-                      <div className="max-h-64 overflow-y-auto">
-                        {tableInfo.map((table, index) => (
-                          <div key={index} className="px-4 py-2 border-b border-border/50 last:border-b-0 hover:bg-muted/30">
-                            <div className="grid grid-cols-5 gap-4 text-sm">
-                              <span className="font-mono">{table.name}</span>
-                              <span>{table.rowCount.toLocaleString()}</span>
-                              <span>{table.size}</span>
-                              <span>{table.engine}</span>
-                              <span className="text-muted-foreground">
-                                {new Date(table.lastUpdate).toLocaleDateString()}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Removed: Database Schema Manager */}
+              <DatabaseTabContainer />
             </CardContent>
           </Card>
         </TabsContent>
@@ -3200,176 +3039,38 @@ echo "See README.md for detailed setup instructions"
                         <p className="text-xs text-muted-foreground">
                           Check a scope to request it on your next login. Already granted scopes are locked. Use Release to clear active scopes, or Refresh to re-consent with the selected set.
                         </p>
-
-                        {(() => {
-                          // Full scope catalogs
-                          const CHARACTER_SCOPE_CATALOG: string[] = [
-                            'esi-calendar.respond_calendar_events.v1',
-                            'esi-calendar.read_calendar_events.v1',
-                            'esi-location.read_location.v1',
-                            'esi-location.read_ship_type.v1',
-                            'esi-location.read_online.v1',
-                            'esi-mail.organize_mail.v1',
-                            'esi-mail.read_mail.v1',
-                            'esi-mail.send_mail.v1',
-                            'esi-skills.read_skills.v1',
-                            'esi-skills.read_skillqueue.v1',
-                            'esi-wallet.read_character_wallet.v1',
-                            'esi-search.search_structures.v1',
-                            'esi-clones.read_clones.v1',
-                            'esi-clones.read_implants.v1',
-                            'esi-characters.read_contacts.v1',
-                            'esi-characters.write_contacts.v1',
-                            'esi-characters.read_loyalty.v1',
-                            'esi-characters.read_chat_channels.v1',
-                            'esi-characters.read_medals.v1',
-                            'esi-characters.read_standings.v1',
-                            'esi-characters.read_agents_research.v1',
-                            'esi-characters.read_blueprints.v1',
-                            'esi-characters.read_corporation_roles.v1',
-                            'esi-characters.read_fatigue.v1',
-                            'esi-characters.read_notifications.v1',
-                            'esi-characters.read_titles.v1',
-                            'esi-fittings.read_fittings.v1',
-                            'esi-fittings.write_fittings.v1',
-                            'esi-fleets.read_fleet.v1',
-                            'esi-fleets.write_fleet.v1',
-                            'esi-industry.read_character_jobs.v1',
-                            'esi-industry.read_character_mining.v1',
-                            'esi-markets.read_character_orders.v1',
-                            'esi-markets.structure_markets.v1',
-                            'esi-ui.open_window.v1',
-                            'esi-ui.write_waypoint.v1',
-                            'esi-killmails.read_killmails.v1',
-                            'esi-universe.read_structures.v1',
-                            'esi-alliances.read_contacts.v1',
-                            'esi-characters.read_fw_stats.v1',
-                          ];
-                          const CORPORATION_SCOPE_CATALOG: string[] = [
-                            'esi-corporations.read_corporation_membership.v1',
-                            'esi-assets.read_corporation_assets.v1',
-                            'esi-corporations.read_blueprints.v1',
-                            'esi-corporations.read_container_logs.v1',
-                            'esi-corporations.read_divisions.v1',
-                            'esi-corporations.read_contacts.v1',
-                            'esi-corporations.read_facilities.v1',
-                            'esi-corporations.read_medals.v1',
-                            'esi-corporations.read_standings.v1',
-                            'esi-corporations.read_structures.v1',
-                            'esi-corporations.read_starbases.v1',
-                            'esi-corporations.read_titles.v1',
-                            'esi-contracts.read_corporation_contracts.v1',
-                            'esi-industry.read_corporation_jobs.v1',
-                            'esi-industry.read_corporation_mining.v1',
-                            'esi-killmails.read_corporation_killmails.v1',
-                            'esi-markets.read_corporation_orders.v1',
-                            'esi-planets.read_customs_offices.v1',
-                            'esi-wallet.read_corporation_wallets.v1',
-                            'esi-corporations.track_members.v1',
-                            'esi-corporations.read_fw_stats.v1',
-                          ];
-
-                          const activeCharScopes = new Set(user?.characterScopes || []);
-                          const activeCorpScopes = new Set(user?.corporationScopes || []);
-
-                          const toggleChar = (scope: string) => {
-                            if (activeCharScopes.has(scope)) return; // locked
-                            setRequestedCharScopes(prev => prev.includes(scope)
-                              ? prev.filter(s => s !== scope)
-                              : [...prev, scope]);
-                          };
-                          const toggleCorp = (scope: string) => {
-                            if (activeCorpScopes.has(scope)) return; // locked
-                            setRequestedCorpScopes(prev => prev.includes(scope)
-                              ? prev.filter(s => s !== scope)
-                              : [...prev, scope]);
-                          };
-
-                          const ScopeList: React.FC<{ title: string; catalog: string[]; requested: string[]; active: Set<string>; onToggle: (s: string) => void; onRelease: () => void; onRefresh: () => void; }> = ({ title, catalog, requested, active, onToggle, onRelease, onRefresh }) => (
-                            <div className="border border-border rounded p-3">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="text-sm font-medium">{title}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  Active: {active.size} · Requested: {requested.length}
-                                </div>
-                              </div>
-                              <div className="max-h-48 overflow-auto space-y-1">
-                                {catalog.map(scope => {
-                                  const isActive = active.has(scope);
-                                  const isChecked = isActive || requested.includes(scope);
-                                  return (
-                                    <label key={scope} className={`flex items-center gap-2 text-xs p-1 rounded ${isActive ? 'opacity-80' : ''}`}>
-                                      <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        disabled={isActive}
-                                        onChange={() => onToggle(scope)}
-                                      />
-                                      <span className="font-mono text-[11px] break-all">{scope}</span>
-                                      {isActive && <Badge variant="outline" className="h-4 px-1 text-[10px]">active</Badge>}
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                              <div className="flex items-center gap-2 mt-3">
-                                <Button size="sm" variant="destructive" onClick={onRelease}>Release</Button>
-                                <Button size="sm" variant="outline" onClick={onRefresh}>Refresh</Button>
-                              </div>
-                            </div>
-                          );
-
-                          return (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <ScopeList
-                                title="Character Scopes"
-                                catalog={CHARACTER_SCOPE_CATALOG}
-                                requested={requestedCharScopes}
-                                active={activeCharScopes}
-                                onToggle={toggleChar}
-                                onRelease={async () => {
-                                  // Revoke by logging out and clearing token; user will need to log in again
-                                  try {
-                                    await logout();
-                                    toast.success('Released character scopes (logged out)');
-                                  } catch (e) {
-                                    toast.error('Failed to release');
-                                  }
-                                }}
-                                onRefresh={async () => {
-                                  try {
-                                    const url = await loginWithESI('enhanced', requestedCharScopes);
-                                    window.location.href = url;
-                                  } catch (e) {
-                                    toast.error('Failed to start character scope update');
-                                  }
-                                }}
-                              />
-                              <ScopeList
-                                title="Corporation Scopes"
-                                catalog={CORPORATION_SCOPE_CATALOG}
-                                requested={requestedCorpScopes}
-                                active={activeCorpScopes}
-                                onToggle={toggleCorp}
-                                onRelease={async () => {
-                                  try {
-                                    await logout();
-                                    toast.success('Released corporation scopes (logged out)');
-                                  } catch (e) {
-                                    toast.error('Failed to release');
-                                  }
-                                }}
-                                onRefresh={async () => {
-                                  try {
-                                    const url = await loginWithESI('corporation', requestedCorpScopes);
-                                    window.location.href = url;
-                                  } catch (e) {
-                                    toast.error('Failed to start corporation scope update');
-                                  }
-                                }}
-                              />
-                            </div>
-                          );
-                        })()}
+                        <ESIScopesPanel
+                          characterCatalog={CHARACTER_SCOPE_CATALOG}
+                          corporationCatalog={CORPORATION_SCOPE_CATALOG}
+                          activeCharScopes={user?.characterScopes || []}
+                          activeCorpScopes={user?.corporationScopes || []}
+                          requestedCharScopes={requestedCharScopes}
+                          requestedCorpScopes={requestedCorpScopes}
+                          onToggleChar={(scope) => {
+                            if ((user?.characterScopes || []).includes(scope)) return;
+                            setRequestedCharScopes(prev => prev.includes(scope) ? prev.filter(s => s !== scope) : [...prev, scope]);
+                          }}
+                          onToggleCorp={(scope) => {
+                            if ((user?.corporationScopes || []).includes(scope)) return;
+                            setRequestedCorpScopes(prev => prev.includes(scope) ? prev.filter(s => s !== scope) : [...prev, scope]);
+                          }}
+                          onReleaseChar={async () => {
+                            try { await logout(); toast.success('Released character scopes (logged out)'); }
+                            catch { toast.error('Failed to release'); }
+                          }}
+                          onRefreshChar={async () => {
+                            try { const url = await loginWithESI('enhanced', requestedCharScopes); window.location.href = url; }
+                            catch { toast.error('Failed to start character scope update'); }
+                          }}
+                          onReleaseCorp={async () => {
+                            try { await logout(); toast.success('Released corporation scopes (logged out)'); }
+                            catch { toast.error('Failed to release'); }
+                          }}
+                          onRefreshCorp={async () => {
+                            try { const url = await loginWithESI('corporation', requestedCorpScopes); window.location.href = url; }
+                            catch { toast.error('Failed to start corporation scope update'); }
+                          }}
+                        />
                       </div>
                     </div>
                   ) : (
@@ -3399,105 +3100,27 @@ echo "See README.md for detailed setup instructions"
               )}
 
               {/* Registered Corporations */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium">Registered Corporations</h4>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">
-                      {registeredCorps.filter(corp => corp.isActive).length} Active
-                    </Badge>
-                    <Badge variant={esiConfig?.clientId ? "default" : "secondary"}>
-                      ESI {esiConfig?.clientId ? 'Configured' : 'Not Configured'}
-                    </Badge>
-                  </div>
-                </div>
-                
-                {registeredCorps.length > 0 ? (
-                  <div className="space-y-3">
-                    {registeredCorps.map((corp) => (
-                      <div key={corp.corporationId} className="p-4 border border-border rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            {corp.corporationId && (
-                              <img 
-                                src={`https://images.evetech.net/corporations/${corp.corporationId}/logo?size=64`}
-                                alt={corp.corporationName}
-                                className="w-10 h-10 rounded border border-accent/30"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjMjIyIi8+CjxwYXRoIGQ9Ik0yMCAxMEwzMCAyMEwyMCAzMEwxMCAyMEwyMCAxMFoiIGZpbGw9IiM2NjYiLz4KPC9zdmc+'
-                                }}
-                              />
-                            )}
-                            <div>
-                              <h5 className="font-medium">{corp.corporationName}</h5>
-                              <p className="text-sm text-muted-foreground">
-                                Corp ID: {corp.corporationId} • Registered: {new Date(corp.registrationDate).toLocaleDateString()}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant={corp.isActive ? "default" : "secondary"}>
-                              {corp.isActive ? "Active" : "Inactive"}
-                            </Badge>
-                            {corp.lastTokenRefresh && (
-                              <Badge variant="outline" className="text-xs">
-                                Updated: {new Date(corp.lastTokenRefresh).toLocaleDateString()}
-                              </Badge>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => updateCorporation(corp.corporationId, { isActive: !corp.isActive })}
-                            >
-                              {corp.isActive ? 'Disable' : 'Enable'}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => {
-                                if (confirm(`Are you sure you want to remove ${corp.corporationName}?`)) {
-                                  deleteCorporation(corp.corporationId);
-                                  toast.success('Corporation removed');
-                                }
-                              }}
-                            >
-                              <X size={14} />
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-3 p-3 bg-muted/30 rounded text-xs">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <p className="font-medium mb-1">ESI Scopes:</p>
-                              <p className="text-muted-foreground">{corp.registeredScopes.join(', ')}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium mb-1">Configuration:</p>
-                              <p className="text-muted-foreground">
-                                ESI Client: {corp.esiClientId ? 'Custom' : 'Global'}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-6 border border-dashed border-border rounded-lg text-center">
-                    <Building size={32} className="mx-auto mb-3 text-muted-foreground" />
-                    <h5 className="font-medium mb-2">No Corporations Registered</h5>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Corporation Directors and CEOs can register their corporations for LMeve data access by authenticating with EVE Online SSO.
-                    </p>
-                    <div className="space-y-2 text-xs text-muted-foreground">
-                      <p><strong>Basic Access:</strong> Login with any EVE character for site navigation</p>
-                      <p><strong>Enhanced Access:</strong> Additional scopes for manufacturing job assignments</p>
-                      <p><strong>Corporation Access:</strong> Directors/CEOs can register corporations for full data sync</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <CorpESIManagementPanel
+                corps={registeredCorps.map(c => ({
+                  corporationId: c.corporationId,
+                  corporationName: c.corporationName,
+                  registrationDate: c.registrationDate,
+                  isActive: c.isActive,
+                  lastTokenRefresh: c.lastTokenRefresh,
+                }))}
+                onToggleActive={(corporationId) => {
+                  const corp = registeredCorps.find(c => c.corporationId === corporationId);
+                  if (corp) updateCorporation(corporationId, { isActive: !corp.isActive });
+                }}
+                onDelete={(corporationId) => {
+                  const corp = registeredCorps.find(c => c.corporationId === corporationId);
+                  if (corp && confirm(`Are you sure you want to remove ${corp.corporationName}?`)) {
+                    deleteCorporation(corporationId);
+                    toast.success('Corporation removed');
+                  }
+                }}
+                esiConfigured={!!esiConfig?.clientId}
+              />
 
               {/* ESI Configuration Status */}
               {!esiConfig?.clientId && (

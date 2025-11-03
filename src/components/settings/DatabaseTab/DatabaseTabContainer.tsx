@@ -1,0 +1,324 @@
+import React from 'react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { DatabaseConfigPanel } from './DatabaseConfigPanel';
+import { ConnectionLogsPanel } from './ConnectionLogsPanel';
+import { CaretDown, CaretRight, ArrowClockwise } from '@phosphor-icons/react';
+import { DatabaseManager } from '@/lib/database';
+import { 
+  useDatabaseSettings,
+  useLocalKV,
+  validateSettings,
+  exportAllSettings,
+  type DatabaseSettings,
+} from '@/lib/persistenceService';
+import { toast } from 'sonner';
+
+// Local site-data helpers (best-effort) to reflect setup status
+async function loadSiteData(key: string) {
+  try {
+    const resp = await fetch(`/api/site-data.php?key=${encodeURIComponent(key)}`);
+    if (resp.ok) {
+      const json = await resp.json();
+      return json?.value ?? null;
+    }
+  } catch {}
+  try {
+    const raw = localStorage.getItem(`lmeve-site-data-fallback:${key}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+async function saveSiteData(key: string, value: any) {
+  try {
+    const resp = await fetch('/api/site-data.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value })
+    });
+    if (resp.ok) return;
+  } catch {}
+  try { localStorage.setItem(`lmeve-site-data-fallback:${key}`, JSON.stringify(value)); } catch {}
+}
+
+const DatabaseTabContainer: React.FC = () => {
+  const [databaseSettings, setDatabaseSettings] = useDatabaseSettings();
+
+  // Connection/logs state localized to the tab
+  const [testingConnection, setTestingConnection] = React.useState(false);
+  const [connectionLogs, setConnectionLogs] = React.useState<string[]>([]);
+
+  // Connection status persisted latch and UI state
+  const [persistedDbConnected, setPersistedDbConnected] = useLocalKV<boolean>('lmeve-database-connected', false);
+  const [dbStatus, setDbStatus] = React.useState({
+    connected: persistedDbConnected,
+    connectionCount: 0,
+    queryCount: 0,
+    avgQueryTime: 0,
+    uptime: 0,
+    lastConnection: null as string | null,
+    lastError: null as string | null,
+  });
+
+  const [tableInfo, setTableInfo] = React.useState<any[]>([]);
+  const [showDatabaseTables, setShowDatabaseTables] = useLocalKV<boolean>('database-tables-expanded', false);
+
+  const addConnectionLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setConnectionLogs(prev => [...prev, `[${timestamp}] ${message}`]);
+  };
+  const clearConnectionLogs = () => setConnectionLogs([]);
+
+  const syncServerSettings = async () => {
+    try {
+      const backup = await exportAllSettings();
+      await fetch('/api/settings.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(backup)
+      });
+    } catch {}
+  };
+
+  const saveDatabase = async () => {
+    const errors = validateSettings('database', databaseSettings as any);
+    if (errors.length) {
+      toast.error(`Validation failed: ${errors.join(', ')}`);
+      return;
+    }
+    setDatabaseSettings({ ...databaseSettings });
+    syncServerSettings();
+    toast.success('Database settings saved successfully');
+  };
+
+  const updateDatabaseSetting = (key: keyof DatabaseSettings, value: any) => {
+    setDatabaseSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleTestDbConnection = async () => {
+    if (testingConnection) {
+      toast.warning('Database test already in progress...');
+      return;
+    }
+
+    const { host, port, database, username, password } = databaseSettings;
+    if (!host || !port || !database || !username || !password) {
+      const error = 'All database fields are required: host, port, database, username, password';
+      toast.error(error);
+      addConnectionLog(`❌ ${error}`);
+      return;
+    }
+
+    setConnectionLogs([]);
+    setTestingConnection(true);
+    try {
+      addConnectionLog('🔍 Starting comprehensive database validation...');
+      addConnectionLog(`🎯 Target: ${username}@${host}:${port}/${database}`);
+
+      const config = {
+        host,
+        port: Number(port),
+        database,
+        username,
+        password,
+        ssl: false,
+        connectionPoolSize: 1,
+        queryTimeout: 30,
+        autoReconnect: false,
+        charset: 'utf8mb4',
+      };
+      const manager = new DatabaseManager(config);
+      const result = await manager.testConnection();
+
+      if (result.success && result.validated) {
+        addConnectionLog('✅ Database connection VALIDATED successfully!');
+        if (typeof result.latency === 'number') {
+          addConnectionLog(`⚡ Connection latency: ${result.latency}ms`);
+        }
+        toast.success('✅ Connection validated');
+      } else if (result.success) {
+        addConnectionLog('⚠️ Partial connection success but validation incomplete');
+        toast.warning('⚠️ Partial success');
+      } else {
+        addConnectionLog(`❌ Connection test FAILED: ${result.error}`);
+        toast.error(`❌ Connection failed: ${result.error}`);
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown connection error';
+      addConnectionLog(`💥 Test error: ${errorMsg}`);
+      toast.error(`Test error: ${errorMsg}`);
+    } finally {
+      addConnectionLog('🏁 Database connection test completed');
+      setTestingConnection(false);
+    }
+  };
+
+  const handleConnectDb = async () => {
+    const { host, port, database, username, password } = databaseSettings;
+    if (!host || !port || !database || !username || !password) {
+      toast.error('All database fields are required');
+      return;
+    }
+    try {
+      addConnectionLog('🔌 Establishing persistent database connection...');
+      const manager = new DatabaseManager({
+        host,
+        port: Number(port),
+        database,
+        username,
+        password,
+        ssl: databaseSettings.ssl || false,
+        connectionPoolSize: databaseSettings.connectionPoolSize || 10,
+        queryTimeout: databaseSettings.queryTimeout || 30,
+        autoReconnect: databaseSettings.autoReconnect ?? true,
+        charset: databaseSettings.charset || 'utf8mb4',
+      });
+      const testResult = await manager.testConnection();
+      if (testResult.success && testResult.validated) {
+        setDbStatus(prev => ({
+          ...prev,
+          connected: true,
+          connectionCount: 1,
+          lastConnection: new Date().toISOString(),
+          lastError: null,
+        }));
+        setPersistedDbConnected(true);
+        try {
+          const setup = (await loadSiteData('setup-status')) || {};
+          const updated = {
+            hasEverBeenGreen: !!setup.hasEverBeenGreen || true,
+            esiConfigured: !!setup.esiConfigured,
+            databaseConnected: true,
+            isFullyConfigured: !!setup.esiConfigured && true,
+            lastUpdated: new Date().toISOString(),
+          };
+          await saveSiteData('setup-status', { ...setup, ...updated });
+        } catch {}
+        addConnectionLog('✅ Database connection established successfully!');
+        toast.success('Connected to database');
+      } else {
+        throw new Error(testResult.error || 'Connection failed validation');
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      setDbStatus(prev => ({ ...prev, connected: false, lastError: errorMsg }));
+      addConnectionLog(`❌ Connection failed: ${errorMsg}`);
+      toast.error(`Connection failed: ${errorMsg}`);
+    }
+  };
+
+  const handleDisconnectDb = async () => {
+    setDbStatus(prev => ({ ...prev, connected: false, lastError: null }));
+    setPersistedDbConnected(false);
+    try {
+      const setup = (await loadSiteData('setup-status')) || {};
+      const updated = {
+        ...setup,
+        databaseConnected: false,
+        isFullyConfigured: false,
+        lastUpdated: new Date().toISOString(),
+      };
+      await saveSiteData('setup-status', updated);
+    } catch {}
+    toast.info('Disconnected from database');
+  };
+
+  React.useEffect(() => {
+    setDbStatus(prev => ({ ...prev, connected: persistedDbConnected }));
+  }, [persistedDbConnected]);
+
+  const loadTableInfo = async () => {
+    // TODO: Implement table info fetch via DatabaseManager when available
+    console.log('Table info loading not implemented yet');
+  };
+
+  return (
+    <>
+      {/* Compact Database Connection Configuration */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <DatabaseConfigPanel
+          databaseSettings={databaseSettings}
+          dbConnected={!!dbStatus.connected}
+          onUpdate={(key, value) => updateDatabaseSetting(key as any, value)}
+        />
+
+        {/* Connection Logs + Actions (Right column) */}
+        <ConnectionLogsPanel
+          logs={connectionLogs}
+          testing={testingConnection}
+          connected={!!dbStatus.connected}
+          onClear={clearConnectionLogs}
+          onTest={handleTestDbConnection}
+          onConnect={handleConnectDb}
+          onDisconnect={handleDisconnectDb}
+          onSave={saveDatabase}
+          onReset={() => window.location.reload()}
+        />
+      </div>
+
+      {/* Database Tables - Collapsible Section */}
+      {dbStatus.connected && tableInfo.length > 0 && (
+        <div className="border-t border-border pt-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="p-0 h-auto hover:bg-transparent"
+              onClick={() => setShowDatabaseTables(!showDatabaseTables)}
+            >
+              <div className="flex items-center gap-2">
+                {showDatabaseTables ? (
+                  <CaretDown size={16} className="text-muted-foreground" />
+                ) : (
+                  <CaretRight size={16} className="text-muted-foreground" />
+                )}
+                <h4 className="font-medium">Database Tables</h4>
+                <Badge variant="outline" className="text-xs">
+                  {tableInfo.length} tables
+                </Badge>
+              </div>
+            </Button>
+            {showDatabaseTables && (
+              <Button variant="outline" size="sm" onClick={loadTableInfo}>
+                <ArrowClockwise size={16} className="mr-2" />
+                Refresh
+              </Button>
+            )}
+          </div>
+
+          {showDatabaseTables && (
+            <div className="border border-border rounded-lg overflow-hidden">
+              <div className="bg-muted/50 px-4 py-2 border-b border-border">
+                <div className="grid grid-cols-5 gap-4 text-sm font-medium text-muted-foreground">
+                  <span>Table Name</span>
+                  <span>Rows</span>
+                  <span>Size</span>
+                  <span>Engine</span>
+                  <span>Last Update</span>
+                </div>
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                {tableInfo.map((table, index) => (
+                  <div key={index} className="px-4 py-2 border-b border-border/50 last:border-b-0 hover:bg-muted/30">
+                    <div className="grid grid-cols-5 gap-4 text-sm">
+                      <span className="font-mono">{table.name}</span>
+                      <span>{table.rowCount?.toLocaleString?.() ?? '-'}</span>
+                      <span>{table.size ?? '-'}</span>
+                      <span>{table.engine ?? '-'}</span>
+                      <span className="text-muted-foreground">
+                        {table.lastUpdate ? new Date(table.lastUpdate).toLocaleDateString() : '-'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+};
+
+export default DatabaseTabContainer;
