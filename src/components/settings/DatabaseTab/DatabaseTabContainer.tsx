@@ -61,6 +61,7 @@ const DatabaseTabContainer: React.FC = () => {
 
   // Connection/logs state localized to the tab
   const [testingConnection, setTestingConnection] = React.useState(false);
+  const [isConnecting, setIsConnecting] = React.useState(false);
   const [connectionLogs, setConnectionLogs] = React.useState<string[]>([]);
 
   // Connection status persisted latch and UI state
@@ -78,6 +79,7 @@ const DatabaseTabContainer: React.FC = () => {
   const [tableInfo, setTableInfo] = React.useState<any[]>([]);
   const [adminExists, setAdminExists] = React.useState<boolean | null>(null);
   const [showDatabaseTables, setShowDatabaseTables] = useLocalKV<boolean>('database-tables-expanded', false);
+  const [lastSuccessfulTest, setLastSuccessfulTest] = React.useState<number | null>(null);
 
   const addConnectionLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -175,11 +177,7 @@ const DatabaseTabContainer: React.FC = () => {
           addConnectionLog(`⚡ Connection latency: ${result.latency}ms`);
         }
         toast.success('✅ Connection validated');
-
-        // Persist live DB credentials for this session so other modules (e.g., login) can use them
-        try {
-          sessionStorage.setItem('lmeve-live-db-creds', JSON.stringify({ host, port: Number(port), database, username, password }));
-        } catch {}
+        setLastSuccessfulTest(Date.now());
 
         // Probe server-side authoritative details
         try {
@@ -268,83 +266,74 @@ const DatabaseTabContainer: React.FC = () => {
       toast.error('All database fields are required');
       return;
     }
+    setIsConnecting(true);
     try {
-      addConnectionLog('🔌 Establishing persistent database connection...');
-      const manager = new DatabaseManager({
-        host,
-        port: Number(port),
-        database,
-        username,
-        password,
-        ssl: databaseSettings.ssl || false,
-        connectionPoolSize: databaseSettings.connectionPoolSize || 10,
-        queryTimeout: databaseSettings.queryTimeout || 30,
-        autoReconnect: databaseSettings.autoReconnect ?? true,
-        charset: databaseSettings.charset || 'utf8mb4',
-      });
-      const testResult = await manager.testConnection();
-      if (testResult.success && testResult.validated) {
-        setDbStatus(prev => ({
-          ...prev,
-          connected: true,
-          connectionCount: 1,
-          lastConnection: new Date().toISOString(),
-          lastError: null,
-        }));
-        setPersistedDbConnected(true);
-        try { window.dispatchEvent(new CustomEvent('lmeve-db-connected', { detail: true })); } catch {}
-  try { sessionStorage.setItem('lmeve-live-db-creds', JSON.stringify({ host, port: Number(port), database, username, password })); } catch {}
-        try {
-          const setup = (await loadSiteData('setup-status')) || {};
-          const updated = {
-            hasEverBeenGreen: !!setup.hasEverBeenGreen || true,
-            esiConfigured: !!setup.esiConfigured,
-            databaseConnected: true,
-            isFullyConfigured: !!setup.esiConfigured && true,
-            lastUpdated: new Date().toISOString(),
-          };
-          await saveSiteData('setup-status', { ...setup, ...updated });
-        } catch {}
-        addConnectionLog('✅ Database connection established successfully!');
-        toast.success('Connected to database');
+      addConnectionLog('🔌 Establishing database connection status...');
 
-        // After connect, refresh admin presence
-        try {
-          const r = await fetch('/api/test-connection.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              host,
-              port: Number(port),
-              database,
-              username,
-              password,
-            })
-          });
-          if (r.ok) {
-            const j = await r.json();
-            if (typeof j?.adminExists === 'boolean') {
-              setAdminExists(j.adminExists);
-              addConnectionLog(`👤 Admin user: ${j.adminExists ? 'FOUND' : 'NOT FOUND'}`);
-            }
+      // Update connection status (already validated by Test)
+      setDbStatus(prev => ({
+        ...prev,
+        connected: true,
+        connectionCount: 1,
+        lastConnection: new Date().toISOString(),
+        lastError: null,
+      }));
+      setPersistedDbConnected(true);
+
+      // Dispatch DB connected event
+      try { window.dispatchEvent(new CustomEvent('lmeve-db-connected', { detail: true })); } catch {}
+
+      // Update setup status
+      try {
+        const setup = (await loadSiteData('setup-status')) || {};
+        const updated = {
+          hasEverBeenGreen: !!setup.hasEverBeenGreen || true,
+          esiConfigured: !!setup.esiConfigured,
+          databaseConnected: true,
+          isFullyConfigured: !!setup.esiConfigured && true,
+          lastUpdated: new Date().toISOString(),
+        };
+        await saveSiteData('setup-status', { ...setup, ...updated });
+      } catch {}
+
+      addConnectionLog('✅ Database connection established!');
+      toast.success('Connected to database');
+
+      // After connect, refresh admin presence
+      try {
+        const r = await fetch('/api/test-connection.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            host,
+            port: Number(port),
+            database,
+            username,
+            password,
+          })
+        });
+        if (r.ok) {
+          const j = await r.json();
+          if (typeof j?.adminExists === 'boolean') {
+            setAdminExists(j.adminExists);
+            addConnectionLog(`👤 Admin user: ${j.adminExists ? 'FOUND' : 'NOT FOUND'}`);
           }
-        } catch {}
-      } else {
-        throw new Error(testResult.error || 'Connection failed validation');
-      }
+        }
+      } catch {}
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       setDbStatus(prev => ({ ...prev, connected: false, lastError: errorMsg }));
       addConnectionLog(`❌ Connection failed: ${errorMsg}`);
       toast.error(`Connection failed: ${errorMsg}`);
+    } finally {
+      setIsConnecting(false);
     }
   };
 
   const handleDisconnectDb = async () => {
     setDbStatus(prev => ({ ...prev, connected: false, lastError: null }));
     setPersistedDbConnected(false);
-  try { window.dispatchEvent(new CustomEvent('lmeve-db-connected', { detail: false })); } catch {}
-    try { sessionStorage.removeItem('lmeve-live-db-creds'); } catch {}
+    try { window.dispatchEvent(new CustomEvent('lmeve-db-connected', { detail: false })); } catch {}
     try {
       const setup = (await loadSiteData('setup-status')) || {};
       const updated = {
@@ -416,9 +405,17 @@ const DatabaseTabContainer: React.FC = () => {
               <Button
                 size="sm"
                 onClick={handleConnectDb}
-                className="bg-accent hover:bg-accent/90"
+                disabled={isConnecting || !lastSuccessfulTest || (Date.now() - lastSuccessfulTest > 120000)}
+                className="bg-accent hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={
+                  !lastSuccessfulTest
+                    ? 'Run Test Connection first'
+                    : (Date.now() - lastSuccessfulTest > 120000)
+                    ? 'Test expired (2 min), re-test connection'
+                    : 'Establish database connection'
+                }
               >
-                Connect
+                {isConnecting ? 'Connecting...' : 'Connect'}
               </Button>
             )}
 

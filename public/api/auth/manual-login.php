@@ -14,6 +14,16 @@ $username = trim((string)$body['username']);
 $password = (string)$body['password'];
 
 try {
+  // Support two distinct use cases:
+  // 1. SETUP MODE (Database Test): Admin provides DB credentials via query params
+  //    to validate them BEFORE they're saved to server settings.
+  //    Used by: DatabaseTabContainer Test Connection flow
+  // 
+  // 2. USER LOGIN MODE: Regular users authenticate after DB is configured.
+  //    No query params - server uses its saved DB settings.
+  //    Used by: Normal login form via auth-provider
+  //
+  // api_get_db_config() handles both: prefers query params if present, falls back to server settings
   $db = api_connect($_GET);
   $dbCfg = api_get_db_config($_GET);
   api_select_db($db, (string)($_GET['database'] ?? $dbCfg['database'] ?? 'lmeve2'));
