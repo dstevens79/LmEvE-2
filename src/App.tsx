@@ -278,12 +278,11 @@ function AppContent() {
     // If database is connected, setup is complete
     if (dbConnected) return false;
     
-    // Check if credentials are configured
-    const hostOk = !!databaseSettings?.host;
-    const portOk = !!databaseSettings?.port;
-    const userOk = !!databaseSettings?.username;
-    const passOk = !!databaseSettings?.password;
-    const hasCredentials = hostOk && portOk && userOk && passOk;
+    // Check if credentials are actually configured (not just default empty values)
+    const hostOk = !!databaseSettings?.host && databaseSettings.host.trim() !== '';
+    const userOk = !!databaseSettings?.username && databaseSettings.username.trim() !== '';
+    const passOk = !!databaseSettings?.password && databaseSettings.password.trim() !== '' && databaseSettings.password !== '***';
+    const hasCredentials = hostOk && userOk && passOk;
     
     // If credentials exist but not connected, don't force setup (user can test/connect manually)
     // Only force setup if NO credentials exist at all
