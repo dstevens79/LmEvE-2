@@ -29,6 +29,9 @@ try {
     $dbname = (string)($_GET['database'] ?? $cfg['database'] ?? 'lmeve2');
     api_select_db($db, $dbname);
 
+    // Consider DB connected if we can connect and select the target database
+    $dbOk = true;
+
     // Check users table exists
     $hasUsers = false;
     if ($res = $db->query("SHOW TABLES LIKE 'users'")) {

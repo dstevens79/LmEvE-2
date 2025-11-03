@@ -62,6 +62,7 @@ const DatabaseTabContainer: React.FC = () => {
   });
 
   const [tableInfo, setTableInfo] = React.useState<any[]>([]);
+  const [adminExists, setAdminExists] = React.useState<boolean | null>(null);
   const [showDatabaseTables, setShowDatabaseTables] = useLocalKV<boolean>('database-tables-expanded', false);
 
   const addConnectionLog = (message: string) => {
@@ -116,6 +117,22 @@ const DatabaseTabContainer: React.FC = () => {
       addConnectionLog('🔍 Starting comprehensive database validation...');
       addConnectionLog(`🎯 Target: ${username}@${host}:${port}/${database}`);
 
+      // Step 0: API health check
+      try {
+        addConnectionLog('🌐 Checking API health at /api/health.php ...');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const h = await fetch('/api/health.php', { method: 'GET', signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (h.ok) {
+          addConnectionLog('✅ API is reachable');
+        } else {
+          addConnectionLog(`⚠️ API health responded with HTTP ${h.status}`);
+        }
+      } catch (e) {
+        addConnectionLog(`⚠️ API health check failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      }
+
       const config = {
         host,
         port: Number(port),
@@ -129,6 +146,7 @@ const DatabaseTabContainer: React.FC = () => {
         charset: 'utf8mb4',
       };
       const manager = new DatabaseManager(config);
+      addConnectionLog('🔌 Performing client-side connectivity checks (network/format)...');
       const result = await manager.testConnection();
 
       if (result.success && result.validated) {
@@ -137,6 +155,71 @@ const DatabaseTabContainer: React.FC = () => {
           addConnectionLog(`⚡ Connection latency: ${result.latency}ms`);
         }
         toast.success('✅ Connection validated');
+
+        // Probe server-side authoritative details
+        try {
+          addConnectionLog('🧪 Server DB probe via /api/test-connection.php ...');
+          const r = await fetch('/api/test-connection.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              host,
+              port: Number(port),
+              database,
+              username,
+              password,
+            })
+          });
+          if (!r.ok) {
+            addConnectionLog(`❌ Server probe failed (HTTP ${r.status})`);
+          } else {
+            const j = await r.json();
+            addConnectionLog(`🗄️  MySQL server: ${j?.serverVersion || 'unknown'} | User: ${j?.currentUser || 'unknown'}`);
+            addConnectionLog(`📦 Select DB '${database}': ${j?.canSelectLmeve ? 'OK' : 'FAILED'}`);
+            addConnectionLog(`🧱 Users table: ${j?.usersTableExists ? 'FOUND' : 'NOT FOUND'}`);
+            if (typeof j?.adminExists === 'boolean') {
+              setAdminExists(j.adminExists);
+              addConnectionLog(`👤 Admin user: ${j.adminExists ? 'FOUND' : 'NOT FOUND'}`);
+            }
+            if (j?.adminPasswordInfo && typeof j.adminPasswordInfo === 'object') {
+              const info = j.adminPasswordInfo;
+              const type = info.type || 'unknown';
+              const matchesDefault = !!info.matchesDefault;
+              addConnectionLog(`🔐 Admin password type: ${type}`);
+              addConnectionLog(matchesDefault 
+                ? '⚠️ Admin password matches default (12345)'
+                : '✅ Admin password is not default');
+              // If admin exists and matches default, attempt a real manual login check
+              if (j.adminExists === true) {
+                try {
+                  addConnectionLog('🔑 Verifying manual login with admin/******** ...');
+                  const qs = new URLSearchParams();
+                  qs.set('host', String(host));
+                  qs.set('port', String(port));
+                  qs.set('username', String(username));
+                  qs.set('password', String(password));
+                  qs.set('database', String(database));
+                  const ml = await fetch(`/api/auth/manual-login.php?${qs.toString()}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: 'admin', password: '12345' }),
+                  });
+                  if (ml.ok) {
+                    addConnectionLog('✅ Manual login with admin succeeded');
+                  } else {
+                    let errText = '';
+                    try { const jj = await ml.json(); errText = jj?.error || ''; } catch {}
+                    addConnectionLog(`❌ Manual login failed (HTTP ${ml.status}) ${errText ? '- ' + errText : ''}`);
+                  }
+                } catch (e) {
+                  addConnectionLog(`❌ Manual login check error: ${e instanceof Error ? e.message : 'Unknown error'}`);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          addConnectionLog(`⚠️ Server probe error: ${e instanceof Error ? e.message : 'Unknown error'}`);
+        }
       } else if (result.success) {
         addConnectionLog('⚠️ Partial connection success but validation incomplete');
         toast.warning('⚠️ Partial success');
@@ -184,6 +267,7 @@ const DatabaseTabContainer: React.FC = () => {
           lastError: null,
         }));
         setPersistedDbConnected(true);
+        try { window.dispatchEvent(new CustomEvent('lmeve-db-connected', { detail: true })); } catch {}
         try {
           const setup = (await loadSiteData('setup-status')) || {};
           const updated = {
@@ -197,6 +281,28 @@ const DatabaseTabContainer: React.FC = () => {
         } catch {}
         addConnectionLog('✅ Database connection established successfully!');
         toast.success('Connected to database');
+
+        // After connect, refresh admin presence
+        try {
+          const r = await fetch('/api/test-connection.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              host,
+              port: Number(port),
+              database,
+              username,
+              password,
+            })
+          });
+          if (r.ok) {
+            const j = await r.json();
+            if (typeof j?.adminExists === 'boolean') {
+              setAdminExists(j.adminExists);
+              addConnectionLog(`👤 Admin user: ${j.adminExists ? 'FOUND' : 'NOT FOUND'}`);
+            }
+          }
+        } catch {}
       } else {
         throw new Error(testResult.error || 'Connection failed validation');
       }
@@ -211,6 +317,7 @@ const DatabaseTabContainer: React.FC = () => {
   const handleDisconnectDb = async () => {
     setDbStatus(prev => ({ ...prev, connected: false, lastError: null }));
     setPersistedDbConnected(false);
+  try { window.dispatchEvent(new CustomEvent('lmeve-db-connected', { detail: false })); } catch {}
     try {
       const setup = (await loadSiteData('setup-status')) || {};
       const updated = {
@@ -222,7 +329,10 @@ const DatabaseTabContainer: React.FC = () => {
       await saveSiteData('setup-status', updated);
     } catch {}
     toast.info('Disconnected from database');
+    setAdminExists(null);
   };
+
+  // Removed seed-admin functionality for security concerns; admin should be provisioned via setup script only.
 
   React.useEffect(() => {
     setDbStatus(prev => ({ ...prev, connected: persistedDbConnected }));

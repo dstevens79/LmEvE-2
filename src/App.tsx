@@ -118,16 +118,41 @@ function AppContent() {
   const [sdeLatestVersion, setSdeLatestVersion] = React.useState<string | null>(null);
   const [sdeIsOutdated, setSdeIsOutdated] = React.useState<boolean | null>(null);
   React.useEffect(() => {
+    // Listen for cross-component DB connection updates
+    const handler = (e: any) => {
+      if (e && typeof e.detail === 'boolean') {
+        setDbConnected(e.detail);
+      }
+    };
+    window.addEventListener('lmeve-db-connected' as any, handler as any);
+    return () => window.removeEventListener('lmeve-db-connected' as any, handler as any);
+  }, [setDbConnected]);
+
+  React.useEffect(() => {
     (async () => {
       try {
-        const resp = await fetch('/api/host-info.php', { method: 'POST' });
-        if (resp.ok) {
-          const json = await resp.json();
-          setServerHostname(json?.server?.hostname || null);
-          setServerPublicIp(json?.server?.publicIp || null);
+        // Use aggregated system status for initial values
+        const ss = await fetch('/api/system-status.php', { method: 'GET' });
+        if (ss.ok) {
+          const j = await ss.json();
+          const s = j?.status || {};
+          setServerHostname(s?.server?.hostname || null);
+          setServerPublicIp(s?.server?.publicIp || null);
+          setDbConnected(!!s?.database?.connected);
+          const esiOk = s?.esi?.status === 'online';
+          setEsiServiceStatus(esiOk ? 'online' : 'offline');
+          const eveOk = s?.eve?.status === 'online';
+          setEveServerStatus(eveOk ? 'online' : 'offline');
+          setEvePlayersOnline(typeof s?.eve?.players === 'number' ? s.eve.players : 0);
+          setRegisteredCorpsCount(typeof s?.corpEsi?.corpCount === 'number' ? s.corpEsi.corpCount : 0);
+          // SDE status mapping
+          if (typeof s?.sde?.latestVersion === 'string') setSdeLatestVersion(s.sde.latestVersion);
+          if (typeof s?.sde?.status === 'string') {
+            setSdeIsOutdated(s.sde.status === 'red' ? true : s.sde.status === 'green' ? false : null);
+          }
         }
       } catch {}
-      // Pull minimal app metrics to drive first-run UX
+      // Pull minimal app metrics to drive first-run UX (fallback)
       try {
         const m = await fetch('/api/app-metrics.php', { method: 'GET' });
         if (m.ok) {
@@ -141,58 +166,29 @@ function AppContent() {
           }
         }
       } catch {}
-      // Simple ESI service ping (no corp endpoints)
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 5000);
-        // Fetch a static resource that indicates ESI is up and serving JSON
-        const esi = await fetch('https://esi.evetech.net/latest/swagger.json', { method: 'GET', signal: controller.signal });
-        clearTimeout(timer);
-        setEsiServiceStatus(esi.ok ? 'online' : 'offline');
-      } catch {
-        setEsiServiceStatus('offline');
-      }
-      // EVE Tranquility server status (players online)
-      // SDE latest version (server-throttled)
-      try {
-        const r = await fetch('/api/sde-latest.php');
-        if (r.ok) {
-          const j = await r.json();
-          if (j && typeof j.latestVersion === 'string') {
-            setSdeLatestVersion(j.latestVersion);
-            // Compare with installed version if available
-            const installed = (sdeStatus as any)?.currentVersion as string | undefined;
-            if (installed && typeof installed === 'string') {
-              const iDate = installed.split('-').slice(0,3).join('-');
-              const lDate = j.latestVersion;
-              setSdeIsOutdated(iDate < lDate);
-            } else {
-              setSdeIsOutdated(null);
-            }
-          }
-        }
-      } catch {}
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 5000);
-        const r = await fetch('https://esi.evetech.net/latest/status/?datasource=tranquility', { method: 'GET', signal: controller.signal });
-        clearTimeout(timer);
-        if (r.ok) {
-          const j = await r.json();
-          const players = typeof j?.players === 'number' ? j.players : 0;
-          setEvePlayersOnline(players);
-          setEveServerStatus('online');
-        } else {
-          setEveServerStatus(r.status >= 500 || r.status === 503 ? 'offline' : 'unknown');
-          setEvePlayersOnline(0);
-        }
-      } catch {
-        setEveServerStatus('unknown');
-        setEvePlayersOnline(0);
-      }
     })();
     // Opportunistically trigger SDE status check (respects internal cooldowns)
     try { checkForUpdates(); } catch {}
+  }, []);
+
+  // Poll aggregated system status every 10 minutes
+  React.useEffect(() => {
+    const interval = window.setInterval(async () => {
+      try {
+        const ss = await fetch('/api/system-status.php', { method: 'GET' });
+        if (!ss.ok) return;
+        const j = await ss.json();
+        const s = j?.status || {};
+        setDbConnected(!!s?.database?.connected);
+        setEsiServiceStatus(s?.esi?.status === 'online' ? 'online' : 'offline');
+        setEveServerStatus(s?.eve?.status === 'online' ? 'online' : 'offline');
+        setEvePlayersOnline(typeof s?.eve?.players === 'number' ? s.eve.players : 0);
+        setRegisteredCorpsCount(typeof s?.corpEsi?.corpCount === 'number' ? s.corpEsi.corpCount : 0);
+        if (typeof s?.sde?.latestVersion === 'string') setSdeLatestVersion(s.sde.latestVersion);
+        if (typeof s?.sde?.status === 'string') setSdeIsOutdated(s.sde.status === 'red' ? true : s.sde.status === 'green' ? false : null);
+      } catch {}
+    }, 10 * 60 * 1000);
+    return () => window.clearInterval(interval);
   }, []);
   // Registered Pilots now provided by server app-metrics
   // Prefer server-observed first-run signal: no successful logins recorded yet

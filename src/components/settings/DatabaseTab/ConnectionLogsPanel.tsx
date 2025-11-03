@@ -13,6 +13,7 @@ export interface ConnectionLogsPanelProps {
   onDisconnect: () => void;
   onSave: () => void;
   onReset: () => void;
+  extraActions?: React.ReactNode;
 }
 
 export const ConnectionLogsPanel: React.FC<ConnectionLogsPanelProps> = ({
@@ -25,6 +26,7 @@ export const ConnectionLogsPanel: React.FC<ConnectionLogsPanelProps> = ({
   onDisconnect,
   onSave,
   onReset,
+  extraActions,
 }) => {
   const endRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
@@ -72,7 +74,7 @@ export const ConnectionLogsPanel: React.FC<ConnectionLogsPanelProps> = ({
         )}
       </div>
 
-      {/* Actions under logs */}
+  {/* Actions under logs */}
       <div className="flex flex-wrap gap-2">
         <Button
           variant="outline"
@@ -133,6 +135,12 @@ export const ConnectionLogsPanel: React.FC<ConnectionLogsPanelProps> = ({
           Reset
         </Button>
       </div>
+
+      {extraActions && (
+        <div className="pt-1">
+          {extraActions}
+        </div>
+      )}
     </div>
   );
 };

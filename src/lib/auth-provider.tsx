@@ -204,20 +204,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // Add a timeout to prevent indefinite hang
       const controller = new AbortController();
       const timer = window.setTimeout(() => controller.abort(), 10000);
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-        signal: controller.signal,
-      }).finally(() => window.clearTimeout(timer));
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        const statusInfo = `HTTP ${resp.status}`;
-        throw new Error(err.error ? `${err.error} (${statusInfo})` : `Login failed (${statusInfo})`);
+      let resp: Response;
+      try {
+        resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+          signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timer);
       }
-      const json = await resp.json();
+
+      // Try to parse JSON regardless of HTTP code; server may return HTTP 200 with ok:false
+      let json: any = null;
+      try { json = await resp.json(); } catch {}
+
+      // Prefer server error message when provided
+      if (!resp.ok || (json && json.ok === false)) {
+        const statusInfo = `HTTP ${resp.status}`;
+        const serverErr = json && (json.error || json.message);
+        // MySQL connect failed or other DB/setup errors come through here
+        throw new Error(serverErr ? `${serverErr} (${statusInfo})` : `Login failed (${statusInfo})`);
+      }
+
       const row = json?.user;
-      if (!row) throw new Error('Invalid server response');
+      if (!row) {
+        // Provide clearer guidance when server responded but no user payload is present
+        const serverErr = json && (json.error || json.message);
+        throw new Error(serverErr || 'Invalid server response');
+      }
       const roleFromServer = (row.role || 'corp_member') as UserRole;
       const userData: Partial<LMeveUser> = {
         id: String(row.id ?? `user_${Date.now()}`),
@@ -236,7 +252,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setCurrentUser(fullUser);
       console.log('✅ Manual login successful via DB:', username);
       triggerAuthChange();
-    } catch (error) {
+    } catch (error: any) {
+      // Map AbortError to a friendly timeout message
+      if (error?.name === 'AbortError' || /aborted/i.test(String(error?.message))) {
+        const hint = 'Login request timed out. Ensure the PHP API is running and database settings are correct.';
+        const e = new Error(hint);
+        console.error('❌ Manual login failed (timeout):', e);
+        throw e;
+      }
       console.error('❌ Manual login failed:', error);
       throw error;
     } finally {
