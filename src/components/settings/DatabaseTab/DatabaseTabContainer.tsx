@@ -162,51 +162,45 @@ const DatabaseTabContainer: React.FC = () => {
   };
 
   const handleTestDbConnection = async () => {
-    if (testingConnection) {
-      toast.warning('Database test already in progress...');
-      return;
-    }
+    if (testingConnection) return;
 
     const { host, port, database, username } = databaseSettings;
-    const password = effectivePassword; // Use effective password (user-entered or server value)
+    const password = effectivePassword;
+    
     if (!host || !port || !database || !username || !password) {
-      const error = 'All database fields are required: host, port, database, username, password';
-      toast.error(error);
-      addConnectionLog(`❌ ${error}`);
+      toast.error('All database fields are required');
       return;
     }
     
-    // If password is still '***', user hasn't entered a real password yet
     if (password === '***') {
-      const error = 'Please enter the database password (current value is masked)';
-      toast.error(error);
-      addConnectionLog(`❌ ${error}`);
+      toast.error('Please enter the database password');
       return;
     }
 
     setConnectionLogs([]);
     setTestingConnection(true);
+    setLastSuccessfulTest(null);
+    
     try {
-      addConnectionLog('🔍 Starting comprehensive database validation...');
+      addConnectionLog('🔍 Starting database validation...');
       addConnectionLog(`🎯 Target: ${username}@${host}:${port}/${database}`);
 
-      // Step 0: API health check
+      // Simple health check - no AbortController complexity
+      addConnectionLog('🌐 Checking API health...');
       try {
-        addConnectionLog('🌐 Checking API health at /api/health.php ...');
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        const h = await fetch('/api/health.php', { method: 'GET', signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (h.ok) {
-          addConnectionLog('✅ API is reachable');
-        } else {
-          addConnectionLog(`⚠️ API health responded with HTTP ${h.status}`);
-          addConnectionLog('⛔ Aborting DB test: backend health failed');
+        const healthRes = await fetch('/api/health.php', {
+          method: 'GET',
+          cache: 'no-cache',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        if (!healthRes.ok) {
+          addConnectionLog(`⚠️ API health check failed: HTTP ${healthRes.status}`);
           return;
         }
-      } catch (e) {
-        addConnectionLog(`⚠️ API health check failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
-        addConnectionLog('⛔ Aborting DB test: backend not reachable');
+        addConnectionLog('✅ API is reachable');
+      } catch (healthError) {
+        addConnectionLog(`⚠️ API health check error: ${healthError instanceof Error ? healthError.message : String(healthError)}`);
+        addConnectionLog(`⚠️ Error type: ${healthError?.constructor?.name || 'unknown'}`);
         return;
       }
 
