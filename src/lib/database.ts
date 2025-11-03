@@ -126,19 +126,29 @@ export class DatabaseManager {
       }
 
       // Step 2: Call integrated API (PHP under Apache in production)
-      const response = await fetch('/api/test-connection.php', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          host: this.config.host,
-          port: this.config.port,
-          username: this.config.username,
-          password: this.config.password,
-          database: this.config.database
-        })
-      });
+      // Add a hard timeout to avoid hanging UI if the API is slow/unreachable
+      const controller = new AbortController();
+      const timeoutMs = 10000; // 10s
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      let response: Response;
+      try {
+        response = await fetch('/api/test-connection.php', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            host: this.config.host,
+            port: this.config.port,
+            username: this.config.username,
+            password: this.config.password,
+            database: this.config.database
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         throw new Error(`API error: ${response.status} ${response.statusText}`);
@@ -170,7 +180,10 @@ export class DatabaseManager {
       };
       
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Connection test failed';
+      const isAbort = (error as any)?.name === 'AbortError';
+      const errorMessage = isAbort
+        ? 'Connection test timed out. Is the PHP API reachable and responding?'
+        : (error instanceof Error ? error.message : 'Connection test failed');
       console.log(`❌ Database connection failed: ${errorMessage}`);
       
       return { 

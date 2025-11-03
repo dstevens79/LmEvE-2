@@ -42,7 +42,10 @@ if (!$mysqli) {
     echo json_encode(['ok' => false, 'error' => 'Failed to initialize mysqli']);
     exit;
 }
-@$mysqli->options(MYSQLI_OPT_CONNECT_TIMEOUT, 10);
+// Fail fast on connect and reads to avoid blocking the web worker
+@ini_set('default_socket_timeout', '10');
+if (defined('MYSQLI_OPT_CONNECT_TIMEOUT')) { @$mysqli->options(MYSQLI_OPT_CONNECT_TIMEOUT, 10); }
+if (defined('MYSQLI_OPT_READ_TIMEOUT')) { @$mysqli->options(MYSQLI_OPT_READ_TIMEOUT, 10); }
 
 // Connect without selecting DB first to allow separate checks
 $connected = @$mysqli->real_connect($host, $user, $pass, null, $port);

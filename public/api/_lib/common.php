@@ -167,7 +167,10 @@ function api_connect(array $payload): mysqli {
     if (!$mysqli) {
         api_fail(500, 'Failed to initialize MySQL client');
     }
-    @$mysqli->options(MYSQLI_OPT_CONNECT_TIMEOUT, 10);
+    // Fail fast: set connection and read timeouts
+    @ini_set('default_socket_timeout', '10');
+    if (defined('MYSQLI_OPT_CONNECT_TIMEOUT')) { @$mysqli->options(MYSQLI_OPT_CONNECT_TIMEOUT, 10); }
+    if (defined('MYSQLI_OPT_READ_TIMEOUT')) { @$mysqli->options(MYSQLI_OPT_READ_TIMEOUT, 10); }
 
     $dbCfg = api_get_db_config($payload);
     $host = (string)($dbCfg['host'] ?? 'localhost');
