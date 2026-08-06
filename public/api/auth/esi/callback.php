@@ -1,30 +1,19 @@
 <?php
-// EVE SSO OAuth callback: exchange code, verify, store tokens, establish browser session.
+// EVE SSO OAuth callback: exchange code, verify, enrich identity, store tokens, establish browser session.
 require_once __DIR__ . '/../../_lib/common.php';
 require_once __DIR__ . '/../../_lib/session.php';
+require_once __DIR__ . '/../../_lib/esi-identity.php';
 
-// If invoked by CCP as plain GET (HTTP deployments), handle the exchange server-side
-// using server-stored DB/ESI config and then redirect to app root without exposing code/state.
-// POST mode remains JSON API for programmatic use.
+// GET: CCP browser redirect. POST: programmatic JSON.
 
 function http_post_form($url, $headers, $data) {
   $ch = curl_init($url);
   curl_setopt($ch, CURLOPT_POST, true);
   curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+  curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+  curl_setopt($ch, CURLOPT_TIMEOUT, 30);
   curl_setopt($ch, CURLOPT_HTTPHEADER, array_merge(['Content-Type: application/x-www-form-urlencoded'], $headers));
   curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
-  $resp = curl_exec($ch);
-  $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-  $err = curl_error($ch);
-  curl_close($ch);
-  if ($resp === false) return [null, $code, $err];
-  return [$resp, $code, null];
-}
-
-function http_get_json($url, $headers) {
-  $ch = curl_init($url);
-  curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-  curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
   $resp = curl_exec($ch);
   $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
   $err = curl_error($ch);
@@ -39,11 +28,27 @@ function callback_fail_redirect($message) {
   exit;
 }
 
-// Determine payload based on method
+function callback_ok_redirect(bool $needsCorpSetup, bool $adminHandoff) {
+  $params = ['auth' => 'ok'];
+  if ($needsCorpSetup) {
+    $params['setup'] = 'corp';
+  }
+  if ($adminHandoff) {
+    $params['handoff'] = 'admin';
+  }
+  header('Location: /?' . http_build_query($params), true, 302);
+  exit;
+}
+
+// Capture prior browser session BEFORE OAuth state consume / session regenerate.
+// This is the admin -> character handoff signal.
+api_session_start();
+$existingSession = api_session_user();
+$adminHandoff = is_array($existingSession) && (($existingSession['role'] ?? '') === 'super_admin');
+
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $payload = $method === 'POST' ? api_read_json() : $_GET;
 
-// Expect minimal OAuth details; DB/ESI config will be loaded from server settings if not provided
 if (empty($payload['code'])) {
   if ($method === 'GET') {
     callback_fail_redirect('missing_code');
@@ -54,11 +59,8 @@ if (empty($payload['code'])) {
 $code = (string)$payload['code'];
 $state = isset($payload['state']) ? (string)$payload['state'] : '';
 
-// Validate CSRF state for browser GET callback when start.php stored oauth state.
-// POST/programmatic callers may omit prior start.php usage.
 $oauthMeta = null;
 if ($method === 'GET') {
-  api_session_start();
   $storedOauth = $_SESSION[LMEVE_SESSION_OAUTH_KEY] ?? null;
   $hasStoredState = is_array($storedOauth) && !empty($storedOauth['state']);
   if ($hasStoredState) {
@@ -70,7 +72,6 @@ if ($method === 'GET') {
       callback_fail_redirect('invalid_state');
     }
   } elseif ($state !== '') {
-    // No server-stored state (legacy path). Do not invent security from a free-floating state.
     $oauthMeta = null;
   }
 }
@@ -91,7 +92,6 @@ try {
 
   $basic = base64_encode($clientId . ':' . $clientSecret);
 
-  // 1) Exchange code for tokens (web/confidential client)
   $tokenUrl = 'https://login.eveonline.com/v2/oauth/token';
   $tokenBody = [
     'grant_type' => 'authorization_code',
@@ -116,9 +116,10 @@ try {
   $tokenType = $tokenData['token_type'] ?? 'Bearer';
   $expiresAt = (new DateTimeImmutable('+' . max($expiresIn, 0) . ' seconds'))->format('Y-m-d H:i:s');
 
-  // 2) Verify identity via SSO verify endpoint
-  $verifyUrl = 'https://login.eveonline.com/oauth/verify';
-  list($vbody, $vcode, $verr) = http_get_json($verifyUrl, ['Authorization: Bearer ' . $accessToken]);
+  list($vbody, $vcode, $verr) = esi_http_get(
+    'https://login.eveonline.com/oauth/verify',
+    ['Authorization: Bearer ' . $accessToken, 'User-Agent: LMeve-2']
+  );
   if ($vbody === null || $vcode < 200 || $vcode >= 300) {
     if ($method === 'GET') callback_fail_redirect('sso_verify_failed');
     api_fail(200, 'SSO verify failed', ['status' => $vcode, 'error' => $verr, 'body' => $vbody]);
@@ -131,44 +132,91 @@ try {
   $characterId = (int)$verify['CharacterID'];
   $characterName = (string)$verify['CharacterName'];
   $scopes = (string)($verify['Scopes'] ?? '');
+  $scopeList = esi_parse_scopes($scopes);
 
-  // 3) Get character -> corporation from ESI
-  $charUrl = "https://esi.evetech.net/latest/characters/$characterId/?datasource=tranquility";
-  list($cbody, $ccode, $cerr) = http_get_json($charUrl, ['Authorization: Bearer ' . $accessToken]);
-  $corpId = 0;
-  if ($cbody !== null && $ccode >= 200 && $ccode < 300) {
-    $char = json_decode($cbody, true);
-    $corpId = (int)($char['corporation_id'] ?? 0);
+  $identity = esi_enrich_character_identity($characterId, $accessToken, $scopeList);
+  $corpId = (int)($identity['corporation_id'] ?? 0);
+  $corpName = $identity['corporation_name'] !== null ? (string)$identity['corporation_name'] : null;
+  $allianceId = isset($identity['alliance_id']) && (int)$identity['alliance_id'] > 0
+    ? (int)$identity['alliance_id']
+    : null;
+  $allianceName = $identity['alliance_name'] !== null ? (string)$identity['alliance_name'] : null;
+
+  $existingDbRole = null;
+  $prev = @$db->prepare('SELECT id, role FROM users WHERE character_id=? LIMIT 1');
+  if ($prev) {
+    $prev->bind_param('i', $characterId);
+    @$prev->execute();
+    $prevRes = $prev->get_result();
+    $prevRow = $prevRes ? $prevRes->fetch_assoc() : null;
+    $prev->close();
+    if (is_array($prevRow) && !empty($prevRow['role'])) {
+      $existingDbRole = (string)$prevRow['role'];
+    }
   }
 
-  // 4) Upsert user record with tokens (server-side vault)
+  $siteRole = esi_resolve_login_role(
+    (string)($identity['site_role'] ?? 'corp_member'),
+    $existingSession,
+    $existingDbRole
+  );
+
   $stmt = @$db->prepare(
-    'INSERT INTO users (username, character_id, character_name, corporation_id, access_token, refresh_token, token_expiry, scopes, auth_method, role, is_active, last_login)
-     VALUES (?,?,?,?,?,?,?,?,\'esi\',\'corp_member\',1, NOW())
+    'INSERT INTO users (
+        username, character_id, character_name, corporation_id, corporation_name,
+        alliance_id, alliance_name, access_token, refresh_token, token_expiry,
+        scopes, auth_method, role, is_active, last_login
+     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,\'esi\',?,1,NOW())
      ON DUPLICATE KEY UPDATE
        character_name=VALUES(character_name),
        corporation_id=VALUES(corporation_id),
+       corporation_name=VALUES(corporation_name),
+       alliance_id=VALUES(alliance_id),
+       alliance_name=VALUES(alliance_name),
        access_token=VALUES(access_token),
        refresh_token=VALUES(refresh_token),
        token_expiry=VALUES(token_expiry),
        scopes=VALUES(scopes),
        auth_method=\'esi\',
+       role=VALUES(role),
        last_login=NOW()'
   );
   if (!$stmt) {
     if ($method === 'GET') callback_fail_redirect('db_prepare_failed');
     api_fail(200, 'DB prepare failed', ['error' => $db->error]);
   }
+
   $username = $characterName;
   $refresh = $refreshToken !== null ? (string)$refreshToken : '';
-  $stmt->bind_param('sisissss', $username, $characterId, $characterName, $corpId, $accessToken, $refresh, $expiresAt, $scopes);
+  $corpNameBind = $corpName ?? '';
+  $allianceIdBind = $allianceId ?? 0;
+  $allianceNameBind = $allianceName ?? '';
+
+  $stmt->bind_param(
+    'sisisissssss',
+    $username,
+    $characterId,
+    $characterName,
+    $corpId,
+    $corpNameBind,
+    $allianceIdBind,
+    $allianceNameBind,
+    $accessToken,
+    $refresh,
+    $expiresAt,
+    $scopes,
+    $siteRole
+  );
   if (!$stmt->execute()) {
     if ($method === 'GET') callback_fail_redirect('db_execute_failed');
     api_fail(200, 'DB execute failed', ['error' => $stmt->error]);
   }
   $stmt->close();
 
-  // 5) Load canonical row and establish browser session
+  if ($corpId > 0) {
+    esi_seed_corporation_row($db, $identity, $characterId, $characterName);
+  }
+
   $q = $db->prepare('SELECT id, username, role, auth_method, character_id, character_name, corporation_id, corporation_name, alliance_id, alliance_name, scopes, last_login, session_expiry, is_active, access_token, refresh_token, token_expiry FROM users WHERE character_id=? LIMIT 1');
   if (!$q) {
     if ($method === 'GET') callback_fail_redirect('db_load_failed');
@@ -185,18 +233,28 @@ try {
     api_fail(500, 'User missing after ESI upsert');
   }
 
-  // If an admin/manual session was already active, preserve elevated role on the character link
-  // but the browser session becomes the ESI character identity for data access.
-  $existingSession = api_session_user();
   $public = api_public_user_from_row($row);
   $public['auth_method'] = 'esi';
-  // Keep super_admin role if this character row already has it, else default from row.
+  $public['role'] = $siteRole;
+  if ($corpNameBind !== '') {
+    $public['corporation_name'] = $corpNameBind;
+  }
+  if ($allianceNameBind !== '') {
+    $public['alliance_name'] = $allianceNameBind;
+  }
+  if ($allianceIdBind > 0) {
+    $public['alliance_id'] = $allianceIdBind;
+  }
+
   api_touch_user_session($db, (int)$row['id']);
   api_session_establish($public);
 
+  $corpCount = esi_count_corporations($db);
+  // Admin handoff or first corp seed: send operator to corp setup next.
+  $needsCorpSetup = $adminHandoff || $corpCount <= 0;
+
   $db->close();
 
-  // For POST (programmatic), return JSON (no tokens)
   if ($method === 'POST') {
     api_respond([
       'ok' => true,
@@ -205,15 +263,20 @@ try {
       'characterId' => $characterId,
       'characterName' => $characterName,
       'corporationId' => $corpId,
+      'corporationName' => $corpName,
+      'allianceId' => $allianceId,
+      'allianceName' => $allianceName,
+      'role' => $siteRole,
+      'adminHandoff' => $adminHandoff,
+      'needsCorpSetup' => $needsCorpSetup,
       'scopes' => $scopes,
       'expiresAt' => $expiresAt,
       'tokenType' => $tokenType,
+      'eveRoles' => $identity['eve_roles'] ?? [],
     ]);
   }
 
-  // For GET (CCP redirect), redirect back to the app root without leaking params
-  header('Location: /?auth=ok', true, 302);
-  exit;
+  callback_ok_redirect($needsCorpSetup, $adminHandoff);
 } catch (Throwable $e) {
   if ($method === 'GET') {
     callback_fail_redirect('unhandled');

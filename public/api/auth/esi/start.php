@@ -33,8 +33,15 @@ if (isset($body['scopes']) && is_array($body['scopes'])) {
 }
 
 // If caller only sent scopeType, expand to the same sets the SPA client uses.
+// "basic" still requests corporation-roles so every login can derive CEO/Director/etc.
+// Admin browser sessions default toward corporation scopes for bootstrap handoff.
 if (count($scopes) === 0) {
-  $scopeType = strtolower((string)($body['scopeType'] ?? 'basic'));
+  api_session_start();
+  $sessionUser = api_session_user();
+  $sessionRole = is_array($sessionUser) ? (string)($sessionUser['role'] ?? '') : '';
+  $isAdminSession = ($sessionRole === 'super_admin' || $sessionRole === 'corp_admin');
+
+  $scopeType = strtolower((string)($body['scopeType'] ?? ($isAdminSession ? 'corporation' : 'basic')));
   $characterScopes = [
     'esi-characters.read_corporation_roles.v1',
     'esi-industry.read_character_jobs.v1',
@@ -66,17 +73,20 @@ if (count($scopes) === 0) {
     'esi-corporations.track_members.v1',
   ];
   if ($scopeType === 'enhanced') {
-    $scopes = [
-      'esi-industry.read_character_jobs.v1',
-      'esi-wallet.read_character_wallet.v1',
-      'esi-assets.read_assets.v1',
-      'esi-characters.read_blueprints.v1',
-    ];
+    $scopes = array_values(array_unique(array_merge(
+      ['esi-characters.read_corporation_roles.v1'],
+      [
+        'esi-industry.read_character_jobs.v1',
+        'esi-wallet.read_character_wallet.v1',
+        'esi-assets.read_assets.v1',
+        'esi-characters.read_blueprints.v1',
+      ]
+    )));
   } elseif ($scopeType === 'corporation') {
     $scopes = array_values(array_unique(array_merge($characterScopes, $corporationScopes)));
   } else {
-    // basic: identity-only (no scopes required by EVE SSO)
-    $scopes = [];
+    // basic: identity + roles (needed for site permission mapping on every login)
+    $scopes = ['esi-characters.read_corporation_roles.v1'];
   }
 }
 

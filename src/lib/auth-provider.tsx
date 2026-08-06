@@ -659,6 +659,59 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (fullUser.authMethod !== 'esi') {
         setAndPersistSessionTokens(null);
       }
+
+      // Pull server-seeded corporations so admin handoff / CEO login shows the corp immediately.
+      try {
+        const corpResp = await fetch('/api/lmeve/get-corporations.php', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ limit: 200 }),
+        });
+        const corpJson = await corpResp.json().catch(() => null);
+        if (corpResp.ok && corpJson?.ok && Array.isArray(corpJson.rows)) {
+          const fromServer: CorporationConfig[] = corpJson.rows
+            .map((r: any) => {
+              const corporationId = Number(r.corporation_id ?? r.corporationId ?? 0);
+              if (!corporationId) return null;
+              const scopesRaw = r.registered_scopes ?? r.registeredScopes ?? '';
+              const registeredScopes = Array.isArray(scopesRaw)
+                ? scopesRaw.map(String)
+                : (typeof scopesRaw === 'string' && scopesRaw
+                    ? scopesRaw.split(/[\s,]+/).filter(Boolean)
+                    : []);
+              return {
+                corporationId,
+                corporationName: String(r.corporation_name ?? r.corporationName ?? `Corporation ${corporationId}`),
+                registeredScopes,
+                isActive: r.is_active === undefined ? true : !!(r.is_active || r.isActive),
+                registrationDate: r.registration_date ?? r.registrationDate ?? new Date().toISOString(),
+                lastTokenRefresh: r.last_token_refresh ?? r.lastTokenRefresh ?? undefined,
+              } as CorporationConfig;
+            })
+            .filter(Boolean) as CorporationConfig[];
+
+          if (fromServer.length > 0) {
+            setRegisteredCorporations(prev => {
+              const byId = new Map<number, CorporationConfig>();
+              for (const c of prev) byId.set(c.corporationId, c);
+              for (const c of fromServer) {
+                const existing = byId.get(c.corporationId);
+                byId.set(c.corporationId, existing ? {
+                  ...existing,
+                  ...c,
+                  // Prefer any already-known scopes from local consent flow
+                  registeredScopes: (existing.registeredScopes?.length ? existing.registeredScopes : c.registeredScopes) || [],
+                } : c);
+              }
+              return Array.from(byId.values());
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ Failed to hydrate corporations from server', e);
+      }
+
       try {
         sessionStorage.removeItem('esi-auth-state');
         sessionStorage.removeItem('esi-login-attempt');
@@ -667,12 +720,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setServerSessionChecked(true);
       setSessionReady(true);
       triggerAuthChange();
-      console.log('✅ Hydrated server session', { id: fullUser.id, authMethod: fullUser.authMethod, role: fullUser.role, name: fullUser.characterName });
+      console.log('✅ Hydrated server session', { id: fullUser.id, authMethod: fullUser.authMethod, role: fullUser.role, name: fullUser.characterName, corp: fullUser.corporationName });
     } catch (_) {
       setServerSessionChecked(true);
       setSessionReady(true);
     }
-  }, [setUsers, setCurrentUser, triggerAuthChange, mapServerUser, setAndPersistSessionTokens]);
+  }, [setUsers, setCurrentUser, setRegisteredCorporations, triggerAuthChange, mapServerUser, setAndPersistSessionTokens]);
   // On app boot, trust the server session cookie over localStorage leftovers.
   useEffect(() => {
     let cancelled = false;
