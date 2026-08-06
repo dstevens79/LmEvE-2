@@ -14,8 +14,6 @@ import {
 } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/auth-provider';
 import { toast } from 'sonner';
-import { AdminLoginTest } from '@/components/AdminLoginTest';
-import { SimpleLoginTest } from '@/components/SimpleLoginTest';
 import { runDatabaseValidationTests } from '@/lib/databaseTestCases';
 import { DatabaseManager } from '@/lib/database';
 import { 
@@ -258,7 +256,6 @@ export const Debug: React.FC<DebugProps> = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <AdminLoginTest />
         </CardContent>
       </Card>
       
@@ -267,7 +264,6 @@ export const Debug: React.FC<DebugProps> = () => {
           <CardTitle>Simple Auth Service Test</CardTitle>
         </CardHeader>
         <CardContent>
-          <SimpleLoginTest />
         </CardContent>
       </Card>
       

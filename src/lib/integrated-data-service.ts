@@ -19,7 +19,6 @@ export interface DataSource {
 
 export interface FetchOptions {
   corporationId: number;
-  accessToken?: string;
   useCache?: boolean;
   forceESI?: boolean;
   forceDB?: boolean;

@@ -6,6 +6,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/_lib/common.php';
+api_require_auth();
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');

@@ -194,7 +194,7 @@ function AppContent() {
   React.useEffect(() => {
     const refreshMetrics = async () => {
       try {
-        const m = await fetch('/api/app-metrics.php', { method: 'GET' });
+        const m = await fetch('/api/app-metrics.php', { method: 'GET', credentials: 'include' });
         if (m.ok) {
           const data = await m.json();
           if (data && typeof data === 'object') {
@@ -214,7 +214,7 @@ function AppContent() {
     (async () => {
       try {
         // Use aggregated system status for initial values
-        const ss = await fetch('/api/system-status.php', { method: 'GET' });
+        const ss = await fetch('/api/system-status.php', { method: 'GET', credentials: 'include' });
         if (ss.ok) {
           const j = await ss.json();
           const s = j?.status || {};
@@ -236,7 +236,7 @@ function AppContent() {
       } catch {}
       // Pull minimal app metrics to drive first-run UX (fallback)
       try {
-        const m = await fetch('/api/app-metrics.php', { method: 'GET' });
+        const m = await fetch('/api/app-metrics.php', { method: 'GET', credentials: 'include' });
         if (m.ok) {
           const data = await m.json();
           if (data && typeof data === 'object') {
@@ -257,7 +257,7 @@ function AppContent() {
   React.useEffect(() => {
     const interval = window.setInterval(async () => {
       try {
-        const ss = await fetch('/api/system-status.php', { method: 'GET' });
+        const ss = await fetch('/api/system-status.php', { method: 'GET', credentials: 'include' });
         if (!ss.ok) return;
         const j = await ss.json();
         const s = j?.status || {};
@@ -441,6 +441,11 @@ function AppContent() {
         window.history.replaceState({}, document.title, window.location.pathname);
         try { toast.success('Authenticated via EVE SSO'); } catch {}
       })();
+    } else if (auth === 'error') {
+      const reason = urlParams.get('reason') || 'unknown';
+      console.error('❌ ESI server callback failed:', reason);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      try { toast.error(`EVE SSO failed (${reason})`); } catch {}
     }
   }, []);
 

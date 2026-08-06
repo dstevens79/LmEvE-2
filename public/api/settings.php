@@ -4,6 +4,7 @@
 // POST -> saves posted JSON as settings
 
 require_once __DIR__ . '/_lib/common.php';
+api_require_admin();
 
 // Resolve a writable storage directory with fallbacks (env and system temp)
 $preferredDir = __DIR__ . '/../../server/storage';

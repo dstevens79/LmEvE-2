@@ -1,6 +1,7 @@
 <?php
 // Create/assign a manufacturing job by inserting into industry_jobs
 require_once __DIR__ . '/../_lib/common.php';
+api_require_admin();
 
 if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
   http_response_code(405);
@@ -14,7 +15,7 @@ api_expect($payload, ['job_id','corporation_id','installer_id','blueprint_type_i
 
 $db = api_connect($payload);
 $dbCfg = api_get_db_config($payload);
-api_select_db($db, (string)($payload['database'] ?? $dbCfg['database'] ?? 'lmeve2'));
+api_select_db($db, (string)($dbCfg['database'] ?? 'lmeve2'));
 
 $cols = [
   'job_id','corporation_id','installer_id','facility_id','activity_id','blueprint_type_id','product_type_id','runs','status','duration','start_date','end_date','completed_date'

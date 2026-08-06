@@ -3,7 +3,16 @@
 
 declare(strict_types=1);
 
-header('Access-Control-Allow-Origin: *');
+// Same-origin cookie sessions need credentialed CORS when a specific Origin is present.
+// Avoid wildcard + credentials (browsers reject that combination).
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (is_string($origin) && $origin !== '') {
+    header('Access-Control-Allow-Origin: ' . $origin);
+    header('Access-Control-Allow-Credentials: true');
+    header('Vary: Origin');
+} else {
+    header('Access-Control-Allow-Origin: *');
+}
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
@@ -110,29 +119,25 @@ function api_resolve_settings_root(array $json): array {
 }
 
 function api_get_db_config(array $payload = []): array {
-    $cfg = [
-        'host' => $payload['host'] ?? null,
-        'port' => isset($payload['port']) ? (int)$payload['port'] : null,
-        'username' => $payload['username'] ?? null,
-        'password' => $payload['password'] ?? null,
-        'database' => $payload['database'] ?? null,
-    ];
-    $missing = array_filter($cfg, fn($v) => $v === null || $v === '');
-    if (count($missing) === 0) return $cfg;
-
     $json = api_load_server_settings();
-    if (!$json) return $cfg; // return possibly-partial
+    if (!$json) return [
+        'host' => 'localhost',
+        'port' => 3306,
+        'username' => '',
+        'password' => '',
+        'database' => 'lmeve2',
+    ];
     $root = api_resolve_settings_root($json);
     $db = isset($root['database']) && is_array($root['database']) ? $root['database'] : [];
-    $cfg['host'] = $cfg['host'] ?? ($db['host'] ?? 'localhost');
-    $cfg['port'] = $cfg['port'] ?? (isset($db['port']) ? (int)$db['port'] : 3306);
-    $cfg['username'] = $cfg['username'] ?? ($db['username'] ?? '');
-    // If server stores masked password '***', treat as empty (client should supply or have stored real one earlier)
     $serverPass = $db['password'] ?? '';
     if ($serverPass === '***') $serverPass = '';
-    $cfg['password'] = $cfg['password'] ?? $serverPass;
-    $cfg['database'] = $cfg['database'] ?? ($db['database'] ?? 'lmeve2');
-    return $cfg;
+    return [
+        'host' => (string)($db['host'] ?? 'localhost'),
+        'port' => isset($db['port']) ? (int)$db['port'] : 3306,
+        'username' => (string)($db['username'] ?? ''),
+        'password' => (string)$serverPass,
+        'database' => (string)($db['database'] ?? 'lmeve2'),
+    ];
 }
 
 function api_get_esi_config(array $payload = []): array {
@@ -159,7 +164,7 @@ function api_get_esi_config(array $payload = []): array {
 }
 
 /**
- * Connect to MySQL using credentials from payload (overrides) or server settings.
+ * Connect to MySQL using credentials stored in server settings.
  */
 function api_connect(array $payload): mysqli {
     mysqli_report(MYSQLI_REPORT_OFF);
@@ -190,4 +195,37 @@ function api_connect(array $payload): mysqli {
         ]);
     }
     return $mysqli;
+}
+
+function api_current_user(): ?array {
+    require_once __DIR__ . '/session.php';
+    return api_session_user();
+}
+
+function api_require_auth(array $roles = []): array {
+    $user = api_current_user();
+    if ($user === null) {
+        api_fail(401, 'Authentication required');
+    }
+
+    if ($roles !== [] && !in_array((string)($user['role'] ?? ''), $roles, true)) {
+        api_fail(403, 'Insufficient privileges');
+    }
+
+    return $user;
+}
+
+function api_require_admin(): array {
+    return api_require_auth(['super_admin', 'corp_admin']);
+}
+
+function api_require_corporation_access(array $user, int $corporationId): void {
+    if ($corporationId <= 0 || (string)($user['role'] ?? '') === 'super_admin') {
+        return;
+    }
+
+    $sessionCorporationId = isset($user['corporation_id']) ? (int)$user['corporation_id'] : 0;
+    if ($sessionCorporationId <= 0 || $sessionCorporationId !== $corporationId) {
+        api_fail(403, 'Corporation access denied');
+    }
 }

@@ -190,7 +190,10 @@ export function useTypeNames(typeIds: number[]) {
     setLoading(true);
     try {
       const params = new URLSearchParams({ ids: missingIds.join(',') });
-      const resp = await fetch(`/api/names.php?${params.toString()}`, { headers: { 'Accept': 'application/json' } });
+      const resp = await fetch(`/api/names.php?${params.toString()}`, {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'include'
+      });
       const typeNames = await resp.json() as Array<{ type_id: number; type_name: string }>;
       const nameMap: Record<number, string> = {};
       typeNames.forEach(item => {

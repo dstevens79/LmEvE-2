@@ -3,16 +3,16 @@
 These endpoints are deployed alongside the built app and provide server-side database access without a separate daemon.
 
 - Common helper: `public/api/_lib/common.php`
-- Health: `POST /api/health.php` (no body) → `{ ok: true }`
-- Connection test: `POST /api/test-connection.php` → `{ ok, latencyMs, currentUser, hasLmeveDb, canSelectLmeve, hasSdeDb, canSelectSde }`
-- Read-only SQL: `POST /api/query.php` with `{ host, port, username, password, database, query }` (SELECT/SHOW/DESCRIBE/EXPLAIN only)
+- Health: `GET /api/health.php` (the only unauthenticated diagnostic endpoint)
+- Connection test: `POST /api/test-connection.php` (authenticated administrator) → `{ ok, latencyMs, currentUser, hasLmeveDb, canSelectLmeve, hasSdeDb, canSelectSde }`
+- Read-only SQL: `POST /api/query.php` (authenticated administrator) with `{ query }` (SELECT/SHOW/DESCRIBE/EXPLAIN only)
 - LMeve resources:
-  - `POST /api/lmeve/get-corporations.php` `{ host, port, username, password, database, limit? }`
-  - `POST /api/lmeve/get-characters.php` `{ host, port, username, password, database, corporationId?, limit? }`
-  - `POST /api/lmeve/get-assets.php` `{ host, port, username, password, database, ownerId?, limit? }`
-  - `POST /api/lmeve/get-industry-jobs.php` `{ host, port, username, password, database, status?, limit? }`
+  - `POST /api/lmeve/get-corporations.php` `{ limit? }`
+  - `POST /api/lmeve/get-characters.php` `{ corporationId?, limit? }`
+  - `POST /api/lmeve/get-assets.php` `{ ownerId?, limit? }`
+  - `POST /api/lmeve/get-industry-jobs.php` `{ status?, limit? }`
 
-- ESI writes (bulk upsert): send `{ host, port, username, password, database, records: [...] }` where records are arrays of typed objects.
+- ESI writes (bulk upsert, authenticated administrators): send `{ records: [...] }` where records are arrays of typed objects.
   - `POST /api/lmeve/esi/upsert-members.php`
     - columns: character_id, character_name, corporation_id, corporation_name, alliance_id, alliance_name, roles, titles, last_login, location_id, location_name, ship_type_id, ship_type_name, is_online
   - `POST /api/lmeve/esi/upsert-assets.php`
@@ -23,18 +23,13 @@ These endpoints are deployed alongside the built app and provide server-side dat
     - columns: order_id, corporation_id, type_id, region_id, location_id, volume_total, volume_remain, min_volume, price, is_buy_order, duration, issued, state
 
 - Auth (EVE SSO):
-  - **DEPRECATED:** `POST /api/auth/esi/callback.php` - No longer used for SPA authentication
-    - The app now uses a pure SPA OAuth flow with callbacks directly to the app root
-    - Tokens are managed entirely client-side in sessionStorage (not persisted)
-    - This endpoint remains for legacy compatibility but is not invoked by the current auth flow
-  - `POST /api/auth/esi/refresh.php`
-    - Body: `{ host, port, username, password, database, clientId, clientSecret, characterId, refreshToken }`
-    - Refreshes and updates tokens.
+  - OAuth start/callback/establish endpoints are flow endpoints and establish the same PHP session used by data APIs.
+  - `POST /api/auth/esi/refresh.php` requires the current authenticated session and refreshes its vaulted token.
 
 - SDE helpers:
-  - `POST /api/sde/get-type-names.php` `{ host, port, username, password, sdeDatabase?, typeIds: number[] }` → `{ ok, rows: [{ typeID, typeName }] }`
+  - `POST /api/sde/get-type-names.php` `{ typeIds: number[] }` → `{ ok, rows: [{ typeID, typeName }] }`
 
 Notes:
 - All endpoints return `{ ok: boolean, ... }` and HTTP 200 for expected errors with an `error` message payload.
-- Credentials are provided per request; no server-side session is stored.
+- All non-auth flow APIs require the `LMEVESESSID` server session. Database credentials and database names come only from server-side settings.
 - Inputs are minimally sanitized; avoid passing raw SQL except via `query.php` for diagnostic use.

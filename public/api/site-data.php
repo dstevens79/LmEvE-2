@@ -4,6 +4,7 @@
 // POST { key: "foo", value: any }           -> { ok }
 
 require_once __DIR__ . '/_lib/common.php';
+api_require_auth();
 
 // Resolve a writable storage directory with fallbacks (env and system temp)
 $preferredDir = __DIR__ . '/../../server/storage';
@@ -44,6 +45,9 @@ if ($storeDir === null) {
 $storeFile = rtrim($storeDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'site-data.json';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if ($method === 'POST') {
+  api_require_admin();
+}
 
 function load_site_data(string $file): array {
   if (!file_exists($file)) return [];

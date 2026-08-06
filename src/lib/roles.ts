@@ -367,10 +367,12 @@ export function createUserWithRole(
  */
 export function isSessionValid(user: LMeveUser): boolean {
   if (!user.isActive) return false;
-  
+  if (!user.sessionExpiry) return true; // server cookie is source of truth; missing client expiry is not a logout
+
   const now = Date.now();
   const sessionExpiry = new Date(user.sessionExpiry).getTime();
-  
+  if (Number.isNaN(sessionExpiry)) return true;
+
   return now < sessionExpiry;
 }
 

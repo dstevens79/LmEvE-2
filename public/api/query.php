@@ -3,6 +3,7 @@
 // Execute a read-only SQL query. Uses server settings for DB config by default; payload can override.
 
 require_once __DIR__ . '/_lib/common.php';
+api_require_admin();
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
@@ -23,7 +24,7 @@ if (strpos($prefix, 'SELECT') !== 0 && strpos($prefix, 'SHOW') !== 0 && strpos($
 
 $mysqli = api_connect($payload);
 $dbCfg = api_get_db_config($payload);
-$db   = (string)($payload['database'] ?? $dbCfg['database'] ?? 'lmeve2');
+$db   = (string)($dbCfg['database'] ?? 'lmeve2');
 api_select_db($mysqli, $db);
 
 $result = @$mysqli->query($sql);

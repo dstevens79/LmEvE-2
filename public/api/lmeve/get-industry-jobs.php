@@ -1,9 +1,12 @@
 <?php
 require_once __DIR__ . '/../_lib/common.php';
+$user = api_require_auth();
 $payload = api_read_json();
+$corp = isset($payload['corporationId']) ? (int)$payload['corporationId'] : 0;
+api_require_corporation_access($user, $corp);
 $mysqli = api_connect($payload);
 $dbCfg = api_get_db_config($payload);
-api_select_db($mysqli, (string)($payload['database'] ?? $dbCfg['database'] ?? 'lmeve2'));
+api_select_db($mysqli, (string)($dbCfg['database'] ?? 'lmeve2'));
 $limit = api_limit($payload, 200, 2000);
 $status = isset($payload['status']) ? strtoupper(preg_replace('/[^A-Z_]/','', (string)$payload['status'])) : '';
 if ($status !== '') {
