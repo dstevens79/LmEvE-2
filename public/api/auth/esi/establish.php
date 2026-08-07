@@ -156,7 +156,7 @@ try {
   if ($allianceName !== '') $public['alliance_name'] = $allianceName;
   if ($allianceId > 0) $public['alliance_id'] = $allianceId;
 
-  api_session_establish($public);
+  $public = api_session_establish($public);
   $db->close();
 
   api_respond([

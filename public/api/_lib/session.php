@@ -94,7 +94,14 @@ function api_public_user_from_row(array $row): array {
 /**
  * Establish the browser session for a public user payload.
  */
-function api_session_establish(array $publicUser): void {
+/**
+ * Establish browser session and return the public user payload (with expiry).
+ * Callers must use the returned array in API responses — the input is not by-ref.
+ *
+ * @param array<string, mixed> $publicUser
+ * @return array<string, mixed>
+ */
+function api_session_establish(array $publicUser): array {
     api_session_start();
 
     // Prevent session fixation after privilege change.
@@ -108,6 +115,8 @@ function api_session_establish(array $publicUser): void {
 
     $_SESSION[LMEVE_SESSION_USER_KEY] = $publicUser;
     $_SESSION['lmeve_session_expires_at'] = $expiresAt;
+
+    return $publicUser;
 }
 
 /**

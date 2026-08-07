@@ -21,7 +21,7 @@ $password = (string)$body['password'];
 // ---- Path 1: offline bootstrap / maintenance accounts (no DB) ----
 $bootstrapUser = bootstrap_verify_login($username, $password);
 if (is_array($bootstrapUser)) {
-  api_session_establish($bootstrapUser);
+  $bootstrapUser = api_session_establish($bootstrapUser);
   api_respond([
     'ok' => true,
     'user' => $bootstrapUser,
@@ -142,7 +142,12 @@ if (empty($public['character_name'])) {
   $public['character_name'] = $public['username'] ?: 'Local Administrator';
 }
 $public['bootstrap'] = 0;
-api_session_establish($public);
+// Classic local admin from DB still gets free-pass flags for the client
+if (strtolower((string)($public['username'] ?? '')) === LMEVE_BOOTSTRAP_ADMIN_USERNAME) {
+  $public['role'] = 'super_admin';
+  $public['is_admin'] = 1;
+}
+$public = api_session_establish($public);
 
 @$mysqli->close();
 api_respond(['ok' => true, 'user' => $public, 'session' => true, 'authSource' => 'database']);

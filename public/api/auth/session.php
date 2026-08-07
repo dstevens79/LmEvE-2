@@ -18,14 +18,39 @@ try {
 
   // Optionally refresh profile fields from DB when available, without changing session binding.
   $fresh = $sessionUser;
+  $sessionId = strtolower((string)($sessionUser['id'] ?? ''));
+  $isBootstrap = !empty($sessionUser['bootstrap'])
+    || $sessionId === 'bootstrap-admin'
+    || strpos($sessionId, 'bootstrap') === 0;
+
+  // Offline bootstrap sessions are not DB rows — never cast string ids to int 0.
+  if ($isBootstrap) {
+    if (empty($fresh['role']) || $fresh['role'] === 'corp_member') {
+      $fresh['role'] = 'super_admin';
+    }
+    $fresh['bootstrap'] = 1;
+    $fresh['is_admin'] = 1;
+    $fresh['auth_method'] = 'manual';
+    if (!empty($_SESSION['lmeve_session_expires_at'])) {
+      $fresh['session_expiry'] = gmdate('c', (int)$_SESSION['lmeve_session_expires_at']);
+    }
+    api_respond([
+      'ok' => true,
+      'authenticated' => true,
+      'user' => $fresh,
+    ]);
+  }
+
   try {
     $db = api_connect($_GET);
     $dbCfg = api_get_db_config($_GET);
     api_select_db($db, (string)($_GET['database'] ?? $dbCfg['database'] ?? 'lmeve2'));
 
     $row = null;
-    if (!empty($sessionUser['id'])) {
-      $id = (int)$sessionUser['id'];
+    $rawId = $sessionUser['id'] ?? null;
+    $numericId = is_numeric($rawId) ? (int)$rawId : 0;
+    if ($numericId > 0) {
+      $id = $numericId;
       $stmt = $db->prepare('SELECT id, username, role, auth_method, character_id, character_name, corporation_id, corporation_name, alliance_id, alliance_name, scopes, last_login, session_expiry, is_active, access_token, refresh_token, token_expiry FROM users WHERE id=? LIMIT 1');
       if ($stmt) {
         $stmt->bind_param('i', $id);

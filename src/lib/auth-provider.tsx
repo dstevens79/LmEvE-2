@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useKV } from '@/lib/kv';
 import { useGeneralSettings, useDatabaseSettings } from '@/lib/persistenceService';
 import { toast } from 'sonner';
@@ -90,6 +90,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Prevent treating stale localStorage users as authenticated until server session is checked
   const [sessionReady, setSessionReady] = useState(false);
   const [serverSessionChecked, setServerSessionChecked] = useState(false);
+  // Bumped on login/logout so an in-flight boot hydrate cannot wipe a fresh login.
+  const authEpochRef = useRef(0);
 
   // Ensure we never persist tokens in the users[] list (local storage collection)
   const sanitizeUserForPersistence = useCallback((u: LMeveUser): LMeveUser => {
@@ -215,16 +217,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [esiConfiguration, registeredCorporations, generalSettings?.authFlow]);
   
-  // Session validation for manual logins (client expiry mirror; server session is source of truth)
+  // Session validation for ESI only. Manual/bootstrap admin is server-cookie backed —
+  // never log them out on a flaky client-side expiry mirror.
   useEffect(() => {
     if (!serverSessionChecked) return;
-    if (currentUser && currentUser.authMethod === 'manual' && !isSessionValid(currentUser)) {
-      console.log('⚠️ Manual user session expired');
-      setCurrentUser(null);
-      setAndPersistSessionTokens(null);
-      toast.info('Session expired. Please sign in again.');
+    if (currentUser && currentUser.authMethod === 'esi' && !isSessionValid(currentUser)) {
+      console.log('⚠️ ESI user session expired (client mirror)');
+      // Soft: re-check server; do not hard-clear here (hydrate owns clears).
     }
-  }, [currentUser, setCurrentUser, serverSessionChecked]);
+  }, [currentUser, serverSessionChecked]);
 
   // Trigger auth state changes
   const triggerAuthChange = useCallback(() => {
@@ -333,6 +334,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         throw new Error(serverErr || 'Invalid server response');
       }
       const fullUser = mapServerUser({ ...row, auth_method: 'manual', username: row.username || username }, 'manual');
+      // Invalidate any in-flight hydrate that started before this login.
+      authEpochRef.current += 1;
       // Local admin bootstrap: no ESI tokens in browser
       setAndPersistSessionTokens(null);
       // Persist sanitized user and set current
@@ -346,6 +349,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.log('✅ Manual login successful:', username, {
         role: fullUser.role,
         id: fullUser.id,
+        isAdmin: fullUser.isAdmin,
         authSource: json?.authSource || 'unknown',
       });
       triggerAuthChange();
@@ -645,6 +649,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } : u));
     }
 
+    authEpochRef.current += 1;
     setCurrentUser(null);
     setAndPersistSessionTokens(null);
     setSessionReady(true);
@@ -656,6 +661,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Hydrate current user from server session/DB (best-effort)
   const hydrateSessionFromServer = useCallback(async () => {
+    const epochAtStart = authEpochRef.current;
+    const applyIfCurrent = (fn: () => void) => {
+      // A login/logout after this hydrate started owns auth state now.
+      if (authEpochRef.current !== epochAtStart) {
+        console.log('🔐 Ignoring stale session hydrate (auth epoch changed)');
+        return false;
+      }
+      fn();
+      return true;
+    };
+
     try {
       const resp = await fetch('/api/auth/session.php', {
         method: 'GET',
@@ -666,11 +682,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // No usable server session (401/5xx/missing API) => anonymous. Never keep a
         // localStorage ghost user that can open admin setup without a real login.
         console.log('🔐 Session check failed - treating as logged out', { status: resp.status });
-        setCurrentUser(null);
-        setAndPersistSessionTokens(null);
-        setServerSessionChecked(true);
-        setSessionReady(true);
-        triggerAuthChange();
+        applyIfCurrent(() => {
+          setCurrentUser(null);
+          setAndPersistSessionTokens(null);
+          setServerSessionChecked(true);
+          setSessionReady(true);
+          triggerAuthChange();
+        });
         return;
       }
       const json = await resp.json();
@@ -678,26 +696,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (!row) {
         // No server session => not authenticated. Clear stale localStorage identity.
         console.log('🔐 No server session - clearing local auth identity');
-        setCurrentUser(null);
-        setAndPersistSessionTokens(null);
-        setServerSessionChecked(true);
-        setSessionReady(true);
-        triggerAuthChange();
+        applyIfCurrent(() => {
+          setCurrentUser(null);
+          setAndPersistSessionTokens(null);
+          setServerSessionChecked(true);
+          setSessionReady(true);
+          triggerAuthChange();
+        });
         return;
       }
 
       const fullUser = mapServerUser(row, row.auth_method === 'esi' ? 'esi' : 'manual');
-      setUsers(prev => {
-        const existing = prev.find(u => u.id === fullUser.id);
-        if (existing) {
-          return prev.map(u => u.id === fullUser.id ? fullUser : u);
+      if (!applyIfCurrent(() => {
+        setUsers(prev => {
+          const existing = prev.find(u => u.id === fullUser.id);
+          if (existing) {
+            return prev.map(u => u.id === fullUser.id ? fullUser : u);
+          }
+          return [...prev, fullUser];
+        });
+        setCurrentUser(fullUser);
+        // Server mode keeps tokens vaulted server-side; do not invent client tokens.
+        if (fullUser.authMethod !== 'esi') {
+          setAndPersistSessionTokens(null);
         }
-        return [...prev, fullUser];
-      });
-      setCurrentUser(fullUser);
-      // Server mode keeps tokens vaulted server-side; do not invent client tokens.
-      if (fullUser.authMethod !== 'esi') {
-        setAndPersistSessionTokens(null);
+      })) {
+        return;
       }
 
       // Pull server-seeded corporations so admin handoff / CEO login shows the corp immediately.
@@ -757,13 +781,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
         sessionStorage.removeItem('esi-login-attempt');
         sessionStorage.removeItem('esi-corp-consent');
       } catch {}
-      setServerSessionChecked(true);
-      setSessionReady(true);
-      triggerAuthChange();
-      console.log('✅ Hydrated server session', { id: fullUser.id, authMethod: fullUser.authMethod, role: fullUser.role, name: fullUser.characterName, corp: fullUser.corporationName });
+      applyIfCurrent(() => {
+        setServerSessionChecked(true);
+        setSessionReady(true);
+        triggerAuthChange();
+        console.log('✅ Hydrated server session', { id: fullUser.id, authMethod: fullUser.authMethod, role: fullUser.role, name: fullUser.characterName, corp: fullUser.corporationName });
+      });
     } catch (_) {
-      setServerSessionChecked(true);
-      setSessionReady(true);
+      applyIfCurrent(() => {
+        setServerSessionChecked(true);
+        setSessionReady(true);
+      });
     }
   }, [setUsers, setCurrentUser, setRegisteredCorporations, triggerAuthChange, mapServerUser, setAndPersistSessionTokens]);
   // On app boot, trust the server session cookie over localStorage leftovers.
@@ -1279,10 +1307,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [setAdminConfig]);
 
   // Merge persisted user with session-only tokens for runtime context.
-  // Never expose a localStorage identity until the server session check finishes
-  // and the session is still valid — otherwise App treats a stale user as logged-in
-  // and can open admin setup surfaces anonymously.
-  const sessionIsAuthenticated = sessionReady && !!currentUser && isSessionValid(currentUser);
+  // Never expose a localStorage identity until the server session check finishes —
+  // otherwise App treats a stale user as logged-in and can open admin setup anonymously.
+  // Manual/bootstrap accounts are cookie-backed; do not hard-gate them on client expiry.
+  const sessionIsAuthenticated = !!(
+    sessionReady &&
+    currentUser &&
+    currentUser.isActive !== false &&
+    (currentUser.authMethod === 'manual' || isLocalSiteAdmin(currentUser) || isSessionValid(currentUser))
+  );
   const mergedUser: LMeveUser | null = sessionIsAuthenticated && currentUser
     ? {
         ...currentUser,

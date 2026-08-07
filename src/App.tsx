@@ -301,9 +301,10 @@ function AppContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Trust server-backed isAuthenticated only — never gate UI on a stale localStorage user.
-  const currentUser = isAuthenticated ? user : null;
-  const currentAuth = isAuthenticated;
+  // Auth provider already nulls `user` until session is real — use it directly.
+  // (Do not double-gate; that previously left nav dead after a successful login.)
+  const currentUser = user;
+  const currentAuth = isAuthenticated && !!user;
   const currentLogout = logout;
   
   // Get corporation status for EVE login button
@@ -775,7 +776,8 @@ function AppContent() {
                 </div>
                 {currentUser && (
                   <Badge variant="secondary" className="text-xs bg-accent/20 text-accent border-accent/30">
-                    {currentUser.corporationName || 'Unknown Corporation'}
+                    {currentUser.corporationName
+                      || (currentUser.authMethod === 'manual' ? 'Site Admin' : 'Unknown Corporation')}
                   </Badge>
                 )}
               </div>
@@ -784,25 +786,29 @@ function AppContent() {
                 {currentUser ? (
                   // Authenticated user section
                   <>
-                    {/* ESI user panel: portrait + pilot and corp names (only for SSO users) */}
-                    {currentUser.authMethod === 'esi' && (
-                      <div className="flex items-center gap-2">
-                        {currentUser.characterId && (
-                          <img
-                            src={`https://images.evetech.net/characters/${currentUser.characterId}/portrait?size=64`}
-                            alt={currentUser.characterName || 'Character'}
-                            className="w-10 h-10 rounded-full border-2 border-accent/30"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTYiIGZpbGw9IiMzMzMiLz4KPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSI4IiB5PSI4Ij4KPHBhdGggZD0iTTggMTBDNi45IDEwIDYgOS4xIDYgOEM2IDYuOSA2LjkgNiA4IDZDOS4xIDYgMTAgNi45IDEwIDhDMTAgOS4xIDkuMSAxMCA4IDEwWiIgZmlsbD0iIzk5OSIvPgo8cGF0aCBkPSJNOCAxMkM1LjggMTIgNCA5LjggNCA4QzQgNi4yIDUuOCA0IDggNEM5LjggNCA4IDUuOCA4IDhDOCA5LjggOS44IDEyIDggMTJaIiBmaWxsPSIjOTk5Ii8+Cjwvc3ZnPgo8L3N2Zz4K';
-                            }}
-                          />
-                        )}
-                        <div className="leading-tight">
-                          <p className="text-sm font-semibold">{currentUser.characterName}</p>
-                          <p className="text-xs text-muted-foreground">{currentUser.corporationName || 'Unknown Corporation'}</p>
-                        </div>
+                    {/* Identity chip — ESI portrait or local/bootstrap admin label */}
+                    <div className="flex items-center gap-2">
+                      {currentUser.authMethod === 'esi' && currentUser.characterId && (
+                        <img
+                          src={`https://images.evetech.net/characters/${currentUser.characterId}/portrait?size=64`}
+                          alt={currentUser.characterName || 'Character'}
+                          className="w-10 h-10 rounded-full border-2 border-accent/30"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTYiIGZpbGw9IiMzMzMiLz4KPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnIiB4PSI4IiB5PSI4Ij4KPHBhdGggZD0iTTggMTBDNi45IDEwIDYgOS4xIDYgOEM2IDYuOSA2LjkgNiA4IDZDOS4xIDYgMTAgNi45IDEwIDhDMTAgOS4xIDkuMSAxMCA4IDEwWiIgZmlsbD0iIzk5OSIvPgo8cGF0aCBkPSJNOCAxMkM1LjggMTIgNCA5LjggNCA4QzQgNi4yIDUuOCA0IDggNEM5LjggNCA4IDUuOCA4IDhDOCA5LjggOS44IDEyIDggMTJaIiBmaWxsPSIjOTk5Ii8+Cjwvc3ZnPgo8L3N2Zz4K';
+                          }}
+                        />
+                      )}
+                      <div className="leading-tight">
+                        <p className="text-sm font-semibold">
+                          {currentUser.characterName || currentUser.username || 'Signed in'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {currentUser.authMethod === 'manual'
+                            ? (currentUser.role === 'super_admin' ? 'Local administrator' : 'Local account')
+                            : (currentUser.corporationName || 'Unknown Corporation')}
+                        </p>
                       </div>
-                    )}
+                    </div>
                     <div className="flex items-center gap-2">
                       {/* Test Login Button - Development Only */}
                       {(import.meta as any)?.env?.DEV && (

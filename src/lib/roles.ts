@@ -205,7 +205,8 @@ export function isLocalSiteAdmin(user: LMeveUser | null | undefined): boolean {
     return true;
   }
 
-  if ((user as { bootstrap?: boolean }).bootstrap === true) {
+  const bootstrapFlag = (user as { bootstrap?: boolean | number | string }).bootstrap;
+  if (bootstrapFlag === true || bootstrapFlag === 1 || bootstrapFlag === '1') {
     return true;
   }
 
