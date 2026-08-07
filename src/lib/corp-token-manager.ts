@@ -1,6 +1,7 @@
 /**
  * Corporation Token Manager
- * Handles ESI token storage, refresh, and selection for sync operations
+ * Holds the current ESI token in memory for the active flow.
+ * Durable token storage belongs to the server-side session/database vault.
  */
 
 import { LMeveUser, CorporationConfig } from './types';
@@ -31,7 +32,9 @@ export class CorporationTokenManager {
   private refreshPromises: Map<number, Promise<TokenRefreshResult>> = new Map();
 
   private constructor() {
-    this.loadTokens();
+    try {
+      localStorage.removeItem('corp-tokens');
+    } catch {}
   }
 
   static getInstance(): CorporationTokenManager {
@@ -39,32 +42,6 @@ export class CorporationTokenManager {
       CorporationTokenManager.instance = new CorporationTokenManager();
     }
     return CorporationTokenManager.instance;
-  }
-
-  private async loadTokens() {
-    try {
-      const stored = await spark.kv.get<Record<number, CorporationToken>>('corp-tokens');
-      if (stored) {
-        Object.entries(stored).forEach(([corpId, token]) => {
-          this.tokens.set(Number(corpId), token);
-        });
-        console.log(`✅ Loaded ${this.tokens.size} corporation tokens`);
-      }
-    } catch (error) {
-      console.error('Failed to load corporation tokens:', error);
-    }
-  }
-
-  private async saveTokens() {
-    try {
-      const tokensObject: Record<number, CorporationToken> = {};
-      this.tokens.forEach((token, corpId) => {
-        tokensObject[corpId] = token;
-      });
-      await spark.kv.set('corp-tokens', tokensObject);
-    } catch (error) {
-      console.error('Failed to save corporation tokens:', error);
-    }
   }
 
   async storeToken(user: LMeveUser): Promise<void> {
@@ -87,7 +64,6 @@ export class CorporationTokenManager {
     };
 
     this.tokens.set(user.corporationId, token);
-    await this.saveTokens();
     
     console.log(`✅ Stored token for corporation ${user.corporationName} (${user.corporationId})`);
   }
@@ -173,7 +149,6 @@ export class CorporationTokenManager {
       };
 
       this.tokens.set(corporationId, updatedToken);
-      await this.saveTokens();
 
       console.log(`✅ Token refreshed for corporation ${corporationId}`);
 
@@ -186,7 +161,6 @@ export class CorporationTokenManager {
       
       const invalidatedToken = { ...token, isValid: false };
       this.tokens.set(corporationId, invalidatedToken);
-      await this.saveTokens();
 
       return {
         success: false,
@@ -200,15 +174,18 @@ export class CorporationTokenManager {
     if (token) {
       token.isValid = false;
       this.tokens.set(corporationId, token);
-      await this.saveTokens();
       console.log(`⚠️ Token invalidated for corporation ${corporationId}`);
     }
   }
 
   async removeToken(corporationId: number): Promise<void> {
     this.tokens.delete(corporationId);
-    await this.saveTokens();
     console.log(`🗑️ Token removed for corporation ${corporationId}`);
+  }
+
+  clear(): void {
+    this.tokens.clear();
+    this.refreshPromises.clear();
   }
 
   getAllTokens(): CorporationToken[] {

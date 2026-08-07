@@ -1,4 +1,7 @@
 <?php
+require_once __DIR__ . '/_lib/common.php';
+api_require_auth();
+
 // Simple data endpoint for tab data. In production, replace file reads with DB queries.
 // Reads from server/storage/data/*.json as placeholder seed until pollers populate the database.
 

@@ -264,13 +264,8 @@ const DatabaseTabContainer: React.FC = () => {
           const r = await fetch('/api/test-connection.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              host,
-              port: Number(port),
-              database,
-              username,
-              password,
-            })
+            credentials: 'include',
+            body: JSON.stringify({})
           });
           if (!r.ok) {
             addConnectionLog(`❌ Server probe failed (HTTP ${r.status})`);
@@ -383,13 +378,8 @@ const DatabaseTabContainer: React.FC = () => {
         const r = await fetch('/api/test-connection.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            host,
-            port: Number(port),
-            database,
-            username,
-            password,
-          })
+          credentials: 'include',
+          body: JSON.stringify({})
         });
         if (r.ok) {
           const j = await r.json();

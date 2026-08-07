@@ -87,17 +87,53 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Local state
   const [isLoading, setIsLoading] = useState(false);
   const [authTrigger, setAuthTrigger] = useState(0);
+  // Prevent treating stale localStorage users as authenticated until server session is checked
+  const [sessionReady, setSessionReady] = useState(false);
+  const [serverSessionChecked, setServerSessionChecked] = useState(false);
 
   // Ensure we never persist tokens in the users[] list (local storage collection)
   const sanitizeUserForPersistence = useCallback((u: LMeveUser): LMeveUser => {
-    const { accessToken, refreshToken, tokenExpiry, ...rest } = u as any;
+    // Keep tokenExpiry metadata for refresh scheduling; never persist raw tokens.
+    const { accessToken, refreshToken, ...rest } = u as any;
     return {
       ...(rest as LMeveUser),
       accessToken: undefined as any,
       refreshToken: undefined as any,
-      tokenExpiry: undefined as any,
+      tokenExpiry: u.tokenExpiry,
     };
   }, []);
+
+  // Map server session/login payloads into the client LMeveUser shape
+  const mapServerUser = useCallback((row: any, fallbackAuth: 'manual' | 'esi' = 'manual'): LMeveUser => {
+    const authMethod = (row?.auth_method === 'esi' || row?.authMethod === 'esi') ? 'esi' : (row?.auth_method === 'manual' || row?.authMethod === 'manual') ? 'manual' : fallbackAuth;
+    const roleFromServer = (row?.role || 'corp_member') as UserRole;
+    const scopes: string[] = Array.isArray(row?.scopes)
+      ? row.scopes.filter((s: any) => !!s).map(String)
+      : (typeof row?.scopes === 'string' ? row.scopes.split(/\s+/).filter(Boolean) : []);
+
+    const sessionExpiry = row?.session_expiry || row?.sessionExpiry || new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+    const characterName = row?.character_name || row?.characterName || row?.username || (authMethod === 'manual' ? 'Local Administrator' : 'EVE Character');
+
+    const userData: Partial<LMeveUser> = {
+      id: String(row?.id ?? `user_${Date.now()}`),
+      username: row?.username || undefined,
+      characterId: row?.character_id ?? row?.characterId ?? undefined,
+      characterName,
+      corporationId: row?.corporation_id ?? row?.corporationId ?? undefined,
+      corporationName: row?.corporation_name ?? row?.corporationName ?? undefined,
+      allianceId: row?.alliance_id ?? row?.allianceId ?? undefined,
+      allianceName: row?.alliance_name ?? row?.allianceName ?? undefined,
+      authMethod,
+      scopes,
+      lastLogin: row?.last_login || row?.lastLogin || new Date().toISOString(),
+      sessionExpiry,
+      // Expiry only — never hydrate access/refresh tokens from the server session payload.
+      tokenExpiry: row?.token_expiry || row?.tokenExpiry || undefined,
+      isActive: row?.is_active === undefined ? true : !!(row.is_active || row.isActive),
+    };
+
+    return sanitizeUserForPersistence(createUserWithRole(userData, roleFromServer));
+  }, [sanitizeUserForPersistence]);
 
   // Session-only token state (in-memory) with sessionStorage backup for reloads during the same session
   const [sessionTokens, setSessionTokens] = useState<{
@@ -106,14 +142,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     tokenExpiry?: string;
   } | null>(null);
 
-  // Load session tokens on mount - check both sessionStorage and localStorage as fallback
+  // Load session tokens on mount
   useEffect(() => {
     try {
-      let raw = sessionStorage.getItem('lmeve-session-tokens');
-      if (!raw) {
-        // Fallback to localStorage (some environments may persist there)
-        raw = localStorage.getItem('lmeve-session-tokens');
-      }
+      const raw = sessionStorage.getItem('lmeve-session-tokens');
       if (raw) {
         setSessionTokens(JSON.parse(raw));
       }
@@ -129,23 +161,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       if (tokens) {
         sessionStorage.setItem('lmeve-session-tokens', JSON.stringify(tokens));
-        localStorage.setItem('lmeve-session-tokens', JSON.stringify(tokens));
       } else {
         sessionStorage.removeItem('lmeve-session-tokens');
-        localStorage.removeItem('lmeve-session-tokens');
       }
     } catch {}
   }, []);
-
-  // Merge persisted user with session-only tokens for runtime context
-  const mergedUser: LMeveUser | null = currentUser
-    ? {
-        ...currentUser,
-        accessToken: sessionTokens?.accessToken,
-        refreshToken: sessionTokens?.refreshToken,
-        tokenExpiry: sessionTokens?.tokenExpiry,
-      }
-    : null;
 
   // Do not create admin locally. Admin should be provisioned in DB setup script.
 
@@ -165,14 +185,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [esiConfiguration, registeredCorporations, generalSettings?.authFlow]);
   
-  // Session validation for manual logins
+  // Session validation for manual logins (client expiry mirror; server session is source of truth)
   useEffect(() => {
+    if (!serverSessionChecked) return;
     if (currentUser && currentUser.authMethod === 'manual' && !isSessionValid(currentUser)) {
       console.log('⚠️ Manual user session expired');
       setCurrentUser(null);
+      setAndPersistSessionTokens(null);
       toast.info('Session expired. Please sign in again.');
     }
-  }, [currentUser, setCurrentUser]);
+  }, [currentUser, setCurrentUser, serverSessionChecked]);
 
   // Trigger auth state changes
   const triggerAuthChange = useCallback(() => {
@@ -180,20 +202,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   // Check if token is expired (must be defined before used in effects)
-  // Use merged user when available (has tokens from session), otherwise fall back to currentUser + sessionTokens
   const isTokenExpired = useCallback(() => {
-    // Try mergedUser first, then check both sources separately
-    let expiry: string | undefined;
-    
-    if (currentUser && currentUser.authMethod === 'esi') {
-      expiry = sessionTokens?.tokenExpiry || currentUser.tokenExpiry;
+    const expiry = sessionTokens?.tokenExpiry || currentUser?.tokenExpiry;
+    if (!currentUser || currentUser.authMethod !== 'esi') {
+      return false;
     }
-    
+    // No known expiry yet (fresh vault session) — treat as needing a soft refresh check only when forced.
     if (!expiry) {
       return false;
     }
 
     const expiryTime = new Date(expiry).getTime();
+    if (Number.isNaN(expiryTime)) return false;
     const now = Date.now();
     const fiveMinutes = 5 * 60 * 1000;
     
@@ -232,6 +252,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         resp = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ username, password }),
           signal: controller.signal,
         });
@@ -284,23 +305,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
         console.error('❌ Login response missing user data');
         throw new Error(serverErr || 'Invalid server response');
       }
-      const roleFromServer = (row.role || 'corp_member') as UserRole;
-      const userData: Partial<LMeveUser> = {
-        id: String(row.id ?? `user_${Date.now()}`),
-        username: row.username || username,
-        characterName: row.character_name || 'Local Administrator',
-        corporationId: row.corporation_id || undefined,
-        corporationName: row.corporation_name || undefined,
-        authMethod: 'manual',
-      };
-      const fullUser = createUserWithRole(userData, roleFromServer);
+      const fullUser = mapServerUser({ ...row, auth_method: 'manual', username: row.username || username }, 'manual');
+      // Local admin bootstrap: no ESI tokens in browser
+      setAndPersistSessionTokens(null);
       // Persist sanitized user and set current
       setUsers(prev => {
         const exists = prev.find(u => u.id === fullUser.id);
         return exists ? prev.map(u => u.id === fullUser.id ? fullUser : u) : [...prev, fullUser];
       });
       setCurrentUser(fullUser);
-      console.log('✅ Manual login successful via DB:', username);
+      setSessionReady(true);
+      setServerSessionChecked(true);
+      console.log('✅ Manual login successful via DB session:', username, { role: fullUser.role, id: fullUser.id });
       triggerAuthChange();
       // Trigger metrics refresh so UI updates login counts immediately
       try {
@@ -312,7 +328,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [setUsers, setCurrentUser, triggerAuthChange, databaseSettings]);
+  }, [setUsers, setCurrentUser, triggerAuthChange, databaseSettings, mapServerUser, setAndPersistSessionTokens, isLoading]);
 
   // ESI SSO login
   const loginWithESI = useCallback(async (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic', scopesOverride?: string[]) => {
@@ -330,13 +346,41 @@ export function AuthProvider({ children }: AuthProviderProps) {
         } else {
           sessionStorage.removeItem('esi-corp-consent');
         }
+        sessionStorage.setItem('esi-login-attempt', 'true');
       } catch {}
 
       // Use site setting to determine callback behavior
-  const useSpa = (generalSettings?.authFlow || 'server') === 'spa';
-  const callbackRedirect = useSpa
-    ? `${window.location.origin}/`
-    : `${window.location.origin}/api/auth/esi/callback.php`;
+      const useSpa = (generalSettings?.authFlow || 'server') === 'spa';
+      const callbackRedirect = useSpa
+        ? `${window.location.origin}/`
+        : `${window.location.origin}/api/auth/esi/callback.php`;
+
+      // Canonical server flow: PHP stores CSRF state + builds authorize URL.
+      // This is the correct web-app model and fixes admin->character handoff.
+      if (!useSpa) {
+        const scopeList = scopesOverride && scopesOverride.length > 0
+          ? scopesOverride
+          : undefined;
+        const resp = await fetch('/api/auth/esi/start.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            redirectUri: callbackRedirect,
+            scopes: scopeList,
+            scopeType,
+          }),
+        });
+        const json = await resp.json().catch(() => null);
+        if (!resp.ok || !json?.ok || !json?.authorizeUrl) {
+          throw new Error(json?.error || 'Failed to start ESI login on server');
+        }
+        // Keep client ESI service initialized for SPA-like tooling, even in server mode
+        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
+        console.log('✅ Server ESI OAuth start ready', { redirectUri: callbackRedirect });
+        return json.authorizeUrl as string;
+      }
+
       initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
       const esiService = getESIAuthService();
       const url = scopesOverride && scopesOverride.length > 0
@@ -347,7 +391,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error('❌ ESI login initiation failed:', error);
       throw error;
     }
-  }, [esiConfiguration, registeredCorporations]);
+  }, [esiConfiguration, registeredCorporations, generalSettings?.authFlow]);
 
   // Handle ESI callback
   const handleESICallback = useCallback(async (code: string, state: string): Promise<LMeveUser> => {
@@ -361,6 +405,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       const esiService = getESIAuthService();
     const esiUser = await esiService.handleCallback(code, state, registeredCorporations);
+
+      // Bind a real server session from the verified access token (SPA path)
+      try {
+        const est = await fetch('/api/auth/esi/establish.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            accessToken: esiUser.accessToken,
+            refreshToken: esiUser.refreshToken,
+            expiresIn: esiUser.tokenExpiry ? Math.max(0, Math.floor((new Date(esiUser.tokenExpiry).getTime() - Date.now()) / 1000)) : undefined,
+            scopes: esiUser.scopes || [],
+          }),
+        });
+        const estJson = await est.json().catch(() => null);
+        if (est.ok && estJson?.ok && estJson?.user) {
+          console.log('✅ Server session established from SPA ESI callback');
+        } else {
+          console.warn('⚠️ ESI establish-session soft-failed', estJson);
+        }
+      } catch (e) {
+        console.warn('⚠️ ESI establish-session error', e);
+      }
 
       // Store token in token manager
     const tokenManager = CorporationTokenManager.getInstance();
@@ -500,7 +567,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = useCallback(async () => {
     console.log('🚪 Logging out user');
     
-    // Revoke ESI tokens if present (access + refresh)
+    // Revoke ESI tokens if present in browser (SPA path). Server tokens remain vaulted unless revoked separately.
     const acc = sessionTokens?.accessToken || currentUser?.accessToken;
     const ref = sessionTokens?.refreshToken || currentUser?.refreshToken;
     if (currentUser?.authMethod === 'esi' && (acc || ref)) {
@@ -511,18 +578,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
         console.warn('Failed to revoke ESI tokens:', error);
       }
     }
+
+    // Destroy browser-bound PHP session (admin + ESI identity)
+    try {
+      await fetch('/api/auth/logout.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+    } catch (error) {
+      console.warn('Server logout failed (continuing local cleanup):', error);
+    }
     
-    // Clear session artifacts (both sessionStorage and localStorage)
+    // Clear session artifacts
     try {
       sessionStorage.removeItem('esi-auth-state');
       sessionStorage.removeItem('esi-login-attempt');
       sessionStorage.removeItem('esi-corp-consent');
       sessionStorage.removeItem('lmeve-session-tokens');
-      localStorage.removeItem('esi-auth-state');
-      localStorage.removeItem('esi-login-attempt');
-      localStorage.removeItem('esi-corp-consent');
-      localStorage.removeItem('lmeve-session-tokens');
     } catch {}
+    CorporationTokenManager.getInstance().clear();
 
     // Scrub tokens from stored users (minimize retention after logout)
     if (currentUser) {
@@ -534,82 +610,174 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } : u));
     }
 
-  setCurrentUser(null);
-  setAndPersistSessionTokens(null);
+    setCurrentUser(null);
+    setAndPersistSessionTokens(null);
+    setSessionReady(true);
+    setServerSessionChecked(true);
     triggerAuthChange();
     
     console.log('✅ User logged out');
-  }, [currentUser, setCurrentUser, triggerAuthChange]);
+  }, [currentUser, setCurrentUser, triggerAuthChange, sessionTokens, setUsers, setAndPersistSessionTokens]);
 
   // Hydrate current user from server session/DB (best-effort)
   const hydrateSessionFromServer = useCallback(async () => {
     try {
-      const resp = await fetch('/api/auth/session.php', { method: 'GET' });
-      if (!resp.ok) return;
+      const resp = await fetch('/api/auth/session.php', {
+        method: 'GET',
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' },
+      });
+      if (!resp.ok) {
+        // If session endpoint is unavailable (fresh install / API down), keep any local user only until next explicit logout.
+        setServerSessionChecked(true);
+        setSessionReady(true);
+        return;
+      }
       const json = await resp.json();
       const row = json?.user;
-      if (!row) return;
+      if (!row) {
+        // No server session => not authenticated. Clear stale localStorage identity.
+        console.log('🔐 No server session - clearing local auth identity');
+        setCurrentUser(null);
+        setAndPersistSessionTokens(null);
+        setServerSessionChecked(true);
+        setSessionReady(true);
+        triggerAuthChange();
+        return;
+      }
 
-      // Map server row to LMeveUser (tokens never stored client-side)
-      const roleFromServer = (row.role || 'corp_member') as UserRole;
-      const scopes: string[] = typeof row.scopes === 'string' ? row.scopes.split(' ').filter((s: string) => !!s) : [];
-      const userData: Partial<LMeveUser> = {
-        id: String(row.id ?? `user_${Date.now()}`),
-        username: row.username || undefined,
-        characterId: row.character_id || undefined,
-        characterName: row.character_name || undefined,
-        corporationId: row.corporation_id || undefined,
-        authMethod: 'esi',
-        scopes,
-      };
-
-      const fullUser = createUserWithRole(userData, roleFromServer);
-      // Persist sanitized user (no tokens) and set as current
+      const fullUser = mapServerUser(row, row.auth_method === 'esi' ? 'esi' : 'manual');
       setUsers(prev => {
         const existing = prev.find(u => u.id === fullUser.id);
         if (existing) {
-          return prev.map(u => u.id === fullUser.id ? {
-            ...fullUser,
-            accessToken: undefined as any,
-            refreshToken: undefined as any,
-            tokenExpiry: undefined as any,
-          } : u);
+          return prev.map(u => u.id === fullUser.id ? fullUser : u);
         }
-        return [...prev, {
-          ...fullUser,
-          accessToken: undefined as any,
-          refreshToken: undefined as any,
-          tokenExpiry: undefined as any,
-        }];
+        return [...prev, fullUser];
       });
-      setCurrentUser({
-        ...fullUser,
-        accessToken: undefined as any,
-        refreshToken: undefined as any,
-        tokenExpiry: undefined as any,
-      });
-      // Clear any SPA auth artifacts just in case
+      setCurrentUser(fullUser);
+      // Server mode keeps tokens vaulted server-side; do not invent client tokens.
+      if (fullUser.authMethod !== 'esi') {
+        setAndPersistSessionTokens(null);
+      }
+
+      // Pull server-seeded corporations so admin handoff / CEO login shows the corp immediately.
+      try {
+        const corpResp = await fetch('/api/lmeve/get-corporations.php', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ limit: 200 }),
+        });
+        const corpJson = await corpResp.json().catch(() => null);
+        if (corpResp.ok && corpJson?.ok && Array.isArray(corpJson.rows)) {
+          const fromServer: CorporationConfig[] = corpJson.rows
+            .map((r: any) => {
+              const corporationId = Number(r.corporation_id ?? r.corporationId ?? 0);
+              if (!corporationId) return null;
+              const scopesRaw = r.registered_scopes ?? r.registeredScopes ?? '';
+              const registeredScopes = Array.isArray(scopesRaw)
+                ? scopesRaw.map(String)
+                : (typeof scopesRaw === 'string' && scopesRaw
+                    ? scopesRaw.split(/[\s,]+/).filter(Boolean)
+                    : []);
+              return {
+                corporationId,
+                corporationName: String(r.corporation_name ?? r.corporationName ?? `Corporation ${corporationId}`),
+                registeredScopes,
+                isActive: r.is_active === undefined ? true : !!(r.is_active || r.isActive),
+                registrationDate: r.registration_date ?? r.registrationDate ?? new Date().toISOString(),
+                lastTokenRefresh: r.last_token_refresh ?? r.lastTokenRefresh ?? undefined,
+              } as CorporationConfig;
+            })
+            .filter(Boolean) as CorporationConfig[];
+
+          if (fromServer.length > 0) {
+            setRegisteredCorporations(prev => {
+              const byId = new Map<number, CorporationConfig>();
+              for (const c of prev) byId.set(c.corporationId, c);
+              for (const c of fromServer) {
+                const existing = byId.get(c.corporationId);
+                byId.set(c.corporationId, existing ? {
+                  ...existing,
+                  ...c,
+                  // Prefer any already-known scopes from local consent flow
+                  registeredScopes: (existing.registeredScopes?.length ? existing.registeredScopes : c.registeredScopes) || [],
+                } : c);
+              }
+              return Array.from(byId.values());
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ Failed to hydrate corporations from server', e);
+      }
+
       try {
         sessionStorage.removeItem('esi-auth-state');
         sessionStorage.removeItem('esi-login-attempt');
         sessionStorage.removeItem('esi-corp-consent');
       } catch {}
+      setServerSessionChecked(true);
+      setSessionReady(true);
       triggerAuthChange();
+      console.log('✅ Hydrated server session', { id: fullUser.id, authMethod: fullUser.authMethod, role: fullUser.role, name: fullUser.characterName, corp: fullUser.corporationName });
     } catch (_) {
-      // best-effort only
+      setServerSessionChecked(true);
+      setSessionReady(true);
     }
-  }, [setUsers, setCurrentUser, triggerAuthChange]);
+  }, [setUsers, setCurrentUser, setRegisteredCorporations, triggerAuthChange, mapServerUser, setAndPersistSessionTokens]);
+  // On app boot, trust the server session cookie over localStorage leftovers.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await hydrateSessionFromServer();
+      } finally {
+        if (!cancelled) {
+          setServerSessionChecked(true);
+          setSessionReady(true);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [hydrateSessionFromServer]);
 
   // Refresh ESI token
   const refreshUserToken = useCallback(async () => {
-    const refreshToken = sessionTokens?.refreshToken || currentUser?.refreshToken;
-    if (!currentUser || !refreshToken || currentUser.authMethod !== 'esi') {
+    if (!currentUser || currentUser.authMethod !== 'esi') {
       return;
     }
-    
-    console.log('🔄 Refreshing user token');
-    
+
+    const refreshToken = sessionTokens?.refreshToken || currentUser?.refreshToken;
+    console.log('🔄 Refreshing user token', { hasClientRefresh: !!refreshToken, characterId: currentUser.characterId });
+
     try {
+      // Server-vault path: browser has identity session but tokens stay on server
+      if (!refreshToken && currentUser.characterId) {
+        const resp = await fetch('/api/auth/esi/refresh.php', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ characterId: currentUser.characterId }),
+        });
+        const json = await resp.json().catch(() => null);
+        if (!resp.ok || json?.ok === false) {
+          console.warn('⚠️ Server token refresh failed', json);
+          // Do not hard-logout on transient server refresh issues for vaulted tokens
+          return;
+        }
+        const updatedUser = sanitizeUserForPersistence(refreshUserSession({
+          ...currentUser,
+          tokenExpiry: json?.expiresAt || currentUser.tokenExpiry,
+        }));
+        setCurrentUser(updatedUser);
+        triggerAuthChange();
+        console.log('✅ Server-side token refresh acknowledged', { expiresAt: json?.expiresAt });
+        return;
+      }
+
+      if (!refreshToken) return;
+
   const esiService = getESIAuthService();
   const tokenResponse = await esiService.refreshToken(refreshToken);
       
@@ -715,31 +883,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [currentUser, setUsers, setCurrentUser, logout, triggerAuthChange]);
 
-  // Auto-refresh token when it's about to expire
+  // Auto-refresh token when it's about to expire (client tokens OR server-vaulted ESI session)
   useEffect(() => {
-    const refreshToken = sessionTokens?.refreshToken || currentUser?.refreshToken;
-    if (!currentUser || currentUser.authMethod !== 'esi' || !refreshToken) {
+    if (!currentUser || currentUser.authMethod !== 'esi') {
       return;
     }
-    
-    // Check token expiration every minute
-    const intervalId = setInterval(() => {
+    const refreshToken = sessionTokens?.refreshToken || currentUser?.refreshToken;
+    const canServerRefresh = !!currentUser.characterId;
+    if (!refreshToken && !canServerRefresh) {
+      return;
+    }
+
+    const maybeRefresh = () => {
       if (isTokenExpired()) {
-        console.log('⏰ Token expiring soon - auto-refreshing');
+        console.log('⏰ Token expiring soon - auto-refreshing', { mode: refreshToken ? 'client' : 'server-vault' });
         refreshUserToken().catch(error => {
           console.error('❌ Auto-refresh failed:', error);
         });
       }
-    }, 60 * 1000); // Check every minute
-    
-    // Also check immediately on mount
-    if (isTokenExpired()) {
-      console.log('⏰ Token already expired - refreshing immediately');
-      refreshUserToken().catch(error => {
-        console.error('❌ Initial refresh failed:', error);
-      });
-    }
-    
+    };
+
+    const intervalId = setInterval(maybeRefresh, 60 * 1000);
+    maybeRefresh();
     return () => clearInterval(intervalId);
   }, [currentUser, sessionTokens, isTokenExpired, refreshUserToken]);
 
@@ -1031,11 +1196,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
     console.log('✅ Admin configuration updated');
   }, [setAdminConfig]);
 
-  // isAuthenticated should check merged user (which has tokens) not persisted user (which doesn't)
+  // Merge persisted user with session-only tokens for runtime context
+  const mergedUser: LMeveUser | null = currentUser
+    ? {
+        ...currentUser,
+        accessToken: sessionTokens?.accessToken,
+        refreshToken: sessionTokens?.refreshToken,
+        tokenExpiry: sessionTokens?.tokenExpiry,
+      }
+    : null;
+
   const contextValue: AuthContextType = {
     // Current user state
     user: mergedUser,
-    isAuthenticated: !!mergedUser && isSessionValid(mergedUser),
+    isAuthenticated: sessionReady && !!currentUser && isSessionValid(currentUser),
     isLoading,
     
     // Authentication methods

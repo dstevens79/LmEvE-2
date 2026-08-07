@@ -725,13 +725,7 @@ export class UnifiedDataService {
     try {
       // Try real PHP API first if database is configured
       if (this.dbManager && this.setupStatus.databaseConnected) {
-        const cfg = this.dbManager.getConfig();
-        const body: any = {
-          host: cfg.host,
-          port: cfg.port,
-          username: cfg.username,
-          password: cfg.password,
-          database: cfg.database,
+        const body = {
           ownerId: corporationId || 0,
           limit: 1000,
         };
@@ -739,6 +733,7 @@ export class UnifiedDataService {
         const resp = await fetch('/api/lmeve/get-assets.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify(body),
         });
 
@@ -771,12 +766,8 @@ export class UnifiedDataService {
                 const sdeResp = await fetch('/api/sde/get-type-names.php', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
                   body: JSON.stringify({
-                    host: cfg.host,
-                    port: cfg.port,
-                    username: cfg.username,
-                    password: cfg.password,
-                    sdeDatabase: 'EveStaticData',
                     typeIds: uniqueTypeIds,
                   }),
                 });

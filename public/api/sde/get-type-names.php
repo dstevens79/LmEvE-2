@@ -1,12 +1,13 @@
 <?php
 // Lookup type names from EveStaticData.invTypes by IDs
 require_once __DIR__ . '/../_lib/common.php';
+api_require_auth();
 $payload = api_read_json();
 $ids = $payload['typeIds'] ?? [];
 if (!is_array($ids) || count($ids) === 0) {
   api_fail(400, 'typeIds must be a non-empty array');
 }
-$sdeDb = (string)($payload['sdeDatabase'] ?? 'EveStaticData');
+$sdeDb = 'EveStaticData';
 $mysqli = api_connect($payload);
 api_select_db($mysqli, $sdeDb);
 

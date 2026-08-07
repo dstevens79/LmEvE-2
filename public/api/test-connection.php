@@ -5,6 +5,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/_lib/common.php';
+api_require_admin();
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -26,8 +27,8 @@ $host = (string)($dbCfg['host'] ?? 'localhost');
 $port = (int)($dbCfg['port'] ?? 3306);
 $user = (string)($dbCfg['username'] ?? '');
 $pass = (string)($dbCfg['password'] ?? '');
-$db   = (string)($payload['database'] ?? $dbCfg['database'] ?? '');
-$sdeDb = (string)($payload['sdeDatabase'] ?? 'EveStaticData');
+$db   = (string)($dbCfg['database'] ?? '');
+$sdeDb = 'EveStaticData';
 
 if ($host === '' || $user === '' || $db === '') {
     echo json_encode(['ok' => false, 'error' => 'Missing database configuration (host/username/database). Configure in Settings first or include overrides in the request body.']);

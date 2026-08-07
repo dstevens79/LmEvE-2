@@ -24,8 +24,6 @@ import {
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-provider';
-import { AdminLoginTest } from '@/components/AdminLoginTest';
-import { SimpleLoginTest } from '@/components/SimpleLoginTest';
 import { runDatabaseValidationTests } from '@/lib/databaseTestCases';
 import { 
   backupSettings,
@@ -387,8 +385,9 @@ export function DebugSettings({ isMobileView = false }: DebugSettingsProps) {
           
           <div className="space-y-2">
             <h3 className="text-sm font-medium">Direct Login Tests</h3>
-            {process.env.NODE_ENV === 'development' && <AdminLoginTest />}
-            <SimpleLoginTest />
+            <p className="text-sm text-muted-foreground">
+              Authentication uses the server session flow.
+            </p>
           </div>
         </CardContent>
       </Card>

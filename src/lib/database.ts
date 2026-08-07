@@ -137,13 +137,8 @@ export class DatabaseManager {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            host: this.config.host,
-            port: this.config.port,
-            username: this.config.username,
-            password: this.config.password,
-            database: this.config.database
-          }),
+          credentials: 'include',
+          body: JSON.stringify({}),
           signal: controller.signal,
         });
       } finally {

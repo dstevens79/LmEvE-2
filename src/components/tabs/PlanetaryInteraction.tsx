@@ -345,8 +345,8 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
   };
 
   const syncHangarDeliveries = async () => {
-    if (!user?.accessToken || !user?.corporationId) {
-      toast.error('ESI authentication required to sync deliveries');
+    if (!user?.corporationId) {
+      toast.error('Authentication required to sync deliveries');
       return;
     }
 
@@ -354,58 +354,24 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
     
     try {
       const corporationId = user.corporationId;
-      const accessToken = user.accessToken;
-
-      const assetsResponse = await fetch(
-        `https://esi.evetech.net/latest/corporations/${corporationId}/assets/?datasource=tranquility`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Accept': 'application/json'
-          }
-        }
-      );
+      const assetsResponse = await fetch('/api/lmeve/get-assets.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ownerId: corporationId, limit: 5000 })
+      });
 
       if (!assetsResponse.ok) {
         throw new Error(`Failed to fetch corporation assets: ${assetsResponse.statusText}`);
       }
 
-      const allAssets = await assetsResponse.json();
+      const assetsPayload = await assetsResponse.json();
+      if (!assetsPayload.ok || !Array.isArray(assetsPayload.rows)) {
+        throw new Error(assetsPayload.error || 'Server returned no corporation assets');
+      }
+      const allAssets = assetsPayload.rows;
 
       let deliveryDivision = deliveryHangarConfig.hangarDivision;
-      
-      const divisionsResponse = await fetch(
-        `https://esi.evetech.net/latest/corporations/${corporationId}/divisions/?datasource=tranquility`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Accept': 'application/json'
-          }
-        }
-      );
-
-      if (divisionsResponse.ok) {
-        const divisions = await divisionsResponse.json();
-        const deliveryHangar = divisions.hangar?.find((d: any) => 
-          d.division === deliveryHangarConfig.hangarDivision ||
-          (d.name?.toLowerCase().includes('industry') && 
-           d.name?.toLowerCase().includes('deliveries'))
-        );
-        
-        if (deliveryHangar) {
-          deliveryDivision = deliveryHangar.division;
-          console.log('📦 Found delivery hangar:', deliveryHangar.name, 'Division:', deliveryDivision);
-          
-          if (deliveryHangar.name !== deliveryHangarConfig.hangarName) {
-            setDeliveryHangarConfig(prev => ({
-              ...prev,
-              hangarName: deliveryHangar.name
-            }));
-          }
-        } else {
-          console.log('⚠️ Using configured division:', deliveryDivision);
-        }
-      }
 
       const deliveryAssets = allAssets.filter((asset: any) => {
         const locationFlag = asset.location_flag || '';

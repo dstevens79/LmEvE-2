@@ -41,7 +41,10 @@ export async function fetchResource<T = any>(resource: DataResource, params?: Re
   // 2) Server
   const q = new URLSearchParams({ resource });
   if (params) for (const [k, v] of Object.entries(params)) q.set(k, String(v));
-  const resp = await fetch(`/api/data.php?${q.toString()}`, { headers: { 'Accept': 'application/json' } });
+  const resp = await fetch(`/api/data.php?${q.toString()}`, {
+    headers: { 'Accept': 'application/json' },
+    credentials: 'include'
+  });
   if (!resp.ok) throw new Error(`Failed to fetch ${resource}: ${resp.status}`);
   const data = await resp.json();
   setCache(resource, data);

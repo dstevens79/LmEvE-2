@@ -1,6 +1,7 @@
 <?php
 // Returns server and client IP information to help with configuration
 require_once __DIR__ . '/_lib/common.php';
+api_require_auth();
 
 // Best-effort local addresses
 $localAddrs = [];

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../_lib/common.php';
+api_require_admin();
 $payload = api_read_json();
 api_expect($payload, ['records']);
 $records = $payload['records'];
@@ -8,7 +9,7 @@ if (!is_array($records) || count($records) === 0) {
 }
 $mysqli = api_connect($payload);
 $dbCfg = api_get_db_config($payload);
-api_select_db($mysqli, (string)($payload['database'] ?? $dbCfg['database'] ?? 'lmeve2'));
+api_select_db($mysqli, (string)($dbCfg['database'] ?? 'lmeve2'));
 
 // Fixed column order as per schema used in app
 $cols = [

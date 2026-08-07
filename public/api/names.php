@@ -1,4 +1,7 @@
 <?php
+require_once __DIR__ . '/_lib/common.php';
+api_require_auth();
+
 // Minimal name resolution for type IDs using server/storage/data/type_names.json
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');

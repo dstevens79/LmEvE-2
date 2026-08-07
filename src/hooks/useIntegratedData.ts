@@ -56,7 +56,6 @@ export function useIntegratedData() {
 
     return {
       corporationId: user.corporationId,
-      accessToken: user.accessToken,
       useCache: customOptions?.useCache !== false,
       forceESI: customOptions?.forceESI,
       forceDB: customOptions?.forceDB

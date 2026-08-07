@@ -1,6 +1,8 @@
 <?php
 // Manual (local) user login against DB. Upgrades plaintext/legacy hashes to bcrypt.
+// Establishes a real browser-bound PHP session for admin bootstrap + local users.
 require_once __DIR__ . '/../_lib/common.php';
+require_once __DIR__ . '/../_lib/session.php';
 
 if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
   http_response_code(405);
@@ -18,7 +20,7 @@ try {
   // 1. SETUP MODE (Database Test): Admin provides DB credentials via query params
   //    to validate them BEFORE they're saved to server settings.
   //    Used by: DatabaseTabContainer Test Connection flow
-  // 
+  //
   // 2. USER LOGIN MODE: Regular users authenticate after DB is configured.
   //    No query params - server uses its saved DB settings.
   //    Used by: Normal login form via auth-provider
@@ -29,7 +31,7 @@ try {
   api_select_db($db, (string)($_GET['database'] ?? $dbCfg['database'] ?? 'lmeve2'));
 
   // Load user by username
-  $stmt = $db->prepare("SELECT id, username, password, role, is_active, character_id, character_name, corporation_id, corporation_name, last_login FROM users WHERE username=? LIMIT 1");
+  $stmt = $db->prepare("SELECT id, username, password, role, is_active, character_id, character_name, corporation_id, corporation_name, alliance_id, alliance_name, auth_method, scopes, last_login, session_expiry, access_token, refresh_token FROM users WHERE username=? LIMIT 1");
   if (!$stmt) api_fail(500, 'DB prepare failed', ['error' => $db->error]);
   $stmt->bind_param('s', $username);
   $stmt->execute();
@@ -47,7 +49,7 @@ try {
   $stored = (string)($row['password'] ?? '');
   $verified = false;
 
-  if ($stored !== '' && (strpos($stored, '$2y$') === 0 || strpos($stored, '$2a$') === 0)) {
+  if ($stored !== '' && (strpos($stored, '$2y$') === 0 || strpos($stored, '$2a$') === 0 || strpos($stored, '$2b$') === 0)) {
     // Bcrypt hash
     $verified = password_verify($password, $stored);
   } else if ($stored !== '') {
@@ -77,24 +79,25 @@ try {
     api_fail(401, 'Invalid username or password');
   }
 
-  // Update last_login
-  $upd = $db->prepare("UPDATE users SET last_login=NOW() WHERE id=?");
-  if ($upd) { $upd->bind_param('i', $row['id']); $upd->execute(); $upd->close(); }
+  // Manual login should remain a local/admin session identity.
+  // Do not silently reclassify as ESI just because character fields exist.
+  if (empty($row['auth_method']) || $row['auth_method'] === 'esi') {
+    // Keep DB auth_method if already manual; if a row was ESI-only with password somehow, still mark session manual.
+  }
+  $row['auth_method'] = 'manual';
 
-  // Return user object (no password)
-  $user = [
-    'id' => (int)$row['id'],
-    'username' => $row['username'],
-    'role' => $row['role'] ?: 'corp_member',
-    'character_id' => $row['character_id'] ? (int)$row['character_id'] : null,
-    'character_name' => $row['character_name'] ?: null,
-    'corporation_id' => $row['corporation_id'] ? (int)$row['corporation_id'] : null,
-    'corporation_name' => $row['corporation_name'] ?: null,
-    'last_login' => $row['last_login'] ?: null,
-  ];
+  $userId = (int)$row['id'];
+  api_touch_user_session($db, $userId);
+
+  $public = api_public_user_from_row($row);
+  // Local admin bootstrap accounts often have no character portrait fields.
+  if (empty($public['character_name'])) {
+    $public['character_name'] = $public['username'] ?: 'Local Administrator';
+  }
+  api_session_establish($public);
+
   $db->close();
-
-  api_respond(['ok' => true, 'user' => $user]);
+  api_respond(['ok' => true, 'user' => $public, 'session' => true]);
 } catch (Throwable $e) {
   api_fail(500, 'Unhandled error', ['error' => $e->getMessage()]);
 }

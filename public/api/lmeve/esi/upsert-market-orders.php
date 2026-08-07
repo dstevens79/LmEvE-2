@@ -1,12 +1,13 @@
 <?php
 require_once __DIR__ . '/../../_lib/common.php';
+api_require_admin();
 $payload = api_read_json();
 api_expect($payload, ['records']);
 $records = $payload['records'];
 if (!is_array($records) || count($records) === 0) { api_fail(400, 'records must be a non-empty array'); }
 $mysqli = api_connect($payload);
 $dbCfg = api_get_db_config($payload);
-api_select_db($mysqli, (string)($payload['database'] ?? $dbCfg['database'] ?? 'lmeve2'));
+api_select_db($mysqli, (string)($dbCfg['database'] ?? 'lmeve2'));
 
 $cols = [
   // Match market_orders schema in setup-lmeve-db.sh
