@@ -3,7 +3,7 @@ import { useKV } from '@/lib/kv';
 import { useGeneralSettings, useDatabaseSettings } from '@/lib/persistenceService';
 import { toast } from 'sonner';
 import { LMeveUser, UserRole, CorporationConfig } from './types';
-import { createUserWithRole, isSessionValid, refreshUserSession } from './roles';
+import { createUserWithRole, isLocalSiteAdmin, isSessionValid, normalizeUserRole, refreshUserSession } from './roles';
 import { getESIAuthService, initializeESIAuth } from './esi-auth';
 import { createDefaultCorporationConfig } from './corp-validation';
 import { CorporationTokenManager } from './corp-token-manager';
@@ -106,17 +106,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Map server session/login payloads into the client LMeveUser shape
   const mapServerUser = useCallback((row: any, fallbackAuth: 'manual' | 'esi' = 'manual'): LMeveUser => {
     const authMethod = (row?.auth_method === 'esi' || row?.authMethod === 'esi') ? 'esi' : (row?.auth_method === 'manual' || row?.authMethod === 'manual') ? 'manual' : fallbackAuth;
-    const roleFromServer = (row?.role || 'corp_member') as UserRole;
     const scopes: string[] = Array.isArray(row?.scopes)
       ? row.scopes.filter((s: any) => !!s).map(String)
       : (typeof row?.scopes === 'string' ? row.scopes.split(/\s+/).filter(Boolean) : []);
 
     const sessionExpiry = row?.session_expiry || row?.sessionExpiry || new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
-    const characterName = row?.character_name || row?.characterName || row?.username || (authMethod === 'manual' ? 'Local Administrator' : 'EVE Character');
+    const username = row?.username ? String(row.username) : undefined;
+    const characterName = row?.character_name || row?.characterName || username || (authMethod === 'manual' ? 'Local Administrator' : 'EVE Character');
+    const id = String(row?.id ?? `user_${Date.now()}`);
+    const bootstrap =
+      row?.bootstrap === true ||
+      row?.bootstrap === 1 ||
+      row?.bootstrap === '1' ||
+      id.toLowerCase().startsWith('bootstrap:') ||
+      id.toLowerCase().startsWith('bootstrap_');
 
-    const userData: Partial<LMeveUser> = {
-      id: String(row?.id ?? `user_${Date.now()}`),
-      username: row?.username || undefined,
+    // Offline bootstrap / classic local admin always maps to super_admin
+    let roleFromServer = normalizeUserRole(row?.role || (bootstrap ? 'super_admin' : 'corp_member'));
+    if (
+      bootstrap ||
+      row?.is_admin === true ||
+      row?.isAdmin === true ||
+      (authMethod === 'manual' && String(username || '').toLowerCase() === 'admin')
+    ) {
+      roleFromServer = 'super_admin';
+    }
+
+    const userData: Partial<LMeveUser> & { bootstrap?: boolean } = {
+      id,
+      username,
       characterId: row?.character_id ?? row?.characterId ?? undefined,
       characterName,
       corporationId: row?.corporation_id ?? row?.corporationId ?? undefined,
@@ -129,10 +147,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
       sessionExpiry,
       // Expiry only — never hydrate access/refresh tokens from the server session payload.
       tokenExpiry: row?.token_expiry || row?.tokenExpiry || undefined,
-      isActive: row?.is_active === undefined ? true : !!(row.is_active || row.isActive),
+      isActive: row?.is_active === undefined && row?.isActive === undefined ? true : !!(row.is_active || row.isActive),
+      isAdmin: bootstrap || roleFromServer === 'super_admin' || !!(row?.is_admin || row?.isAdmin),
+      bootstrap: bootstrap || undefined,
     };
 
-    return sanitizeUserForPersistence(createUserWithRole(userData, roleFromServer));
+    const full = createUserWithRole(userData, roleFromServer);
+    if (bootstrap || isLocalSiteAdmin(full)) {
+      (full as LMeveUser & { bootstrap?: boolean }).bootstrap = bootstrap || undefined;
+      full.isAdmin = true;
+      full.role = 'super_admin';
+      full.permissions = createUserWithRole({ ...full, role: 'super_admin' }, 'super_admin').permissions;
+    }
+
+    return sanitizeUserForPersistence(full);
   }, [sanitizeUserForPersistence]);
 
   // Session-only token state (in-memory) with sessionStorage backup for reloads during the same session

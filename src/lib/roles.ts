@@ -158,27 +158,97 @@ export const ROLE_DEFINITIONS: Record<UserRole, RolePermissions> = {
 };
 
 /**
- * Get permissions for a specific role
+ * Normalize legacy / alias role strings to a known UserRole.
  */
-export function getRolePermissions(role: UserRole): RolePermissions {
-  return ROLE_DEFINITIONS[role];
+export function normalizeUserRole(role: unknown): UserRole {
+  const raw = String(role || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (!raw) return 'guest';
+
+  if (
+    raw === 'super_admin' ||
+    raw === 'superadmin' ||
+    raw === 'admin' ||
+    raw === 'administrator' ||
+    raw === 'root' ||
+    raw === 'system_admin' ||
+    raw === 'site_admin'
+  ) {
+    return 'super_admin';
+  }
+  if (raw === 'corp_admin' || raw === 'corporation_admin' || raw === 'corpadmin') {
+    return 'corp_admin';
+  }
+  if (raw === 'corp_director' || raw === 'director') return 'corp_director';
+  if (raw === 'corp_manager' || raw === 'manager') return 'corp_manager';
+  if (raw === 'corp_member' || raw === 'member' || raw === 'user') return 'corp_member';
+  if (raw === 'guest' || raw === 'public') return 'guest';
+
+  if ((ROLE_DEFINITIONS as Record<string, RolePermissions>)[raw]) {
+    return raw as UserRole;
+  }
+  return 'corp_member';
+}
+
+/**
+ * Offline bootstrap / local maintenance admin (e.g. admin/12345).
+ * These accounts must always have a full free pass — including before DB/ESI exist.
+ */
+export function isLocalSiteAdmin(user: LMeveUser | null | undefined): boolean {
+  if (!user) return false;
+  if (user.isActive === false) return false;
+
+  if (user.role === 'super_admin') return true;
+  if (user.isAdmin === true) return true;
+
+  const id = String(user.id || '').toLowerCase();
+  if (id.startsWith('bootstrap:') || id.startsWith('bootstrap_') || id === 'bootstrap-admin') {
+    return true;
+  }
+
+  if ((user as { bootstrap?: boolean }).bootstrap === true) {
+    return true;
+  }
+
+  if (user.authMethod === 'manual') {
+    const uname = String(user.username || user.characterName || '').trim().toLowerCase();
+    if (uname === 'admin' || uname === 'administrator' || uname === 'root') {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Get permissions for a specific role (never undefined).
+ */
+export function getRolePermissions(role: UserRole | string): RolePermissions {
+  const normalized = normalizeUserRole(role);
+  return ROLE_DEFINITIONS[normalized] || ROLE_DEFINITIONS.guest;
 }
 
 /**
  * Check if a user has a specific permission
  */
 export function hasPermission(user: LMeveUser | null, permission: keyof RolePermissions): boolean {
-  if (!user || !user.isActive) return false;
-  return user.permissions[permission] || false;
+  if (!user || user.isActive === false) return false;
+  if (isLocalSiteAdmin(user)) return true;
+  const perms = user.permissions || getRolePermissions(user.role);
+  return !!perms[permission];
 }
 
 /**
  * Check if a user can access a specific tab
  */
 export function canAccessTab(user: LMeveUser | null, tab: string): boolean {
-  if (!user || !user.isActive) {
+  if (!user || user.isActive === false) {
     // Only dashboard is accessible without authentication
     return tab === 'dashboard';
+  }
+
+  // Local/bootstrap site admin: free pass everywhere
+  if (isLocalSiteAdmin(user)) {
+    return true;
   }
   
   switch (tab) {
@@ -227,7 +297,12 @@ export function canAccessTab(user: LMeveUser | null, tab: string): boolean {
  * Check if a user can access a specific settings tab
  */
 export function canAccessSettingsTab(user: LMeveUser | null, settingsTab: string): boolean {
-  if (!user || !user.isActive) return false;
+  if (!user || user.isActive === false) return false;
+
+  // Local/bootstrap site admin: free pass to every settings panel
+  if (isLocalSiteAdmin(user)) {
+    return true;
+  }
   
   switch (settingsTab) {
     case 'general':
@@ -235,6 +310,10 @@ export function canAccessSettingsTab(user: LMeveUser | null, settingsTab: string
       
     case 'database':
       return hasPermission(user, 'canManageDatabase');
+
+    case 'esi':
+    case 'eve':
+      return hasPermission(user, 'canConfigureESI') || hasPermission(user, 'canManageSystem');
       
     case 'sync':
       return hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
@@ -244,6 +323,9 @@ export function canAccessSettingsTab(user: LMeveUser | null, settingsTab: string
       
     case 'permissions':
       return hasPermission(user, 'canManageUsers') || hasPermission(user, 'canManageSystem');
+
+    case 'notifications':
+      return hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
       
     default:
       return false;
@@ -323,9 +405,22 @@ export function getEVERoleMapping(eveRoles: string[]): UserRole {
  */
 export function createUserWithRole(
   userData: Partial<LMeveUser>,
-  role: UserRole
+  role: UserRole | string
 ): LMeveUser {
   const now = new Date().toISOString();
+  let resolvedRole = normalizeUserRole(role);
+
+  // Offline bootstrap / classic local admin always becomes super_admin with full perms
+  const provisional: Partial<LMeveUser> = {
+    ...userData,
+    role: resolvedRole,
+    authMethod: userData.authMethod || 'manual',
+  };
+  if (isLocalSiteAdmin(provisional as LMeveUser) || resolvedRole === 'super_admin') {
+    resolvedRole = 'super_admin';
+  }
+
+  const permissions = getRolePermissions(resolvedRole);
   
   return {
     id: userData.id || `user_${Date.now()}`,
@@ -337,8 +432,8 @@ export function createUserWithRole(
     allianceId: userData.allianceId,
     allianceName: userData.allianceName,
     authMethod: userData.authMethod || 'manual',
-    role,
-    permissions: getRolePermissions(role),
+    role: resolvedRole,
+    permissions,
     accessToken: userData.accessToken,
     refreshToken: userData.refreshToken,
     tokenExpiry: userData.tokenExpiry,
@@ -352,9 +447,23 @@ export function createUserWithRole(
     eveRolesAtOther: userData.eveRolesAtOther || [],
     corpHomeStationId: userData.corpHomeStationId,
     userBaseStationId: userData.userBaseStationId,
-    lastLogin: now,
-    sessionExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
-    isActive: true,
+    lastLogin: userData.lastLogin || now,
+    sessionExpiry:
+      userData.sessionExpiry ||
+      new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+    isActive: userData.isActive !== false,
+    isAdmin:
+      resolvedRole === 'super_admin' ||
+      userData.isAdmin === true ||
+      isLocalSiteAdmin({
+        ...(userData as LMeveUser),
+        role: resolvedRole,
+        authMethod: userData.authMethod || 'manual',
+        isActive: true,
+      } as LMeveUser),
+    canManageESI:
+      permissions.canConfigureESI ||
+      userData.canManageESI === true,
     createdDate: userData.createdDate || now,
     createdBy: userData.createdBy,
     updatedDate: now,

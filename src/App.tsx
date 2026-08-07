@@ -610,6 +610,7 @@ function AppContent() {
   const settingsTabs = [
     { id: 'general', label: 'General', icon: Globe },
     { id: 'database', label: 'Database', icon: Database },
+    { id: 'esi', label: 'ESI / SSO', icon: Key },
     { id: 'sync', label: 'Data Sync', icon: Clock },
     { id: 'sync-monitoring', label: 'Sync Monitoring', icon: ChartLine },
     { id: 'permissions', label: 'Permissions', icon: Shield },
@@ -1027,15 +1028,15 @@ function AppContent() {
                   );
                 })}
 
-                {/* Settings section with expandable sub-menu */}
+                {/* Settings section with expandable sub-menu — local admin always has a free pass */}
                 <div className="pt-2 border-t border-border">
                   <Button
                     variant={activeTab === 'settings' ? "default" : "ghost"}
-                    disabled={!currentUser}
+                    disabled={!currentUser || !canAccessTab(currentUser, 'settings')}
                     className={`w-full justify-start gap-3 ${
                       activeTab === 'settings'
                         ? "bg-accent text-accent-foreground shadow-sm" 
-                        : !currentUser
+                        : !currentUser || !canAccessTab(currentUser, 'settings')
                         ? "opacity-50 cursor-not-allowed text-muted-foreground"
                         : "hover:bg-muted text-muted-foreground hover:text-foreground"
                     }`}

@@ -174,7 +174,7 @@ function bootstrap_verify_login(string $username, string $password): ?array {
 function bootstrap_public_user(array $user): array {
     $username = (string)($user['username'] ?? LMEVE_BOOTSTRAP_ADMIN_USERNAME);
     $role = (string)($user['role'] ?? 'super_admin');
-    if ($role === '') {
+    if ($role === '' || strtolower($username) === LMEVE_BOOTSTRAP_ADMIN_USERNAME) {
         $role = 'super_admin';
     }
     return [
@@ -195,6 +195,7 @@ function bootstrap_public_user(array $user): array {
         'is_active' => isset($user['is_active']) ? (int)(bool)$user['is_active'] : 1,
         'has_tokens' => 0,
         'bootstrap' => 1,
+        'is_admin' => 1,
     ];
 }
 
