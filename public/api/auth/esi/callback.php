@@ -257,7 +257,7 @@ try {
   }
 
   api_touch_user_session($db, (int)$row['id']);
-  api_session_establish($public);
+  $public = api_session_establish($public);
 
   $corpCount = esi_count_corporations($db);
   // Admin handoff or first corp seed: send operator to corp setup next.

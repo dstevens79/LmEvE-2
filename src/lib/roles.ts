@@ -201,12 +201,8 @@ export function isLocalSiteAdmin(user: LMeveUser | null | undefined): boolean {
   if (user.isAdmin === true) return true;
 
   const id = String(user.id || '').toLowerCase();
-  if (id.startsWith('bootstrap:') || id.startsWith('bootstrap_') || id === 'bootstrap-admin') {
-    return true;
-  }
-
-  const bootstrapFlag = (user as { bootstrap?: boolean | number | string }).bootstrap;
-  if (bootstrapFlag === true || bootstrapFlag === 1 || bootstrapFlag === '1') {
+  // Built-in offline admin only — other bootstrap-* accounts keep assigned roles.
+  if (id === 'bootstrap-admin') {
     return true;
   }
 

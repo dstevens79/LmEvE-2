@@ -105,9 +105,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
   }, []);
 
-  // Map server session/login payloads into the client LMeveUser shape
+  // Map server session/login payloads into the client LMeveUser shape.
+  // Server is the source of truth for role / is_admin / bootstrap (api_finalize_public_user).
   const mapServerUser = useCallback((row: any, fallbackAuth: 'manual' | 'esi' = 'manual'): LMeveUser => {
-    const authMethod = (row?.auth_method === 'esi' || row?.authMethod === 'esi') ? 'esi' : (row?.auth_method === 'manual' || row?.authMethod === 'manual') ? 'manual' : fallbackAuth;
+    const authMethod = (row?.auth_method === 'esi' || row?.authMethod === 'esi')
+      ? 'esi'
+      : (row?.auth_method === 'manual' || row?.authMethod === 'manual')
+        ? 'manual'
+        : fallbackAuth;
     const scopes: string[] = Array.isArray(row?.scopes)
       ? row.scopes.filter((s: any) => !!s).map(String)
       : (typeof row?.scopes === 'string' ? row.scopes.split(/\s+/).filter(Boolean) : []);
@@ -116,21 +121,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const username = row?.username ? String(row.username) : undefined;
     const characterName = row?.character_name || row?.characterName || username || (authMethod === 'manual' ? 'Local Administrator' : 'EVE Character');
     const id = String(row?.id ?? `user_${Date.now()}`);
+    const idLower = id.toLowerCase();
     const bootstrap =
       row?.bootstrap === true ||
       row?.bootstrap === 1 ||
       row?.bootstrap === '1' ||
-      id.toLowerCase().startsWith('bootstrap:') ||
-      id.toLowerCase().startsWith('bootstrap_');
+      idLower === 'bootstrap-admin' ||
+      idLower.startsWith('bootstrap');
 
-    // Offline bootstrap / classic local admin always maps to super_admin
-    let roleFromServer = normalizeUserRole(row?.role || (bootstrap ? 'super_admin' : 'corp_member'));
-    if (
-      bootstrap ||
+    // Prefer explicit server capability flags over id heuristics.
+    const serverSaysAdmin =
       row?.is_admin === true ||
+      row?.is_admin === 1 ||
+      row?.is_admin === '1' ||
       row?.isAdmin === true ||
-      (authMethod === 'manual' && String(username || '').toLowerCase() === 'admin')
-    ) {
+      row?.isAdmin === 1 ||
+      idLower === 'bootstrap-admin' ||
+      (typeof row?.role === 'string' && normalizeUserRole(row.role) === 'super_admin');
+
+    let roleFromServer = normalizeUserRole(row?.role || (serverSaysAdmin ? 'super_admin' : 'corp_member'));
+    if (serverSaysAdmin) {
       roleFromServer = 'super_admin';
     }
 
@@ -150,13 +160,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // Expiry only — never hydrate access/refresh tokens from the server session payload.
       tokenExpiry: row?.token_expiry || row?.tokenExpiry || undefined,
       isActive: row?.is_active === undefined && row?.isActive === undefined ? true : !!(row.is_active || row.isActive),
-      isAdmin: bootstrap || roleFromServer === 'super_admin' || !!(row?.is_admin || row?.isAdmin),
+      isAdmin: serverSaysAdmin || roleFromServer === 'super_admin',
       bootstrap: bootstrap || undefined,
     };
 
     const full = createUserWithRole(userData, roleFromServer);
-    if (bootstrap || isLocalSiteAdmin(full)) {
-      (full as LMeveUser & { bootstrap?: boolean }).bootstrap = bootstrap || undefined;
+    if (bootstrap) {
+      (full as LMeveUser & { bootstrap?: boolean }).bootstrap = true;
+    }
+    // Site-admin free-pass only when server/capability says so — not every offline account.
+    if (isLocalSiteAdmin(full) || full.isAdmin || roleFromServer === 'super_admin') {
       full.isAdmin = true;
       full.role = 'super_admin';
       full.permissions = createUserWithRole({ ...full, role: 'super_admin' }, 'super_admin').permissions;

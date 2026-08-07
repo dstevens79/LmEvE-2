@@ -105,11 +105,16 @@ if ($stored !== '' && (strpos($stored, '$2y$') === 0 || strpos($stored, '$2a$') 
   }
   if ($verified) {
     $newHash = password_hash($password, PASSWORD_BCRYPT);
-    $up = $mysqli->prepare("UPDATE users SET password=?, updated_date=NOW() WHERE id=?");
+    $uidLegacy = (int)$row['id'];
+    $up = $mysqli->prepare('UPDATE users SET password=?, updated_date=NOW() WHERE id=?');
     if ($up) {
-      $up->bind_param('si', $newHash, $row['id']);
-      $up->execute();
+      $up->bind_param('si', $newHash, $uidLegacy);
+      if (!$up->execute()) {
+        error_log('manual-login: legacy password upgrade failed for user id ' . $uidLegacy . ': ' . $up->error);
+      }
       $up->close();
+    } else {
+      error_log('manual-login: prepare failed for legacy password upgrade: ' . $mysqli->error);
     }
   }
 }
@@ -137,17 +142,8 @@ if (function_exists('api_touch_user_session')) {
   }
 }
 
-$public = api_public_user_from_row($row);
-if (empty($public['character_name'])) {
-  $public['character_name'] = $public['username'] ?: 'Local Administrator';
-}
-$public['bootstrap'] = 0;
-// Classic local admin from DB still gets free-pass flags for the client
-if (strtolower((string)($public['username'] ?? '')) === LMEVE_BOOTSTRAP_ADMIN_USERNAME) {
-  $public['role'] = 'super_admin';
-  $public['is_admin'] = 1;
-}
-$public = api_session_establish($public);
+// Canonical capability flags (role / is_admin / bootstrap) come from api_session_establish.
+$public = api_session_establish(api_public_user_from_row($row));
 
 @$mysqli->close();
 api_respond(['ok' => true, 'user' => $public, 'session' => true, 'authSource' => 'database']);

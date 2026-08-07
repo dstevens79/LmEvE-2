@@ -39,7 +39,135 @@ function api_session_start(): void {
 }
 
 /**
+ * Normalize role aliases to the site role set.
+ */
+function api_normalize_role($role): string {
+    $raw = strtolower(trim((string)$role));
+    $raw = preg_replace('/[\s-]+/', '_', $raw) ?? $raw;
+    if ($raw === '') {
+        return 'corp_member';
+    }
+
+    $aliases = [
+        'super_admin' => 'super_admin',
+        'superadmin' => 'super_admin',
+        'admin' => 'super_admin',
+        'administrator' => 'super_admin',
+        'root' => 'super_admin',
+        'system_admin' => 'super_admin',
+        'site_admin' => 'super_admin',
+        'corp_admin' => 'corp_admin',
+        'corporation_admin' => 'corp_admin',
+        'corpadmin' => 'corp_admin',
+        'corp_director' => 'corp_director',
+        'director' => 'corp_director',
+        'corp_manager' => 'corp_manager',
+        'manager' => 'corp_manager',
+        'corp_member' => 'corp_member',
+        'member' => 'corp_member',
+        'user' => 'corp_member',
+        'guest' => 'guest',
+        'public' => 'guest',
+    ];
+
+    return $aliases[$raw] ?? (in_array($raw, [
+        'super_admin', 'corp_admin', 'corp_director', 'corp_manager', 'corp_member', 'guest',
+    ], true) ? $raw : 'corp_member');
+}
+
+/**
+ * True when this identity is a local/offline maintenance admin (or super_admin).
+ *
+ * @param array<string, mixed> $user
+ */
+function api_is_site_admin(array $user): bool {
+    if (isset($user['is_active']) && !(int)$user['is_active']) {
+        return false;
+    }
+
+    $role = api_normalize_role($user['role'] ?? '');
+    if ($role === 'super_admin') {
+        return true;
+    }
+    if (!empty($user['is_admin']) || !empty($user['isAdmin'])) {
+        return true;
+    }
+    if (!empty($user['bootstrap'])) {
+        return true;
+    }
+
+    // Built-in offline admin id only — other bootstrap-* maintenance accounts
+        // keep their assigned role and do not inherit site-admin free-pass.
+        $id = strtolower((string)($user['id'] ?? ''));
+        if ($id === 'bootstrap-admin') {
+            return true;
+        }
+
+        $auth = strtolower((string)($user['auth_method'] ?? $user['authMethod'] ?? 'manual'));
+        $username = strtolower(trim((string)($user['username'] ?? '')));
+        if ($auth === 'manual' && in_array($username, ['admin', 'administrator', 'root'], true)) {
+            return true;
+        }
+
+        return false;
+    }
+
+/**
+ * Apply canonical capability flags onto a public session user payload.
+ *
+ * @param array<string, mixed> $user
+ * @return array<string, mixed>
+ */
+function api_finalize_public_user(array $user): array {
+    $authMethod = (string)($user['auth_method'] ?? 'manual');
+    if ($authMethod !== 'esi' && $authMethod !== 'manual') {
+        $authMethod = 'manual';
+    }
+    $user['auth_method'] = $authMethod;
+
+    $role = api_normalize_role($user['role'] ?? 'corp_member');
+    $isSiteAdmin = api_is_site_admin(array_merge($user, ['role' => $role]));
+    if ($isSiteAdmin) {
+        $role = 'super_admin';
+    }
+    $user['role'] = $role;
+    $user['is_admin'] = ($role === 'super_admin' || $isSiteAdmin) ? 1 : 0;
+
+    $id = $user['id'] ?? null;
+        $idLower = is_string($id) ? strtolower($id) : '';
+        $isBootstrap = !empty($user['bootstrap'])
+            || $idLower === 'bootstrap-admin'
+            || (is_string($id) && strpos($idLower, 'bootstrap') === 0);
+        $user['bootstrap'] = $isBootstrap ? 1 : 0;
+
+    if ($authMethod === 'manual' && empty($user['character_name'])) {
+        $user['character_name'] = $user['username'] ?: 'Local Administrator';
+    }
+
+    if (!isset($user['is_active'])) {
+        $user['is_active'] = 1;
+    } else {
+        $user['is_active'] = (int)(bool)$user['is_active'];
+    }
+
+    if (!isset($user['has_tokens'])) {
+        $user['has_tokens'] = 0;
+    } else {
+        $user['has_tokens'] = (int)(bool)$user['has_tokens'];
+    }
+
+    if (!isset($user['scopes']) || !is_array($user['scopes'])) {
+        $user['scopes'] = [];
+    }
+
+    return $user;
+}
+
+/**
  * Build a public user payload safe to return to the browser (no secrets/tokens).
+ *
+ * @param array<string, mixed> $row
+ * @return array<string, mixed>
  */
 function api_public_user_from_row(array $row): array {
     $authMethod = (string)($row['auth_method'] ?? 'manual');
@@ -57,45 +185,55 @@ function api_public_user_from_row(array $row): array {
 
     $hasTokens = !empty($row['access_token']) || !empty($row['refresh_token']) || !empty($row['has_tokens']);
 
-        // Expose token expiry metadata only — never raw tokens.
-        $tokenExpiry = $row['token_expiry'] ?? ($row['tokenExpiry'] ?? null);
-        if (is_string($tokenExpiry) && $tokenExpiry !== '' && strpos($tokenExpiry, 'T') === false) {
-            // Normalize MySQL DATETIME to ISO-ish UTC for the browser.
-            try {
-                $tokenExpiry = (new DateTimeImmutable($tokenExpiry))->format('c');
-            } catch (Throwable $e) {
-                // keep original
-            }
+    // Expose token expiry metadata only — never raw tokens.
+    $tokenExpiry = $row['token_expiry'] ?? ($row['tokenExpiry'] ?? null);
+    if (is_string($tokenExpiry) && $tokenExpiry !== '' && strpos($tokenExpiry, 'T') === false) {
+        // Normalize MySQL DATETIME to ISO-ish UTC for the browser.
+        try {
+            $tokenExpiry = (new DateTimeImmutable($tokenExpiry))->format('c');
+        } catch (Throwable $e) {
+            // keep original
         }
-
-        return [
-            'id' => isset($row['id']) ? (int)$row['id'] : null,
-            'username' => $row['username'] ?? null,
-            'role' => $row['role'] ?? 'corp_member',
-            'auth_method' => $authMethod,
-            'character_id' => isset($row['character_id']) && $row['character_id'] !== null && $row['character_id'] !== ''
-                ? (int)$row['character_id'] : null,
-            'character_name' => $row['character_name'] ?? null,
-            'corporation_id' => isset($row['corporation_id']) && $row['corporation_id'] !== null && $row['corporation_id'] !== ''
-                ? (int)$row['corporation_id'] : null,
-            'corporation_name' => $row['corporation_name'] ?? null,
-            'alliance_id' => isset($row['alliance_id']) && $row['alliance_id'] !== null && $row['alliance_id'] !== ''
-                ? (int)$row['alliance_id'] : null,
-            'alliance_name' => $row['alliance_name'] ?? null,
-            'scopes' => $scopes,
-            'last_login' => $row['last_login'] ?? null,
-            'session_expiry' => $row['session_expiry'] ?? null,
-            'token_expiry' => $tokenExpiry,
-            'is_active' => isset($row['is_active']) ? (int)$row['is_active'] : 1,
-            'has_tokens' => $hasTokens ? 1 : 0,
-        ];
     }
 
+    // Preserve string bootstrap ids; only cast numeric DB ids.
+    $rawId = $row['id'] ?? null;
+    $publicId = null;
+    if (is_string($rawId) && $rawId !== '' && !is_numeric($rawId)) {
+        $publicId = $rawId;
+    } elseif ($rawId !== null && $rawId !== '') {
+        $publicId = (int)$rawId;
+    }
+
+    $public = [
+        'id' => $publicId,
+        'username' => $row['username'] ?? null,
+        'role' => $row['role'] ?? 'corp_member',
+        'auth_method' => $authMethod,
+        'character_id' => isset($row['character_id']) && $row['character_id'] !== null && $row['character_id'] !== ''
+            ? (int)$row['character_id'] : null,
+        'character_name' => $row['character_name'] ?? null,
+        'corporation_id' => isset($row['corporation_id']) && $row['corporation_id'] !== null && $row['corporation_id'] !== ''
+            ? (int)$row['corporation_id'] : null,
+        'corporation_name' => $row['corporation_name'] ?? null,
+        'alliance_id' => isset($row['alliance_id']) && $row['alliance_id'] !== null && $row['alliance_id'] !== ''
+            ? (int)$row['alliance_id'] : null,
+        'alliance_name' => $row['alliance_name'] ?? null,
+        'scopes' => $scopes,
+        'last_login' => $row['last_login'] ?? null,
+        'session_expiry' => $row['session_expiry'] ?? null,
+        'token_expiry' => $tokenExpiry,
+        'is_active' => isset($row['is_active']) ? (int)$row['is_active'] : 1,
+        'has_tokens' => $hasTokens ? 1 : 0,
+        'bootstrap' => !empty($row['bootstrap']) ? 1 : 0,
+        'is_admin' => !empty($row['is_admin']) || !empty($row['isAdmin']) ? 1 : 0,
+    ];
+
+    return api_finalize_public_user($public);
+}
+
 /**
- * Establish the browser session for a public user payload.
- */
-/**
- * Establish browser session and return the public user payload (with expiry).
+ * Establish browser session and return the finalized public user payload (with expiry).
  * Callers must use the returned array in API responses — the input is not by-ref.
  *
  * @param array<string, mixed> $publicUser
@@ -108,6 +246,8 @@ function api_session_establish(array $publicUser): array {
     if (session_status() === PHP_SESSION_ACTIVE) {
         @session_regenerate_id(true);
     }
+
+    $publicUser = api_finalize_public_user($publicUser);
 
     $expiresAt = time() + LMEVE_SESSION_TTL_SECONDS;
     $publicUser['session_expiry'] = gmdate('c', $expiresAt);

@@ -16,24 +16,25 @@ try {
     api_respond(['ok' => true, 'user' => null, 'authenticated' => false]);
   }
 
-  // Optionally refresh profile fields from DB when available, without changing session binding.
-  $fresh = $sessionUser;
-  $sessionId = strtolower((string)($sessionUser['id'] ?? ''));
-  $isBootstrap = !empty($sessionUser['bootstrap'])
+  // Normalize capability flags on every hydrate.
+  $fresh = api_finalize_public_user($sessionUser);
+  if (!empty($_SESSION['lmeve_session_expires_at'])) {
+    $fresh['session_expiry'] = gmdate('c', (int)$_SESSION['lmeve_session_expires_at']);
+  } elseif (!empty($sessionUser['session_expiry'])) {
+    $fresh['session_expiry'] = $sessionUser['session_expiry'];
+  }
+
+  $sessionId = strtolower((string)($fresh['id'] ?? ''));
+  $isBootstrap = !empty($fresh['bootstrap'])
     || $sessionId === 'bootstrap-admin'
     || strpos($sessionId, 'bootstrap') === 0;
 
   // Offline bootstrap sessions are not DB rows — never cast string ids to int 0.
   if ($isBootstrap) {
-    if (empty($fresh['role']) || $fresh['role'] === 'corp_member') {
-      $fresh['role'] = 'super_admin';
-    }
     $fresh['bootstrap'] = 1;
-    $fresh['is_admin'] = 1;
     $fresh['auth_method'] = 'manual';
-    if (!empty($_SESSION['lmeve_session_expires_at'])) {
-      $fresh['session_expiry'] = gmdate('c', (int)$_SESSION['lmeve_session_expires_at']);
-    }
+    $fresh = api_finalize_public_user($fresh);
+    $_SESSION[LMEVE_SESSION_USER_KEY] = $fresh;
     api_respond([
       'ok' => true,
       'authenticated' => true,
@@ -82,16 +83,13 @@ try {
       $sessionAuth = (string)($sessionUser['auth_method'] ?? 'manual');
       $public = api_public_user_from_row($row);
       $public['auth_method'] = $sessionAuth === 'esi' ? 'esi' : 'manual';
-      if ($public['auth_method'] === 'manual' && empty($public['character_name'])) {
-        $public['character_name'] = $public['username'] ?: 'Local Administrator';
-      }
       // Browser session TTL lives in PHP session, not the DB mirror timestamp.
       if (!empty($sessionUser['session_expiry'])) {
         $public['session_expiry'] = $sessionUser['session_expiry'];
       } elseif (!empty($_SESSION['lmeve_session_expires_at'])) {
         $public['session_expiry'] = gmdate('c', (int)$_SESSION['lmeve_session_expires_at']);
       }
-      // Keep session in sync with refreshed public profile.
+      $public = api_finalize_public_user($public);
       $_SESSION[LMEVE_SESSION_USER_KEY] = array_merge($sessionUser, $public);
       $fresh = $public;
     }
@@ -99,7 +97,10 @@ try {
     $db->close();
   } catch (Throwable $e) {
     // DB may be unavailable during early setup; fall back to pure session payload.
-    $fresh = $sessionUser;
+    $fresh = api_finalize_public_user($sessionUser);
+    if (!empty($_SESSION['lmeve_session_expires_at'])) {
+      $fresh['session_expiry'] = gmdate('c', (int)$_SESSION['lmeve_session_expires_at']);
+    }
   }
 
   api_respond([

@@ -173,17 +173,21 @@ function bootstrap_verify_login(string $username, string $password): ?array {
  */
 function bootstrap_public_user(array $user): array {
     $username = (string)($user['username'] ?? LMEVE_BOOTSTRAP_ADMIN_USERNAME);
-    $role = (string)($user['role'] ?? 'super_admin');
+    $role = (string)($user['role'] ?? 'corp_member');
     if ($role === '' || strtolower($username) === LMEVE_BOOTSTRAP_ADMIN_USERNAME) {
         $role = 'super_admin';
     }
+    if (function_exists('api_normalize_role')) {
+        $role = api_normalize_role($role);
+    }
+    $isAdmin = ($role === 'super_admin' || strtolower($username) === LMEVE_BOOTSTRAP_ADMIN_USERNAME) ? 1 : 0;
     return [
         'id' => $user['id'] ?? ('bootstrap-' . $username),
         'username' => $username,
         'role' => $role,
         'auth_method' => 'manual',
         'character_id' => null,
-        'character_name' => $username === LMEVE_BOOTSTRAP_ADMIN_USERNAME ? 'Local Administrator' : $username,
+        'character_name' => strtolower($username) === LMEVE_BOOTSTRAP_ADMIN_USERNAME ? 'Local Administrator' : $username,
         'corporation_id' => null,
         'corporation_name' => null,
         'alliance_id' => null,
@@ -195,7 +199,7 @@ function bootstrap_public_user(array $user): array {
         'is_active' => isset($user['is_active']) ? (int)(bool)$user['is_active'] : 1,
         'has_tokens' => 0,
         'bootstrap' => 1,
-        'is_admin' => 1,
+        'is_admin' => $isAdmin,
     ];
 }
 

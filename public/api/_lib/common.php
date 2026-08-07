@@ -279,19 +279,38 @@ function api_require_auth(array $roles = []): array {
         api_fail(401, 'Authentication required');
     }
 
-    if ($roles !== [] && !in_array((string)($user['role'] ?? ''), $roles, true)) {
-        api_fail(403, 'Insufficient privileges');
+    if ($roles === []) {
+        return $user;
     }
 
-    return $user;
+    require_once __DIR__ . '/session.php';
+    $role = api_normalize_role($user['role'] ?? '');
+    // Site/local admins satisfy any authenticated role gate.
+    if (api_is_site_admin($user) || in_array($role, $roles, true)) {
+        return $user;
+    }
+
+    api_fail(403, 'Insufficient privileges');
 }
 
 function api_require_admin(): array {
-    return api_require_auth(['super_admin', 'corp_admin']);
+    $user = api_current_user();
+    if ($user === null) {
+        api_fail(401, 'Authentication required');
+    }
+
+    require_once __DIR__ . '/session.php';
+    $role = api_normalize_role($user['role'] ?? '');
+    if (api_is_site_admin($user) || $role === 'super_admin' || $role === 'corp_admin') {
+        return $user;
+    }
+
+    api_fail(403, 'Insufficient privileges');
 }
 
 function api_require_corporation_access(array $user, int $corporationId): void {
-    if ($corporationId <= 0 || (string)($user['role'] ?? '') === 'super_admin') {
+    require_once __DIR__ . '/session.php';
+    if ($corporationId <= 0 || api_is_site_admin($user) || api_normalize_role($user['role'] ?? '') === 'super_admin') {
         return;
     }
 
