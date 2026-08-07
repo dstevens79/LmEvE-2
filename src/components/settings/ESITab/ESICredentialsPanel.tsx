@@ -34,9 +34,21 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
   const proto = generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http');
   const host = window.location.host;
   const isServer = (generalSettings.authFlow || 'server') === 'server';
-  const callback = isServer
+  // Prefer the saved public callback URL (what EVE SSO has registered).
+  // Never tell the admin to register a LAN IP just because they're browsing via one.
+  const suggestedLocal = isServer
     ? `${proto}://${host}/api/auth/esi/callback.php`
     : `${proto}://${host}/`;
+  const callback = (esiSettings.callbackUrl && esiSettings.callbackUrl.trim())
+    ? esiSettings.callbackUrl.trim()
+    : suggestedLocal;
+  const browsingDiffers = (() => {
+    try {
+      return new URL(callback).origin !== window.location.origin;
+    } catch {
+      return false;
+    }
+  })();
 
   const hasUnsaved =
     (esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId) ||
@@ -134,18 +146,53 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
         </Button>
       </div>
 
-      {/* Callback guidance based on selected auth flow */}
-      <div className="space-y-1 text-xs text-muted-foreground">
-        <p>
-          {isServer
-            ? 'Use this callback URL in your EVE application (Server/PHP callback):'
-            : 'Use this callback URL in your EVE application (SPA/client callback):'}
-        </p>
-        <code className="bg-background px-1 rounded break-all">{callback}</code>
-        {isServer ? (
-          <p>Server callback works on HTTP and HTTPS. SPA callback requires HTTPS with PKCE.</p>
-        ) : (
-          <p>SPA callback requires HTTPS. Switch to PHP callback for HTTP deployments.</p>
+      {/* Public callback URL — must match EVE developer application exactly */}
+      <div className="space-y-2">
+        <Label htmlFor="callbackUrl">
+          {isServer ? 'Public ESI Callback URL (Server/PHP)' : 'Public ESI Callback URL (SPA)'}
+        </Label>
+        <Input
+          id="callbackUrl"
+          value={esiSettings.callbackUrl || ''}
+          onChange={(e) => onUpdateESISetting('callbackUrl', e.target.value)}
+          placeholder={suggestedLocal}
+          className="font-mono text-xs"
+        />
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p>
+            Register this exact URL in your EVE application at developers.eveonline.com.
+            OAuth always uses the saved public callback — not your current browser address.
+          </p>
+          <p>
+            Effective callback:{' '}
+            <code className="bg-background px-1 rounded break-all">{callback}</code>
+          </p>
+          {browsingDiffers && (
+            <p className="text-amber-500">
+              You are browsing via {window.location.origin}, which differs from the public callback host.
+              ESI login will still use the public callback above (this is correct).
+            </p>
+          )}
+          {!esiSettings.callbackUrl && (
+            <p className="text-amber-500">
+              No saved callback yet — save the public URL (e.g. http://YOUR.PUBLIC.IP/api/auth/esi/callback.php).
+            </p>
+          )}
+          {isServer ? (
+            <p>Server callback works on HTTP and HTTPS. SPA callback requires HTTPS with PKCE.</p>
+          ) : (
+            <p>SPA callback requires HTTPS. Switch to PHP callback for HTTP deployments.</p>
+          )}
+        </div>
+        {!esiSettings.callbackUrl && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onUpdateESISetting('callbackUrl', suggestedLocal)}
+          >
+            Use current browser address
+          </Button>
         )}
       </div>
     </div>

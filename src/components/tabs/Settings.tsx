@@ -531,32 +531,30 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     'esi-contracts.read_corporation_contracts.v1'
   ];
 
-  // Generate OAuth authorization URL for testing from Settings
-  // SPA-only: always use the current origin root as redirect_uri
-  const generateAuthUrl = () => {
-    const state = Math.random().toString(36).substring(2, 15);
-    const scopes = ESI_SCOPES.join(' ');
-    const redirectUri: string = `${window.location.origin}/`;
-    
-    const authUrl = `https://login.eveonline.com/v2/oauth/authorize/?` +
-      `response_type=code&` +
-      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-      `client_id=${esiConfig?.clientId || ''}&` +
-      `scope=${encodeURIComponent(scopes)}&` +
-      `state=${state}`;
-    
-    return authUrl;
-  };
-
-  const handleESIOAuth = () => {
+  // OAuth from Settings: always go through server start so public callback is used.
+  const handleESIOAuth = async () => {
     if (!esiConfig?.clientId) {
       toast.error('Please configure your ESI Client ID first');
       return;
     }
-    
-    const authUrl = generateAuthUrl();
-    toast.info('Redirecting to EVE SSO...');
-    window.location.href = authUrl;
+
+    try {
+      const resp = await fetch('/api/auth/esi/start.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scopeType: 'corporation', scopes: ESI_SCOPES }),
+      });
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok || !json?.ok || !json?.authorizeUrl) {
+        throw new Error(json?.error || 'Failed to start ESI login');
+      }
+      toast.info(`Redirecting to EVE SSO (callback: ${json.redirectUri || 'server'})...`);
+      window.location.href = json.authorizeUrl as string;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to start ESI login';
+      toast.error(message);
+    }
   };
 
   const handleCopyAuthUrl = () => {
@@ -998,11 +996,27 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
                   }}
                   onTestESIConfig={async () => {
                     try {
+                      // Prefer server OAuth start so redirect_uri is the saved public callback.
+                      if ((generalSettings.authFlow || 'server') !== 'spa') {
+                        const resp = await fetch('/api/auth/esi/start.php', {
+                          method: 'POST',
+                          credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ scopeType: 'basic' }),
+                        });
+                        const json = await resp.json().catch(() => null);
+                        if (!resp.ok || !json?.ok || !json?.authorizeUrl) {
+                          throw new Error(json?.error || 'Failed to start ESI test on server');
+                        }
+                        toast.info(`Redirecting to EVE SSO (callback: ${json.redirectUri || 'server'})...`);
+                        window.location.href = json.authorizeUrl;
+                        return;
+                      }
                       const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
                       const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
-                      const callbackUrl = (generalSettings.authFlow || 'server') === 'spa'
-                        ? `${(generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http'))}://${window.location.host}/`
-                        : `${(generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http'))}://${window.location.host}/api/auth/esi/callback.php`;
+                      const callbackUrl = (esiSettings.callbackUrl && esiSettings.callbackUrl.trim())
+                        ? esiSettings.callbackUrl.trim()
+                        : `${window.location.origin}/`;
                       if (!clientId) {
                         toast.error('Client ID is required to test ESI configuration');
                         return;

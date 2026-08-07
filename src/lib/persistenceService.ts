@@ -41,6 +41,7 @@ function scheduleCategorySave(category: string, payload: any, delayMs = 400) {
       try {
         await fetch('/api/settings.php', {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ [category]: payload })
         });
@@ -389,7 +390,8 @@ export const defaultDatabaseSettings: DatabaseSettings = {
 export const defaultESISettings: ESISettings = {
   clientId: '',
   clientSecret: '',
-  callbackUrl: `${window.location.origin}/`,
+  // Empty until configured — never default to the browser host (LAN IPs break EVE SSO).
+  callbackUrl: '',
   userAgent: 'LMeve Corporation Management Tool',
   scopes: [
     'esi-corporations.read_corporation_membership.v1',
@@ -668,7 +670,7 @@ export const useESISettings = () => {
     try { localStorage.removeItem('lmeve-settings-esi'); } catch {}
     (async () => {
       try {
-        const resp = await fetch('/api/settings.php', { method: 'GET' });
+        const resp = await fetch('/api/settings.php', { method: 'GET', credentials: 'include' });
         if (resp.ok) {
           const data = await resp.json();
           const srv = data?.settings?.esi;

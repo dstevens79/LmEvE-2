@@ -41,7 +41,7 @@ function callback_ok_redirect(bool $needsCorpSetup, bool $adminHandoff) {
 }
 
 // Capture prior browser session BEFORE OAuth state consume / session regenerate.
-// This is the admin -> character handoff signal.
+// Same-host admin handoff. Cross-host handoff comes from signed OAuth state.
 api_session_start();
 $existingSession = api_session_user();
 $adminHandoff = is_array($existingSession) && (($existingSession['role'] ?? '') === 'super_admin');
@@ -59,21 +59,23 @@ if (empty($payload['code'])) {
 $code = (string)$payload['code'];
 $state = isset($payload['state']) ? (string)$payload['state'] : '';
 
+// Prefer signed state (works when user started OAuth on a LAN IP and CCP
+// redirected to the public callback host). Falls back to session state.
 $oauthMeta = null;
-if ($method === 'GET') {
-  $storedOauth = $_SESSION[LMEVE_SESSION_OAUTH_KEY] ?? null;
-  $hasStoredState = is_array($storedOauth) && !empty($storedOauth['state']);
-  if ($hasStoredState) {
-    if ($state === '') {
-      callback_fail_redirect('missing_state');
-    }
-    $oauthMeta = api_oauth_consume_state($state);
-    if ($oauthMeta === null) {
-      callback_fail_redirect('invalid_state');
-    }
-  } elseif ($state !== '') {
-    $oauthMeta = null;
+if ($state !== '') {
+  $oauthMeta = api_oauth_consume_state($state);
+  if ($oauthMeta === null && $method === 'GET') {
+    // Soft-allow only if state was never issued as signed and no session either
+    // (legacy). Prefer hard-fail for CSRF.
+    callback_fail_redirect('invalid_state');
   }
+} elseif ($method === 'GET') {
+  callback_fail_redirect('missing_state');
+}
+
+// Cross-host admin handoff bit packed into signed state at /esi/start.php
+if (is_array($oauthMeta) && !empty($oauthMeta['admin_handoff'])) {
+  $adminHandoff = true;
 }
 
 try {
@@ -84,7 +86,15 @@ try {
   $esiCfg = api_get_esi_config($payload);
   $clientId = (string)($esiCfg['clientId'] ?? '');
   $clientSecret = (string)($esiCfg['clientSecret'] ?? '');
-  $redirectUri = (string)($payload['redirectUri'] ?? ($oauthMeta['redirect_uri'] ?? ($esiCfg['callbackUrl'] ?? '')));
+  // Token exchange redirect_uri MUST match authorize redirect_uri exactly.
+  // Prefer signed-state value, then server-configured public callback — never the request host.
+  $redirectUri = '';
+  if (is_array($oauthMeta) && !empty($oauthMeta['redirect_uri'])) {
+    $redirectUri = (string)$oauthMeta['redirect_uri'];
+  }
+  if ($redirectUri === '') {
+    $redirectUri = api_get_esi_callback_url($payload);
+  }
   if ($clientId === '' || $clientSecret === '') {
     if ($method === 'GET') callback_fail_redirect('esi_not_configured');
     api_fail(400, 'ESI is not configured');

@@ -16,14 +16,10 @@ if ($clientId === '') {
   api_fail(400, 'ESI is not configured on the server');
 }
 
-$redirectUri = (string)($body['redirectUri'] ?? $esiCfg['callbackUrl'] ?? '');
-if ($redirectUri === '') {
-  // Default to server callback endpoint on this host.
-  $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
-  $scheme = $https ? 'https' : 'http';
-  $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-  $redirectUri = $scheme . '://' . $host . '/api/auth/esi/callback.php';
-}
+// ALWAYS use the server-configured public callback URL.
+// Browser host (LAN IP) must never become redirect_uri — CCP requires an exact match
+// with the EVE application callback (typically the public IP/hostname).
+$redirectUri = api_get_esi_callback_url($body);
 
 $scopes = [];
 if (isset($body['scopes']) && is_array($body['scopes'])) {
@@ -32,15 +28,17 @@ if (isset($body['scopes']) && is_array($body['scopes'])) {
   $scopes = preg_split('/\s+/', trim($body['scope'])) ?: [];
 }
 
+// Session once: scopes defaults + admin handoff bit for signed state.
+api_session_start();
+$sessionUser = api_session_user();
+$sessionRole = is_array($sessionUser) ? (string)($sessionUser['role'] ?? '') : '';
+$isAdminSession = ($sessionRole === 'super_admin' || $sessionRole === 'corp_admin');
+$adminHandoff = ($sessionRole === 'super_admin');
+
 // If caller only sent scopeType, expand to the same sets the SPA client uses.
 // "basic" still requests corporation-roles so every login can derive CEO/Director/etc.
 // Admin browser sessions default toward corporation scopes for bootstrap handoff.
 if (count($scopes) === 0) {
-  api_session_start();
-  $sessionUser = api_session_user();
-  $sessionRole = is_array($sessionUser) ? (string)($sessionUser['role'] ?? '') : '';
-  $isAdminSession = ($sessionRole === 'super_admin' || $sessionRole === 'corp_admin');
-
   $scopeType = strtolower((string)($body['scopeType'] ?? ($isAdminSession ? 'corporation' : 'basic')));
   $characterScopes = [
     'esi-characters.read_corporation_roles.v1',
@@ -90,17 +88,20 @@ if (count($scopes) === 0) {
   }
 }
 
-// Cryptographically strong state
-try {
-  $state = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
-} catch (Throwable $e) {
-  $state = bin2hex(random_bytes(16));
-}
+// Signed, self-contained state — survives start-host != callback-host
+$state = api_oauth_issue_state([
+  'redirect_uri' => $redirectUri,
+  'scopes' => $scopes,
+  'client_id' => $clientId,
+  'admin_handoff' => $adminHandoff ? 1 : 0,
+]);
 
+// Also keep a same-host session copy when start+callback share a host
 api_oauth_store_state($state, [
   'redirect_uri' => $redirectUri,
   'scopes' => $scopes,
   'client_id' => $clientId,
+  'admin_handoff' => $adminHandoff ? 1 : 0,
 ]);
 
 $params = [
@@ -115,9 +116,22 @@ if (count($scopes) > 0) {
 
 $authorizeUrl = 'https://login.eveonline.com/v2/oauth/authorize/?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
 
+// Hint the SPA when the browser origin differs from the public callback origin
+$callbackOrigin = '';
+try {
+  $parts = parse_url($redirectUri);
+  if (is_array($parts) && !empty($parts['scheme']) && !empty($parts['host'])) {
+    $callbackOrigin = $parts['scheme'] . '://' . $parts['host'];
+    if (!empty($parts['port'])) {
+      $callbackOrigin .= ':' . $parts['port'];
+    }
+  }
+} catch (Throwable $e) {}
+
 api_respond([
   'ok' => true,
   'authorizeUrl' => $authorizeUrl,
   'state' => $state,
   'redirectUri' => $redirectUri,
+  'callbackOrigin' => $callbackOrigin,
 ]);

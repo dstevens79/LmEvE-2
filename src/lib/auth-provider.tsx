@@ -169,16 +169,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Do not create admin locally. Admin should be provisioned in DB setup script.
 
-  // Initialize ESI service when configuration changes (respect auth flow from settings)
+  // Initialize ESI service when configuration changes (respect auth flow from settings).
+  // Server mode: callback URL is owned by PHP settings — do not bind to browser host.
   useEffect(() => {
     if (esiConfiguration.clientId) {
       try {
         const useSpa = (generalSettings?.authFlow || 'server') === 'spa';
+        // Placeholder only for client helper init; real OAuth start uses server callbackUrl.
         const callbackRedirect = useSpa
           ? `${window.location.origin}/`
-          : `${window.location.origin}/api/auth/esi/callback.php`;
+          : (esiConfiguration as any).callbackUrl || 'about:blank';
         initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
-        console.log(`✅ ESI Auth initialized (${useSpa ? 'SPA' : 'Server'} callback mode)`, { redirectUri: callbackRedirect });
+        console.log(`✅ ESI Auth initialized (${useSpa ? 'SPA' : 'Server'} callback mode)`);
       } catch (error) {
         console.error('❌ Failed to initialize ESI Auth:', error);
       }
@@ -352,12 +354,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // Use site setting to determine callback behavior
       const useSpa = (generalSettings?.authFlow || 'server') === 'spa';
-      const callbackRedirect = useSpa
-        ? `${window.location.origin}/`
-        : `${window.location.origin}/api/auth/esi/callback.php`;
 
-      // Canonical server flow: PHP stores CSRF state + builds authorize URL.
-      // This is the correct web-app model and fixes admin->character handoff.
+      // Canonical server flow: PHP owns the public callback URL + signed OAuth state.
+      // Never send window.location.origin as redirect_uri — LAN IPs break EVE SSO.
       if (!useSpa) {
         const scopeList = scopesOverride && scopesOverride.length > 0
           ? scopesOverride
@@ -367,7 +366,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
-            redirectUri: callbackRedirect,
             scopes: scopeList,
             scopeType,
           }),
@@ -376,13 +374,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (!resp.ok || !json?.ok || !json?.authorizeUrl) {
           throw new Error(json?.error || 'Failed to start ESI login on server');
         }
-        // Keep client ESI service initialized for SPA-like tooling, even in server mode
-        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
-        console.log('✅ Server ESI OAuth start ready', { redirectUri: callbackRedirect });
+        const serverCallback = (json.redirectUri as string) || '';
+        if (serverCallback) {
+          initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, serverCallback);
+        }
+        console.log('✅ Server ESI OAuth start ready', {
+          redirectUri: serverCallback,
+          callbackOrigin: json.callbackOrigin,
+          browserOrigin: window.location.origin,
+        });
         return json.authorizeUrl as string;
       }
 
-      initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
+      // SPA mode still needs an explicit callback; prefer saved ESI settings when present
+      const spaCallback = `${window.location.origin}/`;
+      initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, spaCallback);
       const esiService = getESIAuthService();
       const url = scopesOverride && scopesOverride.length > 0
         ? await esiService.initiateLoginWithScopes(scopesOverride)
@@ -1191,19 +1197,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const newConfig = { clientId, clientSecret };
     setESIConfiguration(newConfig);
     
-    // Initialize ESI service with new config
+    // Initialize ESI service with new config (server owns real callback URL)
     try {
-  const useSpa2 = (generalSettings?.authFlow || 'server') === 'spa';
-  const callbackRedirect = useSpa2
-    ? `${window.location.origin}/`
-    : `${window.location.origin}/api/auth/esi/callback.php`;
+      const useSpa2 = (generalSettings?.authFlow || 'server') === 'spa';
+      const callbackRedirect = useSpa2
+        ? `${window.location.origin}/`
+        : 'about:blank';
       initializeESIAuth(clientId, clientSecret, registeredCorporations, callbackRedirect);
-    console.log('✅ ESI configuration updated (Server callback mode)');
+      console.log('✅ ESI configuration updated');
     } catch (error) {
       console.error('❌ Failed to update ESI configuration:', error);
       throw error;
     }
-  }, [registeredCorporations, setESIConfiguration]);
+  }, [registeredCorporations, setESIConfiguration, generalSettings?.authFlow]);
 
   // Update admin configuration
   const updateAdminConfig = useCallback((config: { username: string; password: string }) => {

@@ -149,7 +149,100 @@ function api_session_clear(bool $destroy = true): void {
 }
 
 /**
+ * Secret used to sign OAuth state so callbacks work across hosts
+ * (e.g. start on LAN IP, callback on public IP). Session cookies are host-bound.
+ */
+function api_oauth_signing_secret(): string {
+    static $secret = null;
+    if (is_string($secret) && $secret !== '') {
+        return $secret;
+    }
+
+    $dir = function_exists('api_storage_dir') ? api_storage_dir() : null;
+    if ($dir) {
+        $path = rtrim($dir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'oauth-state-secret';
+        if (is_file($path)) {
+            $raw = trim((string)@file_get_contents($path));
+            if ($raw !== '') {
+                $secret = $raw;
+                return $secret;
+            }
+        }
+        try {
+            $raw = bin2hex(random_bytes(32));
+        } catch (Throwable $e) {
+            $raw = hash('sha256', uniqid('lmeve', true) . mt_rand());
+        }
+        @file_put_contents($path, $raw, LOCK_EX);
+        @chmod($path, 0660);
+        $secret = $raw;
+        return $secret;
+    }
+
+    $secret = hash('sha256', __FILE__ . '|' . (string)($_SERVER['SERVER_NAME'] ?? 'lmeve'));
+    return $secret;
+}
+
+/**
+ * Build a signed, self-contained OAuth state token (host-independent).
+ *
+ * @param array<string, mixed> $extra
+ */
+function api_oauth_issue_state(array $extra = []): string {
+    $payload = array_merge([
+        'n' => bin2hex(random_bytes(16)),
+        'iat' => time(),
+        'exp' => time() + 900, // 15 minutes
+    ], $extra);
+    $json = json_encode($payload, JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        $json = '{}';
+    }
+    $body = rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+    $sig = hash_hmac('sha256', $body, api_oauth_signing_secret());
+    return $body . '.' . $sig;
+}
+
+/**
+ * Verify signed OAuth state. Returns payload array or null.
+ *
+ * @return array<string, mixed>|null
+ */
+function api_oauth_verify_state(?string $state): ?array {
+    if ($state === null || $state === '' || strpos($state, '.') === false) {
+        return null;
+    }
+    $parts = explode('.', $state, 2);
+    if (count($parts) !== 2) {
+        return null;
+    }
+    list($body, $sig) = $parts;
+    $expected = hash_hmac('sha256', $body, api_oauth_signing_secret());
+    if (!hash_equals($expected, $sig)) {
+        return null;
+    }
+    $pad = strlen($body) % 4;
+    if ($pad > 0) {
+        $body .= str_repeat('=', 4 - $pad);
+    }
+    $json = base64_decode(strtr($body, '-_', '+/'), true);
+    if ($json === false) {
+        return null;
+    }
+    $payload = json_decode($json, true);
+    if (!is_array($payload)) {
+        return null;
+    }
+    $exp = isset($payload['exp']) ? (int)$payload['exp'] : 0;
+    if ($exp > 0 && time() > $exp) {
+        return null;
+    }
+    return $payload;
+}
+
+/**
  * Store OAuth start state for CSRF protection (server callback flow).
+ * Also keeps a host-local copy when start+callback share a host.
  */
 function api_oauth_store_state(string $state, array $extra = []): void {
     api_session_start();
@@ -160,9 +253,22 @@ function api_oauth_store_state(string $state, array $extra = []): void {
 }
 
 /**
- * Validate and consume OAuth state. Returns stored payload or null.
+ * Validate and consume OAuth state. Prefers signed state (cross-host),
+ * falls back to same-host PHP session state.
+ *
+ * @return array<string, mixed>|null
  */
 function api_oauth_consume_state(?string $state): ?array {
+    // 1) Signed self-contained state (works when callback host != start host)
+    $signed = api_oauth_verify_state($state);
+    if (is_array($signed)) {
+        // Best-effort clear any local session copy
+        api_session_start();
+        unset($_SESSION[LMEVE_SESSION_OAUTH_KEY]);
+        return $signed;
+    }
+
+    // 2) Legacy same-host session state
     api_session_start();
     $stored = $_SESSION[LMEVE_SESSION_OAUTH_KEY] ?? null;
     unset($_SESSION[LMEVE_SESSION_OAUTH_KEY]);
