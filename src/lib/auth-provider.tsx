@@ -106,10 +106,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     tokenExpiry?: string;
   } | null>(null);
 
-  // Load session tokens on mount
+  // Load session tokens on mount - check both sessionStorage and localStorage as fallback
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem('lmeve-session-tokens');
+      let raw = sessionStorage.getItem('lmeve-session-tokens');
+      if (!raw) {
+        // Fallback to localStorage (some environments may persist there)
+        raw = localStorage.getItem('lmeve-session-tokens');
+      }
       if (raw) {
         setSessionTokens(JSON.parse(raw));
       }
@@ -125,11 +129,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       if (tokens) {
         sessionStorage.setItem('lmeve-session-tokens', JSON.stringify(tokens));
+        localStorage.setItem('lmeve-session-tokens', JSON.stringify(tokens));
       } else {
         sessionStorage.removeItem('lmeve-session-tokens');
+        localStorage.removeItem('lmeve-session-tokens');
       }
     } catch {}
   }, []);
+
+  // Merge persisted user with session-only tokens for runtime context
+  const mergedUser: LMeveUser | null = currentUser
+    ? {
+        ...currentUser,
+        accessToken: sessionTokens?.accessToken,
+        refreshToken: sessionTokens?.refreshToken,
+        tokenExpiry: sessionTokens?.tokenExpiry,
+      }
+    : null;
 
   // Do not create admin locally. Admin should be provisioned in DB setup script.
 
@@ -164,9 +180,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   // Check if token is expired (must be defined before used in effects)
+  // Use merged user when available (has tokens from session), otherwise fall back to currentUser + sessionTokens
   const isTokenExpired = useCallback(() => {
-    const expiry = sessionTokens?.tokenExpiry || currentUser?.tokenExpiry;
-    if (!currentUser || currentUser.authMethod !== 'esi' || !expiry) {
+    // Try mergedUser first, then check both sources separately
+    let expiry: string | undefined;
+    
+    if (currentUser && currentUser.authMethod === 'esi') {
+      expiry = sessionTokens?.tokenExpiry || currentUser.tokenExpiry;
+    }
+    
+    if (!expiry) {
       return false;
     }
 
@@ -489,12 +512,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     }
     
-    // Clear session artifacts
+    // Clear session artifacts (both sessionStorage and localStorage)
     try {
       sessionStorage.removeItem('esi-auth-state');
       sessionStorage.removeItem('esi-login-attempt');
       sessionStorage.removeItem('esi-corp-consent');
       sessionStorage.removeItem('lmeve-session-tokens');
+      localStorage.removeItem('esi-auth-state');
+      localStorage.removeItem('esi-login-attempt');
+      localStorage.removeItem('esi-corp-consent');
+      localStorage.removeItem('lmeve-session-tokens');
     } catch {}
 
     // Scrub tokens from stored users (minimize retention after logout)
@@ -1004,20 +1031,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     console.log('✅ Admin configuration updated');
   }, [setAdminConfig]);
 
-  // Merge persisted user with session-only tokens for runtime context
-  const mergedUser: LMeveUser | null = currentUser
-    ? {
-        ...currentUser,
-        accessToken: sessionTokens?.accessToken,
-        refreshToken: sessionTokens?.refreshToken,
-        tokenExpiry: sessionTokens?.tokenExpiry,
-      }
-    : null;
-
+  // isAuthenticated should check merged user (which has tokens) not persisted user (which doesn't)
   const contextValue: AuthContextType = {
     // Current user state
     user: mergedUser,
-    isAuthenticated: !!currentUser && isSessionValid(currentUser),
+    isAuthenticated: !!mergedUser && isSessionValid(mergedUser),
     isLoading,
     
     // Authentication methods

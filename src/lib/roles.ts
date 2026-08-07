@@ -371,7 +371,11 @@ export function isSessionValid(user: LMeveUser): boolean {
   const now = Date.now();
   const sessionExpiry = new Date(user.sessionExpiry).getTime();
   
-  return now < sessionExpiry;
+  // Session is valid if within time window AND has either tokens OR is manual auth (no tokens needed)
+  const hasValidTokens = user.authMethod === 'manual' || 
+                         (user.accessToken && user.tokenExpiry && now < new Date(user.tokenExpiry).getTime());
+  
+  return now < sessionExpiry && hasValidTokens;
 }
 
 /**
