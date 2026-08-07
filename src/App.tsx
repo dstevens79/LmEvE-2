@@ -383,34 +383,28 @@ function AppContent() {
       timestamp: Date.now()
     });
     
-    // If DB is not configured, prefer Settings > Database rather than forcing Dashboard
+    // Unauthenticated users never land in Settings — setup requires offline admin login first.
     if (!currentUser) {
-      if (needsDBSetup) {
-        if (activeTab !== 'settings') {
-          console.log('🛠️ No DB credentials detected - opening Settings > Database');
-          setActiveTab('settings');
-          setActiveSettingsTab('database');
-          setSettingsExpanded(true);
-        }
-      } else {
-        // Reset tab to dashboard when user logs out or on any tab that requires auth
-        if (activeTab !== 'dashboard') {
-          console.log('🔄 User not authenticated - resetting to dashboard tab');
-          setActiveTab('dashboard');
-          setSettingsExpanded(false);
-        }
+      if (activeTab !== 'dashboard') {
+        console.log('🔄 User not authenticated - resetting to dashboard tab');
+        setActiveTab('dashboard');
+        setSettingsExpanded(false);
       }
+      // Fresh install: push local admin login immediately (no anonymous setup UI).
+      if (needsDBSetup) {
+        setShowQuickLogin(true);
+      }
+      return;
     }
-  }, [currentUser, currentAuth, forceRender, authTrigger, activeTab, needsDBSetup, setActiveSettingsTab, setSettingsExpanded, setActiveTab]);
 
-  // On first load, if DB settings are missing, proactively switch to Settings > Database
-  React.useEffect(() => {
-    if (needsDBSetup) {
+    // After admin/local login, unfinished install goes to Settings > Database.
+    if (needsDBSetup && activeTab !== 'settings') {
+      console.log('🛠️ Authenticated and DB not configured - opening Settings > Database');
       setActiveTab('settings');
       setActiveSettingsTab('database');
       setSettingsExpanded(true);
     }
-  }, [needsDBSetup, setActiveTab, setActiveSettingsTab, setSettingsExpanded]);
+  }, [currentUser, currentAuth, forceRender, authTrigger, activeTab, needsDBSetup, setActiveSettingsTab, setSettingsExpanded, setActiveTab]);
 
   // Check if this is an ESI callback
   useEffect(() => {
@@ -536,12 +530,18 @@ function AppContent() {
       console.log('🔐 Quick login attempt:', loginUsername);
       await loginWithCredentials(loginUsername.trim(), loginPassword.trim());
       console.log('✅ Quick login successful');
-      
-      // Navigate to dashboard after successful login
-      setActiveTab('dashboard');
-      setSettingsExpanded(false);
-      
-      toast.success('Login successful!');
+
+      // Fresh install: admin must configure DB/ESI before normal use.
+      if (needsDBSetup) {
+        setActiveTab('settings');
+        setActiveSettingsTab('database');
+        setSettingsExpanded(true);
+        toast.success('Signed in — configure the database to finish setup');
+      } else {
+        setActiveTab('dashboard');
+        setSettingsExpanded(false);
+        toast.success('Login successful!');
+      }
     } catch (error) {
       console.error('❌ Quick login failed:', error);
       const msg = error instanceof Error ? error.message : 'Please check your credentials.';
@@ -695,9 +695,13 @@ function AppContent() {
             <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md mx-4 shadow-lg">
               <div className="text-center mb-6">
                 <Rocket size={32} className="mx-auto text-accent mb-3" />
-                <h2 className="text-xl font-semibold mb-2">Sign In to LMeve</h2>
+                <h2 className="text-xl font-semibold mb-2">
+                  {needsDBSetup ? 'Admin sign-in required' : 'Sign In to LMeve'}
+                </h2>
                 <p className="text-sm text-muted-foreground">
-                  Enter your credentials to access corporation management
+                  {needsDBSetup
+                    ? 'Use the offline local admin account before configuring database or ESI.'
+                    : 'Enter your credentials to access corporation management'}
                 </p>
               </div>
               
@@ -922,14 +926,16 @@ function AppContent() {
                       <SignIn size={16} className="sm:mr-2" />
                       <span className="hidden sm:inline">Local Sign In</span>
                     </Button>
-                    {/* Always show EVE SSO button if configured */}
-                    <EVELoginButton
-                      onClick={() => handleESILogin()}
-                      size="small"
-                      disabled={!esiConfig?.clientId}
-                      showCorporationCount={registeredCorps.length}
-                      showValidationStatus={getValidationStatus()}
-                    />
+                    {/* EVE SSO only after install setup (admin configures ESI first) */}
+                    {!needsDBSetup && (
+                      <EVELoginButton
+                        onClick={() => handleESILogin()}
+                        size="small"
+                        disabled={!esiConfig?.clientId}
+                        showCorporationCount={registeredCorps.length}
+                        showValidationStatus={getValidationStatus()}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -1252,65 +1258,41 @@ function AppContent() {
               <div className="h-full overflow-y-auto">
                 <div className={`${isMobileView ? 'px-4 py-4' : 'container mx-auto px-6 py-6'}`}>
                   {!currentUser ? (
-                    // If no DB credentials are configured, show Settings > Database immediately
-                    needsDBSetup ? (
-                      <Settings 
-                        activeTab={'database'}
-                        onTabChange={handleSettingsTabChange}
-                        isMobileView={isMobileView}
-                      />
-                    ) : (
-                    // Always show dashboard with login prompt when not authenticated
-                    activeTab === 'dashboard' ? (
-                      <div className="flex items-center justify-center h-full">
-                        <div className="text-center space-y-4 max-w-md">
-                          <Rocket size={48} className="mx-auto text-accent" />
-                          <h2 className="text-2xl font-bold">Welcome to LMeve</h2>
-                          <p className="text-muted-foreground">
-                            LMeve is a comprehensive corporation management tool for EVE Online. 
-                            Sign in to access your corporation's data and management features.
-                          </p>
-                          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                            <Button 
-                              onClick={() => setShowQuickLogin(true)}
-                              variant="outline"
-                            >
-                              <SignIn size={16} className="mr-2" />
-                              Local Sign In
-                            </Button>
+                    // Never expose Settings/DB/ESI setup without an authenticated admin session.
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center space-y-4 max-w-md">
+                        <Rocket size={48} className="mx-auto text-accent" />
+                        <h2 className="text-2xl font-bold">
+                          {needsDBSetup ? 'Finish setup' : 'Welcome to LMeve'}
+                        </h2>
+                        <p className="text-muted-foreground">
+                          {needsDBSetup
+                            ? 'Sign in with the local admin account first. Database and ESI configuration are only available after authentication.'
+                            : 'LMeve is a comprehensive corporation management tool for EVE Online. Sign in to access your corporation\'s data and management features.'}
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                          <Button
+                            onClick={() => setShowQuickLogin(true)}
+                            className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                          >
+                            <SignIn size={16} className="mr-2" />
+                            Local Sign In
+                          </Button>
+                          {!needsDBSetup && (
                             <EVELoginButton
                               onClick={() => handleESILogin()}
                               showCorporationCount={registeredCorps.length}
                               showValidationStatus={getValidationStatus()}
                             />
-                          </div>
+                          )}
                         </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center h-full">
-                        <div className="text-center space-y-4 max-w-md">
-                          <Shield size={48} className="mx-auto text-muted-foreground" />
-                          <h2 className="text-xl font-semibold">Authentication Required</h2>
-                          <p className="text-muted-foreground">
-                            You need to sign in to access this section.
+                        {needsDBSetup && (
+                          <p className="text-xs text-muted-foreground">
+                            Default offline admin: <strong>admin</strong> / <strong>12345</strong> — change this password after first login.
                           </p>
-                          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                            <Button 
-                              onClick={() => setShowQuickLogin(true)}
-                              variant="outline"
-                            >
-                              <SignIn size={16} className="mr-2" />
-                              Local Sign In
-                            </Button>
-                            <EVELoginButton
-                              onClick={() => handleESILogin()}
-                              showCorporationCount={registeredCorps.length}
-                              showValidationStatus={getValidationStatus()}
-                            />
-                          </div>
-                        </div>
+                        )}
                       </div>
-                    ))
+                    </div>
                   ) : activeTab === 'settings' ? (
                     <Settings 
                       activeTab={activeSettingsTab || 'general'} 
