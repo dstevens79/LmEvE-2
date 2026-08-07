@@ -301,8 +301,8 @@ function AppContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Use corporation auth system
-  const currentUser = user;
+  // Trust server-backed isAuthenticated only — never gate UI on a stale localStorage user.
+  const currentUser = isAuthenticated ? user : null;
   const currentAuth = isAuthenticated;
   const currentLogout = logout;
   
@@ -383,28 +383,16 @@ function AppContent() {
       timestamp: Date.now()
     });
     
-    // Unauthenticated users never land in Settings — setup requires offline admin login first.
-    if (!currentUser) {
-      if (activeTab !== 'dashboard') {
-        console.log('🔄 User not authenticated - resetting to dashboard tab');
+    // Unauthenticated always stays on dashboard. Never auto-open Settings/Database.
+    if (!currentAuth || !currentUser) {
+      if (activeTab !== 'dashboard' || settingsExpanded) {
+        console.log('🔄 Not authenticated - forcing dashboard (no setup UI)');
         setActiveTab('dashboard');
         setSettingsExpanded(false);
       }
-      // Fresh install: push local admin login immediately (no anonymous setup UI).
-      if (needsDBSetup) {
-        setShowQuickLogin(true);
-      }
       return;
     }
-
-    // After admin/local login, unfinished install goes to Settings > Database.
-    if (needsDBSetup && activeTab !== 'settings') {
-      console.log('🛠️ Authenticated and DB not configured - opening Settings > Database');
-      setActiveTab('settings');
-      setActiveSettingsTab('database');
-      setSettingsExpanded(true);
-    }
-  }, [currentUser, currentAuth, forceRender, authTrigger, activeTab, needsDBSetup, setActiveSettingsTab, setSettingsExpanded, setActiveTab]);
+  }, [currentUser, currentAuth, forceRender, authTrigger, activeTab, settingsExpanded, setSettingsExpanded, setActiveTab]);
 
   // Check if this is an ESI callback
   useEffect(() => {
@@ -531,15 +519,12 @@ function AppContent() {
       await loginWithCredentials(loginUsername.trim(), loginPassword.trim());
       console.log('✅ Quick login successful');
 
-      // Fresh install: admin must configure DB/ESI before normal use.
+      // Always land on dashboard after login. Setup is available under Settings when admin.
+      setActiveTab('dashboard');
+      setSettingsExpanded(false);
       if (needsDBSetup) {
-        setActiveTab('settings');
-        setActiveSettingsTab('database');
-        setSettingsExpanded(true);
-        toast.success('Signed in — configure the database to finish setup');
+        toast.success('Signed in — open Settings → Database to finish setup');
       } else {
-        setActiveTab('dashboard');
-        setSettingsExpanded(false);
         toast.success('Login successful!');
       }
     } catch (error) {

@@ -635,9 +635,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
         headers: { 'Accept': 'application/json' },
       });
       if (!resp.ok) {
-        // If session endpoint is unavailable (fresh install / API down), keep any local user only until next explicit logout.
+        // No usable server session (401/5xx/missing API) => anonymous. Never keep a
+        // localStorage ghost user that can open admin setup without a real login.
+        console.log('🔐 Session check failed - treating as logged out', { status: resp.status });
+        setCurrentUser(null);
+        setAndPersistSessionTokens(null);
         setServerSessionChecked(true);
         setSessionReady(true);
+        triggerAuthChange();
         return;
       }
       const json = await resp.json();
@@ -1245,8 +1250,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     })();
   }, [setAdminConfig]);
 
-  // Merge persisted user with session-only tokens for runtime context
-  const mergedUser: LMeveUser | null = currentUser
+  // Merge persisted user with session-only tokens for runtime context.
+  // Never expose a localStorage identity until the server session check finishes
+  // and the session is still valid — otherwise App treats a stale user as logged-in
+  // and can open admin setup surfaces anonymously.
+  const sessionIsAuthenticated = sessionReady && !!currentUser && isSessionValid(currentUser);
+  const mergedUser: LMeveUser | null = sessionIsAuthenticated && currentUser
     ? {
         ...currentUser,
         accessToken: sessionTokens?.accessToken,
@@ -1258,8 +1267,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const contextValue: AuthContextType = {
     // Current user state
     user: mergedUser,
-    isAuthenticated: sessionReady && !!currentUser && isSessionValid(currentUser),
-    isLoading,
+    isAuthenticated: sessionIsAuthenticated,
+    isLoading: isLoading || !sessionReady,
     
     // Authentication methods
     loginWithCredentials,
