@@ -57,6 +57,38 @@ interface ESICharacter {
   lastLogin: string;
 }
 
+function mapUiRoleToServer(role: ManualUser['role'] | string): string {
+  switch (role) {
+    case 'admin':
+      return 'super_admin';
+    case 'director':
+      return 'corp_director';
+    case 'manager':
+      return 'corp_manager';
+    case 'member':
+    default:
+      return 'corp_member';
+  }
+}
+
+async function persistOfflineAccount(username: string, password: string, role: string): Promise<void> {
+  const resp = await fetch('/api/auth/bootstrap-users.php', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'upsert',
+      username,
+      password,
+      role: mapUiRoleToServer(role),
+    }),
+  });
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok || json?.ok === false) {
+    throw new Error(json?.error || `Failed to save offline account (HTTP ${resp.status})`);
+  }
+}
+
 export function UserSettings({ isMobileView = false }: UserSettingsProps) {
   const { user: currentUser, getRegisteredCorporations } = useAuth();
   
@@ -129,7 +161,7 @@ export function UserSettings({ isMobileView = false }: UserSettingsProps) {
     setESICharacters(characters);
   };
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!newUser.username.trim()) {
       toast.error('Username is required');
       return;
@@ -147,6 +179,13 @@ export function UserSettings({ isMobileView = false }: UserSettingsProps) {
 
     if (users.find(u => u.username.toLowerCase() === newUser.username.toLowerCase())) {
       toast.error('Username already exists');
+      return;
+    }
+
+    try {
+      await persistOfflineAccount(newUser.username.trim(), newUser.password, newUser.role);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to save offline account');
       return;
     }
 
@@ -174,8 +213,21 @@ export function UserSettings({ isMobileView = false }: UserSettingsProps) {
     toast.success('User added successfully');
   };
 
-  const handleUpdateUser = (id: string, updates: Partial<ManualUser>) => {
-    const updatedUsers = users.map(u => u.id === id ? { ...u, ...updates } : u);
+  const handleUpdateUser = async (id: string, updates: Partial<ManualUser>) => {
+    const existing = users.find(u => u.id === id);
+    if (!existing) return;
+
+    const merged = { ...existing, ...updates };
+    if (updates.password && updates.password.trim() !== '') {
+      try {
+        await persistOfflineAccount(merged.username, updates.password, merged.role);
+      } catch (e: any) {
+        toast.error(e?.message || 'Failed to update offline password');
+        return;
+      }
+    }
+
+    const updatedUsers = users.map(u => u.id === id ? merged : u);
     setUsers(updatedUsers);
     updateManualUsers({ users: updatedUsers });
     

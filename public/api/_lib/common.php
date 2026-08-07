@@ -119,6 +119,8 @@ function api_resolve_settings_root(array $json): array {
 }
 
 function api_get_db_config(array $payload = []): array {
+    // Server-owned credentials only. Request payload is intentionally ignored here.
+    // For authenticated admin "test before save", use api_get_db_config_for_admin_test().
     $json = api_load_server_settings();
     if (!$json) return [
         'host' => 'localhost',
@@ -138,6 +140,35 @@ function api_get_db_config(array $payload = []): array {
         'password' => (string)$serverPass,
         'database' => (string)($db['database'] ?? 'lmeve2'),
     ];
+}
+
+/**
+ * Build DB config for authenticated admin connection tests.
+ * Allows form overrides so bootstrap admins can test credentials before saving settings.
+ * Never used for ordinary data queries.
+ */
+function api_get_db_config_for_admin_test(array $payload = []): array {
+    $base = api_get_db_config([]);
+    $src = $payload;
+    if (isset($payload['database']) && is_array($payload['database'])) {
+        $src = $payload['database'];
+    }
+
+    $host = trim((string)($src['host'] ?? ''));
+    $port = isset($src['port']) ? (int)$src['port'] : 0;
+    $user = trim((string)($src['username'] ?? ($src['user'] ?? '')));
+    $pass = $src['password'] ?? null;
+    $database = trim((string)($src['database'] ?? ($src['db'] ?? '')));
+
+    if ($host !== '') $base['host'] = $host;
+    if ($port > 0) $base['port'] = $port;
+    if ($user !== '') $base['username'] = $user;
+    if ($database !== '') $base['database'] = $database;
+    // Keep saved password when UI sends masked/empty secret
+    if (is_string($pass) && $pass !== '' && $pass !== '***') {
+        $base['password'] = $pass;
+    }
+    return $base;
 }
 
 function api_get_esi_config(array $payload = []): array {

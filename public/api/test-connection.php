@@ -5,24 +5,19 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/_lib/common.php';
+// common.php already emits credential-safe CORS + OPTIONS handling
 api_require_admin();
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
 
 $raw = file_get_contents('php://input') ?: '';
 $payload = json_decode($raw, true);
 if (!is_array($payload)) { $payload = []; }
 
-$dbCfg = api_get_db_config($payload);
+// Authenticated admins (including offline bootstrap admin) may supply candidate
+// credentials to test before they are saved into server settings.
+$dbCfg = api_get_db_config_for_admin_test($payload);
 $host = (string)($dbCfg['host'] ?? 'localhost');
 $port = (int)($dbCfg['port'] ?? 3306);
 $user = (string)($dbCfg['username'] ?? '');
@@ -31,7 +26,7 @@ $db   = (string)($dbCfg['database'] ?? '');
 $sdeDb = 'EveStaticData';
 
 if ($host === '' || $user === '' || $db === '') {
-    echo json_encode(['ok' => false, 'error' => 'Missing database configuration (host/username/database). Configure in Settings first or include overrides in the request body.']);
+    echo json_encode(['ok' => false, 'error' => 'Missing database configuration (host/username/database). Provide values in the form or save Settings first.']);
     exit;
 }
 

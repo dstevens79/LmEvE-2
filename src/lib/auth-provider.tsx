@@ -220,12 +220,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return expiryTime - now < fiveMinutes;
   }, [currentUser, sessionTokens]);
 
-  // Manual login with username/password
-  // NOTE: This is a USER action, completely separate from database setup.
-  // The server must already have valid DB settings configured by an admin.
-  // We never pass DB credentials here - the server uses its saved config.
+  // Manual login with username/password.
+  // Offline bootstrap accounts (admin) authenticate without MySQL.
+  // Database users are a secondary path once settings exist.
   const loginWithCredentials = useCallback(async (username: string, password: string) => {
-    console.log('🔐 Attempting manual login (DB):', username);
+    console.log('🔐 Attempting manual login:', username);
     
     // Guard against concurrent requests
     if (isLoading) {
@@ -265,9 +264,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // Enhanced diagnostics for fetch failures
         if (fetchError?.name === 'AbortError') {
           console.error('❌ Login fetch ABORTED - likely timeout');
-          console.error('💡 First login may take longer due to MySQL connection initialization');
-          console.error('💡 Please try again - subsequent attempts should be faster');
-          throw new Error('Login request timed out. Please try again - first login may take longer to initialize database connection.');
+          throw new Error('Login request timed out. Please try again.');
         } else if (fetchError instanceof TypeError) {
           console.error('❌ Login fetch NETWORK ERROR:', fetchError.message);
           console.error('💡 Possible causes: Server down, incorrect URL, CORS issue, or network disconnection');
@@ -316,7 +313,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setCurrentUser(fullUser);
       setSessionReady(true);
       setServerSessionChecked(true);
-      console.log('✅ Manual login successful via DB session:', username, { role: fullUser.role, id: fullUser.id });
+      console.log('✅ Manual login successful:', username, {
+        role: fullUser.role,
+        id: fullUser.id,
+        authSource: json?.authSource || 'unknown',
+      });
       triggerAuthChange();
       // Trigger metrics refresh so UI updates login counts immediately
       try {
@@ -328,7 +329,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [setUsers, setCurrentUser, triggerAuthChange, databaseSettings, mapServerUser, setAndPersistSessionTokens, isLoading]);
+  }, [setUsers, setCurrentUser, triggerAuthChange, mapServerUser, setAndPersistSessionTokens, isLoading]);
 
   // ESI SSO login
   const loginWithESI = useCallback(async (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic', scopesOverride?: string[]) => {
@@ -912,12 +913,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const createManualUser = useCallback(async (username: string, password: string, role: UserRole, characterInfo?: CharacterInfo): Promise<LMeveUser> => {
     console.log('👤 Creating manual user:', username, characterInfo ? 'with character info' : 'without character info');
     
-    // Check if username already exists
+    // Check if username already exists locally
     if (users.some(u => u.username === username)) {
       throw new Error('Username already exists');
     }
-    
-    // Passwords are NOT stored client-side; manual users should be created via server API in production.
+
+    // Persist offline/maintenance accounts on the server (works without MySQL).
+    try {
+      const resp = await fetch('/api/auth/bootstrap-users.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'upsert', username, password, role }),
+      });
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok || json?.ok === false) {
+        throw new Error(json?.error || `Failed to save offline account (HTTP ${resp.status})`);
+      }
+    } catch (e: any) {
+      console.error('❌ Offline account create failed:', e);
+      throw e;
+    }
     
     const user = createUserWithRole({
       username,
@@ -931,7 +947,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       allianceName: characterInfo?.allianceName
     }, role);
     
-  setUsers(prev => [...prev, user]);
+    setUsers(prev => [...prev, user]);
     
     console.log('✅ Manual user created:', username, characterInfo ? `linked to ${characterInfo.characterName}` : 'no character link');
     return user;
@@ -1191,9 +1207,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Update admin configuration
   const updateAdminConfig = useCallback((config: { username: string; password: string }) => {
-    console.log('🔧 Updating admin configuration');
-    setAdminConfig(config);
-    console.log('✅ Admin configuration updated');
+    console.log('🔧 Updating admin configuration (offline store)');
+    // Keep a non-secret local username hint only
+    setAdminConfig({ username: config.username || 'admin', password: '' });
+
+    const username = (config.username || 'admin').trim() || 'admin';
+    const password = config.password || '';
+    if (!password) {
+      console.warn('⚠️ updateAdminConfig called without password; offline store unchanged');
+      return;
+    }
+
+    // Fire-and-forget server persist; callers that need await should use createManualUser / bootstrap API directly
+    void (async () => {
+      try {
+        const resp = await fetch('/api/auth/bootstrap-users.php', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set_password', username, password }),
+        });
+        const json = await resp.json().catch(() => null);
+        if (!resp.ok || json?.ok === false) {
+          console.error('❌ Failed to update offline admin password', json);
+          return;
+        }
+        console.log('✅ Offline admin password updated');
+      } catch (e) {
+        console.error('❌ Offline admin password update error', e);
+      }
+    })();
   }, [setAdminConfig]);
 
   // Merge persisted user with session-only tokens for runtime context
