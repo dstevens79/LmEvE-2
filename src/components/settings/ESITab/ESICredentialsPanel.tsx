@@ -39,12 +39,12 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
   const suggestedLocal = isServer
     ? `${proto}://${host}/api/auth/esi/callback.php`
     : `${proto}://${host}/`;
-  const callback = (esiSettings.callbackUrl && esiSettings.callbackUrl.trim())
+    const effectiveCallback = (esiSettings.callbackUrl && esiSettings.callbackUrl.trim())
     ? esiSettings.callbackUrl.trim()
     : suggestedLocal;
   const browsingDiffers = (() => {
     try {
-      return new URL(callback).origin !== window.location.origin;
+        return new URL(effectiveCallback).origin !== window.location.origin;
     } catch {
       return false;
     }
@@ -146,55 +146,37 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
         </Button>
       </div>
 
-      {/* Public callback URL — must match EVE developer application exactly */}
-      <div className="space-y-2">
-        <Label htmlFor="callbackUrl">
-          {isServer ? 'Public ESI Callback URL (Server/PHP)' : 'Public ESI Callback URL (SPA)'}
-        </Label>
-        <Input
-          id="callbackUrl"
-          value={esiSettings.callbackUrl || ''}
-          onChange={(e) => onUpdateESISetting('callbackUrl', e.target.value)}
-          placeholder={suggestedLocal}
-          className="font-mono text-xs"
-        />
-        <div className="space-y-1 text-xs text-muted-foreground">
-          <p>
-            Register this exact URL in your EVE application at developers.eveonline.com.
-            OAuth always uses the saved public callback — not your current browser address.
-          </p>
-          <p>
-            Effective callback:{' '}
-            <code className="bg-background px-1 rounded break-all">{callback}</code>
-          </p>
-          {browsingDiffers && (
-            <p className="text-amber-500">
-              You are browsing via {window.location.origin}, which differs from the public callback host.
-              ESI login will still use the public callback above (this is correct).
-            </p>
-          )}
-          {!esiSettings.callbackUrl && (
-            <p className="text-amber-500">
-              No saved callback yet — save the public URL (e.g. http://YOUR.PUBLIC.IP/api/auth/esi/callback.php).
-            </p>
-          )}
-          {isServer ? (
-            <p>Server callback works on HTTP and HTTPS. SPA callback requires HTTPS with PKCE.</p>
-          ) : (
-            <p>SPA callback requires HTTPS. Switch to PHP callback for HTTP deployments.</p>
-          )}
-        </div>
-        {!esiSettings.callbackUrl && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => onUpdateESISetting('callbackUrl', suggestedLocal)}
-          >
-            Use current browser address
-          </Button>
-        )}
-      </div>
+      {/* Public callback URL — one field, one line of help */}
+            <div className="space-y-2">
+              <Label htmlFor="callbackUrl">Public ESI callback URL</Label>
+              <Input
+                id="callbackUrl"
+                value={esiSettings.callbackUrl || ''}
+                onChange={(e) => onUpdateESISetting('callbackUrl', e.target.value)}
+                placeholder={suggestedLocal}
+                className="font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                Register this exact URL at developers.eveonline.com. OAuth uses this saved public
+                callback, not your browser address
+                {browsingDiffers ? ` (you are on ${window.location.origin})` : ''}.
+                {!esiSettings.callbackUrl?.trim()
+                  ? ' Save your public URL before character login.'
+                  : isServer
+                    ? ' Server callback supports HTTP and HTTPS.'
+                    : ' SPA callback requires HTTPS + PKCE.'}
+              </p>
+              {!esiSettings.callbackUrl?.trim() && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onUpdateESISetting('callbackUrl', suggestedLocal)}
+                >
+                  Use current browser address
+                </Button>
+              )}
+            </div>
     </div>
   );
 };

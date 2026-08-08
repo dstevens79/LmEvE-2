@@ -56,7 +56,7 @@ describe('permissions and tabs', () => {
       is_admin: true,
     });
     expect(canAccessSettingsTab(admin, 'database')).toBe(true);
-    expect(canAccessSettingsTab(admin, 'esi')).toBe(true);
+        expect(canAccessSettingsTab(admin, 'general')).toBe(true);
     expect(canAccessTab(admin, 'settings')).toBe(true);
   });
 

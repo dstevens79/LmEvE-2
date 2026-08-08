@@ -148,29 +148,8 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
       const result = await manager.testConnection();
 
       if (result.success) {
-        setIsConnected(true);
-        // Persist to server so all users share the config
-        try {
-          await fetch('/api/settings.php', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ database: { ...dbForm } })
-          });
-        } catch {}
-        try {
-          const setup = await loadSetupStatus();
-          const updated = {
-            hasEverBeenGreen: !!setup.hasEverBeenGreen,
-            esiConfigured: !!setup.esiConfigured,
-            databaseConnected: true,
-            isFullyConfigured: !!setup.esiConfigured && true,
-            lastUpdated: new Date().toISOString()
-          };
-          await saveSetupStatus({ ...setup, ...updated });
-        } catch {}
-        addConnectionLog('✅ Database connection successful');
-
+        // Test only — do not save settings, mark connected, or mutate setup status.
+        addConnectionLog('Database connection test successful (not saved)');
         if (typeof (result as any).usersTableExists !== 'undefined') {
           addConnectionLog(`Users table check: ${(result as any).usersTableExists ? 'FOUND' : 'NOT FOUND'}`);
         }
@@ -183,10 +162,9 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         } else if ((result as any).adminExists && !(result as any).adminPasswordInfo) {
           addConnectionLog('Admin password status: (no details reported by server)');
         } else {
-          addConnectionLog('ℹ️  Admin account missing. Seed admin (admin/12345) to enable local sign-in');
+          addConnectionLog('Admin account missing. Seed admin (admin/12345) to enable local sign-in');
         }
-
-        toast.success('Database connection test successful');
+        toast.success('Database connection test successful — click Save to keep settings');
       } else {
         setIsConnected(false);
         addConnectionLog(`❌ Connection failed: ${result.error}`);

@@ -89,7 +89,7 @@ export const PRIMARY_NAV_TABS: AppNavTab[] = [
 export const SETTINGS_NAV_TABS: AppSettingsTab[] = [
   { id: 'general', label: 'General', icon: Globe },
   { id: 'database', label: 'Database', icon: Database },
-  { id: 'esi', label: 'ESI / SSO', icon: Key },
+  // ESI/SSO credentials live under General — no duplicate settings page.
   { id: 'sync', label: 'Data Sync', icon: Clock },
   { id: 'sync-monitoring', label: 'Sync Monitoring', icon: ChartLine },
   { id: 'permissions', label: 'Permissions', icon: Shield },

@@ -93,7 +93,6 @@ import { DatabaseConfigPanel } from '@/components/settings/DatabaseTab/DatabaseC
 import { ESICredentialsPanel } from '@/components/settings/ESITab/ESICredentialsPanel';
 import { ESIScopesPanel } from '@/components/settings/ESITab/ESIScopesPanel';
 import { CorpESIManagementPanel } from '@/components/settings/ESITab/CorpESIManagementPanel';
-import { ESISettings } from '../settings/ESISettings';
 import { NotificationSettings } from '../settings/NotificationSettings';
 
 // Status Indicator Component
@@ -828,7 +827,6 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
             <TabsTrigger value="database">Database</TabsTrigger>
             <TabsTrigger value="eve">EVE Online</TabsTrigger>
             <TabsTrigger value="sde">EVE SDE</TabsTrigger>
-            <TabsTrigger value="esi">Corporations</TabsTrigger>
             <TabsTrigger value="sync">Data Sync</TabsTrigger>
             <TabsTrigger value="permissions">Permissions</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
@@ -983,25 +981,25 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
                   }}
                   onTestESIConfig={async () => {
                     try {
-                      // Prefer server OAuth start so redirect_uri is the saved public callback.
-                      if ((generalSettings.authFlow || 'server') !== 'spa') {
-                        await startEsiLogin(loginWithESI, {
-                          scopeType: 'basic',
-                          clientId: clientId || esiConfig?.clientId,
-                          role: user?.role,
-                          announce: true,
-                        });
-                        return;
-                      }
-                      const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
-                      const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
-                      const callbackUrl = (esiSettings.callbackUrl && esiSettings.callbackUrl.trim())
-                        ? esiSettings.callbackUrl.trim()
-                        : `${window.location.origin}/`;
-                      if (!clientId) {
-                        toast.error('Client ID is required to test ESI configuration');
-                        return;
-                      }
+                                        const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
+                                        const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
+                                        if (!clientId) {
+                                          toast.error('Client ID is required to test ESI configuration');
+                                          return;
+                                        }
+                                        // Prefer server OAuth start so redirect_uri is the saved public callback.
+                                        if ((generalSettings.authFlow || 'server') !== 'spa') {
+                                          await startEsiLogin(loginWithESI, {
+                                            scopeType: 'basic',
+                                            clientId,
+                                            role: user?.role,
+                                            announce: true,
+                                          });
+                                          return;
+                                        }
+                                        const callbackUrl = (esiSettings.callbackUrl && esiSettings.callbackUrl.trim())
+                                          ? esiSettings.callbackUrl.trim()
+                                          : `${window.location.origin}/`;
                       const corps = getRegisteredCorporations();
                       initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
                       const svc = getESIAuthService();
@@ -1056,9 +1054,6 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
           </Card>
         </TabsContent>
 
-        <TabsContent value="esi" className="space-y-6">
-          <ESISettings isMobileView={isMobileView} />
-        </TabsContent>
         <TabsContent value="notifications" className="space-y-6">
           <NotificationSettings />
         </TabsContent>

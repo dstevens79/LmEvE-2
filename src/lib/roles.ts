@@ -308,10 +308,13 @@ export function canAccessSettingsTab(user: LMeveUser | null, settingsTab: string
     case 'database':
       return hasPermission(user, 'canManageDatabase');
 
+    // Legacy 'esi' settings tab removed — credentials are under General.
     case 'esi':
     case 'eve':
-      return hasPermission(user, 'canConfigureESI') || hasPermission(user, 'canManageSystem');
-      
+      return hasPermission(user, 'canConfigureESI')
+        || hasPermission(user, 'canManageCorp')
+        || hasPermission(user, 'canManageSystem');
+
     case 'sync':
       return hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
       

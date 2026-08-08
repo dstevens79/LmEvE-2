@@ -45,7 +45,13 @@ function AppContent() {
   }, []);
   const [activeTab, setActiveTab] = useLocalKV<TabType>('active-tab', 'dashboard');
   const [activeSettingsTab, setActiveSettingsTab] = useLocalKV<string>('active-settings-tab', 'general');
-  const [settingsExpanded, setSettingsExpanded] = useLocalKV<boolean>('settings-expanded', false);
+    // Removed Settings → ESI/SSO tab; credentials live under General.
+    React.useEffect(() => {
+      if (activeSettingsTab === 'esi' || activeSettingsTab === 'eve' || activeSettingsTab === 'sso') {
+        setActiveSettingsTab('general');
+      }
+    }, [activeSettingsTab, setActiveSettingsTab]);
+    const [settingsExpanded, setSettingsExpanded] = useLocalKV<boolean>('settings-expanded', false);
   const [isMobileView, setIsMobileView] = useLocalKV<boolean>('mobile-view', false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const { 

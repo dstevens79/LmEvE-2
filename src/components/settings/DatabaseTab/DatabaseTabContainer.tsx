@@ -175,177 +175,95 @@ const DatabaseTabContainer: React.FC = () => {
   };
 
   const handleTestDbConnection = async () => {
-    if (testingConnection) return;
+      if (testingConnection) return;
 
-    const { host, port, database, username } = databaseSettings;
-    const password = effectivePassword;
+      const { host, port, database, username } = databaseSettings;
+      const password = effectivePassword;
     
-    if (!host || !port || !database || !username || !password) {
-      toast.error('All database fields are required');
-      return;
-    }
+      if (!host || !port || !database || !username || !password) {
+        toast.error('All database fields are required');
+        return;
+      }
     
-    if (password === '***') {
-      toast.error('Please enter the database password');
-      return;
-    }
-
-    // Don't clear logs - preserve for debugging repeated tests
-    setTestingConnection(true);
-    setLastSuccessfulTest(null);
-    
-    try {
-      addConnectionLog('🔍 Starting database validation...');
-      addConnectionLog(`🎯 Target: ${username}@${host}:${port}/${database}`);
-
-      // Health check with timeout and detailed diagnostics
-      addConnectionLog('🌐 Checking API health...');
-      const healthController = new AbortController();
-      const healthTimeout = setTimeout(() => {
-        addConnectionLog('⏰ API health check timeout (5s) - aborting request');
-        healthController.abort();
-      }, 5000);
-      
-      try {
-        const healthStart = performance.now();
-        const healthRes = await fetch('/api/health.php', {
-          method: 'GET',
-          cache: 'no-cache',
-          headers: { 'Cache-Control': 'no-cache' },
-          signal: healthController.signal
-        });
-        clearTimeout(healthTimeout);
-        const healthDuration = Math.round(performance.now() - healthStart);
-        
-        if (!healthRes.ok) {
-          addConnectionLog(`⚠️ API health check failed: HTTP ${healthRes.status} (${healthDuration}ms)`);
-          try {
-            const errorText = await healthRes.text();
-            if (errorText) addConnectionLog(`📄 Response: ${errorText.substring(0, 200)}`);
-          } catch {}
-          toast.error('API health check failed');
-          return;
-        }
-        addConnectionLog(`✅ API is reachable (${healthDuration}ms)`);
-      } catch (healthError: any) {
-        clearTimeout(healthTimeout);
-        const isAbort = healthError?.name === 'AbortError';
-        const isTimeout = isAbort || /timeout/i.test(String(healthError?.message));
-        
-        if (isTimeout) {
-          addConnectionLog('❌ API health check TIMED OUT - server may be overloaded or unresponsive');
-          addConnectionLog('💡 Suggestion: Check that PHP-FPM/web server is running and not hung');
-        } else if (healthError instanceof TypeError && /fetch/i.test(healthError.message)) {
-          addConnectionLog('❌ API health check NETWORK ERROR - cannot reach server');
-          addConnectionLog(`📄 Details: ${healthError.message}`);
-          addConnectionLog('💡 Suggestion: Verify web server is running and accessible');
-        } else {
-          addConnectionLog(`❌ API health check error: ${healthError instanceof Error ? healthError.message : String(healthError)}`);
-          addConnectionLog(`🔍 Error type: ${healthError?.constructor?.name || 'unknown'}`);
-        }
-        toast.error('API health check failed - see logs');
+      if (password === '***') {
+        toast.error('Please enter the database password');
         return;
       }
 
-      const config = {
-        host,
-        port: Number(port),
-        database,
-        username,
-        password,
-        ssl: false,
-        connectionPoolSize: 1,
-        queryTimeout: 30,
-        autoReconnect: false,
-        charset: 'utf8mb4',
-      };
-      const manager = new DatabaseManager(config);
-      addConnectionLog('🔌 Performing client-side connectivity checks (network/format)...');
-      const result = await manager.testConnection();
+      // Test only: no save, no connect latch, no login, no page reload.
+      setTestingConnection(true);
+      setLastSuccessfulTest(null);
+    
+      try {
+        addConnectionLog('Starting database connection test (no save)...');
+        addConnectionLog(`Target: ${username}@${host}:${port}/${database}`);
 
-      if (result.success && result.validated) {
-        addConnectionLog('✅ Database connection VALIDATED successfully!');
-        if (typeof result.latency === 'number') {
-          addConnectionLog(`⚡ Connection latency: ${result.latency}ms`);
-        }
-        toast.success('✅ Connection validated');
-        setLastSuccessfulTest(Date.now());
+        addConnectionLog('Server probe via /api/test-connection.php ...');
+        const r = await fetch('/api/test-connection.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            host,
+            port: Number(port),
+            database,
+            username,
+            password,
+          }),
+        });
 
-        // Probe server-side authoritative details
-        try {
-          addConnectionLog('🧪 Server DB probe via /api/test-connection.php ...');
-          const r = await fetch('/api/test-connection.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({})
-          });
-          if (!r.ok) {
-            addConnectionLog(`❌ Server probe failed (HTTP ${r.status})`);
-          } else {
+        if (!r.ok) {
+          let errText = `HTTP ${r.status}`;
+          try {
             const j = await r.json();
-            addConnectionLog(`🗄️  MySQL server: ${j?.serverVersion || 'unknown'} | User: ${j?.currentUser || 'unknown'}`);
-            addConnectionLog(`📦 Select DB '${database}': ${j?.canSelectLmeve ? 'OK' : 'FAILED'}`);
-            addConnectionLog(`🧱 Users table: ${j?.usersTableExists ? 'FOUND' : 'NOT FOUND'}`);
-            if (typeof j?.adminExists === 'boolean') {
-              setAdminExists(j.adminExists);
-              addConnectionLog(`👤 Admin user: ${j.adminExists ? 'FOUND' : 'NOT FOUND'}`);
-            }
-            if (j?.adminPasswordInfo && typeof j.adminPasswordInfo === 'object') {
-              const info = j.adminPasswordInfo;
-              const type = info.type || 'unknown';
-              const matchesDefault = !!info.matchesDefault;
-              addConnectionLog(`🔐 Admin password type: ${type}`);
-              addConnectionLog(matchesDefault 
-                ? '⚠️ Admin password matches default (12345)'
-                : '✅ Admin password is not default');
-              // If admin exists and matches default, attempt a real manual login check
-              if (j.adminExists === true) {
-                try {
-                  addConnectionLog('🔑 Verifying manual login with admin/******** ...');
-                  const qs = new URLSearchParams();
-                  qs.set('host', String(host));
-                  qs.set('port', String(port));
-                  qs.set('username', String(username));
-                  qs.set('password', String(password));
-                  qs.set('database', String(database));
-                  const ml = await fetch(`/api/auth/manual-login.php?${qs.toString()}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: 'admin', password: '12345' }),
-                  });
-                  if (ml.ok) {
-                    addConnectionLog('✅ Manual login with admin succeeded');
-                  } else {
-                    let errText = '';
-                    try { const jj = await ml.json(); errText = jj?.error || ''; } catch {}
-                    addConnectionLog(`❌ Manual login failed (HTTP ${ml.status}) ${errText ? '- ' + errText : ''}`);
-                  }
-                } catch (e) {
-                  addConnectionLog(`❌ Manual login check error: ${e instanceof Error ? e.message : 'Unknown error'}`);
-                }
-              }
-            }
-          }
-        } catch (e) {
-          addConnectionLog(`⚠️ Server probe error: ${e instanceof Error ? e.message : 'Unknown error'}`);
+            if (j?.error) errText = String(j.error);
+            else if (j?.mysqlError) errText = String(j.mysqlError);
+          } catch {}
+          addConnectionLog(`Connection test FAILED: ${errText}`);
+          toast.error(`Connection failed: ${errText}`);
+          return;
         }
-      } else if (result.success) {
-        addConnectionLog('⚠️ Partial connection success but validation incomplete');
-        toast.warning('⚠️ Partial success');
-      } else {
-        addConnectionLog(`❌ Connection test FAILED: ${result.error}`);
-        toast.error(`❌ Connection failed: ${result.error}`);
+
+        const j = await r.json();
+        if (j?.ok === false) {
+          const errText = j?.mysqlError || j?.error || 'Connection failed';
+          addConnectionLog(`Connection test FAILED: ${errText}`);
+          toast.error(`Connection failed: ${errText}`);
+          return;
+        }
+
+        if (typeof j?.latencyMs === 'number') {
+          addConnectionLog(`Latency: ${j.latencyMs}ms`);
+        }
+        addConnectionLog(`MySQL: ${j?.serverVersion || 'unknown'} | User: ${j?.currentUser || 'unknown'}`);
+        addConnectionLog(`Select DB '${database}': ${j?.canSelectLmeve ? 'OK' : 'FAILED'}`);
+        addConnectionLog(`Users table: ${j?.usersTableExists ? 'FOUND' : 'NOT FOUND'}`);
+        if (typeof j?.adminExists === 'boolean') {
+          setAdminExists(j.adminExists);
+          addConnectionLog(`Admin user: ${j.adminExists ? 'FOUND' : 'NOT FOUND'}`);
+        }
+        if (j?.adminPasswordInfo && typeof j.adminPasswordInfo === 'object') {
+          const info = j.adminPasswordInfo;
+          addConnectionLog(`Admin password type: ${info.type || 'unknown'}`);
+          addConnectionLog(
+            info.matchesDefault
+              ? 'Admin password matches default (12345)'
+              : 'Admin password is not default'
+          );
+        }
+
+        addConnectionLog('Connection test succeeded. Click Save to persist settings.');
+        toast.success('Connection test succeeded');
+        setLastSuccessfulTest(Date.now());
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Unknown connection error';
+        addConnectionLog(`Test error: ${errorMsg}`);
+        toast.error(`Test error: ${errorMsg}`);
+      } finally {
+        addConnectionLog('Database connection test completed');
+        setTestingConnection(false);
       }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Unknown connection error';
-      addConnectionLog(`💥 Test error: ${errorMsg}`);
-      toast.error(`Test error: ${errorMsg}`);
-    } finally {
-      addConnectionLog('🏁 Database connection test completed');
-      setTestingConnection(false);
-    }
-  };
+    };
 
   const handleConnectDb = async () => {
     const { host, port, database, username, password } = databaseSettings;
