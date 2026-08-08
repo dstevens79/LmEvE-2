@@ -60,6 +60,7 @@ import {
   Settings as SettingsIcon
 } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/auth-provider';
+import { startEsiLogin } from '@/lib/start-esi-login';
 import { initializeESIAuth, getESIAuthService } from '@/lib/esi-auth';
 import { CorpSettings } from '@/lib/types';
 import { toast } from 'sonner';
@@ -531,31 +532,17 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     'esi-contracts.read_corporation_contracts.v1'
   ];
 
-  // OAuth from Settings: always go through server start so public callback is used.
+  // OAuth from Settings: always go through canonical server start (public callback).
   const handleESIOAuth = async () => {
-    if (!esiConfig?.clientId) {
-      toast.error('Please configure your ESI Client ID first');
-      return;
-    }
-
-    try {
-      const resp = await fetch('/api/auth/esi/start.php', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scopeType: 'corporation', scopes: ESI_SCOPES }),
-      });
-      const json = await resp.json().catch(() => null);
-      if (!resp.ok || !json?.ok || !json?.authorizeUrl) {
-        throw new Error(json?.error || 'Failed to start ESI login');
-      }
-      toast.info(`Redirecting to EVE SSO (callback: ${json.redirectUri || 'server'})...`);
-      window.location.href = json.authorizeUrl as string;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to start ESI login';
-      toast.error(message);
-    }
+    await startEsiLogin(loginWithESI, {
+      scopeType: 'corporation',
+      clientId: esiConfig?.clientId,
+      role: user?.role,
+      scopesOverride: ESI_SCOPES,
+      announce: true,
+    });
   };
+
 
   const handleCopyAuthUrl = () => {
     const authUrl = generateAuthUrl();
@@ -998,18 +985,12 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
                     try {
                       // Prefer server OAuth start so redirect_uri is the saved public callback.
                       if ((generalSettings.authFlow || 'server') !== 'spa') {
-                        const resp = await fetch('/api/auth/esi/start.php', {
-                          method: 'POST',
-                          credentials: 'include',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ scopeType: 'basic' }),
+                        await startEsiLogin(loginWithESI, {
+                          scopeType: 'basic',
+                          clientId: clientId || esiConfig?.clientId,
+                          role: user?.role,
+                          announce: true,
                         });
-                        const json = await resp.json().catch(() => null);
-                        if (!resp.ok || !json?.ok || !json?.authorizeUrl) {
-                          throw new Error(json?.error || 'Failed to start ESI test on server');
-                        }
-                        toast.info(`Redirecting to EVE SSO (callback: ${json.redirectUri || 'server'})...`);
-                        window.location.href = json.authorizeUrl;
                         return;
                       }
                       const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();

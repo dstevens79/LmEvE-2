@@ -26,6 +26,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useAuth } from '@/lib/auth-provider';
+import { startEsiLogin } from '@/lib/start-esi-login';
 import { toast } from 'sonner';
 
 interface CorporationsProps {
@@ -193,13 +194,13 @@ function ScopeInfoButton({ scope }: { scope: ESIScope }) {
 
 export function Corporations({ isMobileView = false }: CorporationsProps) {
   const { 
-    user, 
-    esiConfig, 
-    getRegisteredCorporations, 
-    updateCorporation, 
-    deleteCorporation,
-    loginWithESI 
-  } = useAuth();
+      user, 
+      esiConfig, 
+      getRegisteredCorporations, 
+      updateCorporation, 
+      deleteCorporation,
+      loginWithESI,
+    } = useAuth();
   
   const registeredCorps = getRegisteredCorporations();
 
@@ -215,8 +216,7 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
       sessionStorage.setItem('personal-esi-scopes', JSON.stringify(allScopes));
       
       // Initiate ESI login with all required scopes
-      const authUrl = await loginWithESI('enhanced');
-      window.location.href = authUrl;
+      await startEsiLogin(loginWithESI, { scopeType: 'enhanced', clientId: esiConfig?.clientId, role: user?.role });
     } catch (error) {
       console.error('Failed to start personal ESI auth:', error);
       toast.error('Failed to start authentication');
@@ -428,8 +428,7 @@ export function Corporations({ isMobileView = false }: CorporationsProps) {
                   className="w-full"
                   onClick={async () => {
                     try {
-                      const corpAuth = await loginWithESI('corporation');
-                      window.location.href = corpAuth;
+                      await startEsiLogin(loginWithESI, { scopeType: 'corporation', clientId: esiConfig?.clientId, role: user?.role });
                     } catch (error) {
                       console.error('Failed to start corp ESI auth:', error);
                       toast.error('Failed to start corporation authentication');

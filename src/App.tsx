@@ -1,40 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
-import { 
-  House, 
-  Users, 
-  Package, 
-  Factory, 
-  TrendUp, 
+import {
   Gear,
   SignOut,
   Rocket,
-  CurrencyDollar,
-  CaretDown,
-  CaretRight,
-  Globe,
-  Database,
-  Building,
-  Clock,
-  Bell,
-  Shield,
-  Archive,
   SignIn,
   Eye,
   EyeSlash,
   DeviceMobile,
   Monitor,
   List,
-  Palette,
-  Planet,
-  ChartLine,
-  Key,
-  Receipt
 } from '@phosphor-icons/react';
 import { useLocalKV, bootstrapSettingsFromServerIfEmpty, useGeneralSettings, useDatabaseSettings } from '@/lib/persistenceService';
 import { useSDEManager } from '@/lib/sdeService';
@@ -43,23 +23,14 @@ import { DatabaseProvider } from '@/lib/DatabaseContext';
 import { LMeveDataProvider } from '@/lib/LMeveDataContext';
 import { useAuth } from '@/lib/auth-provider';
 import { ESICallback } from '@/components/ESICallback';
-import { canAccessTab, canAccessSettingsTab } from '@/lib/roles';
 import { EVELoginButton } from '@/components/EVELoginButton';
 import { useThemeManager } from '@/lib/themeManager';
-
-// Tab Components (will be implemented)
-import { Dashboard } from '@/components/tabs/Dashboard';
-import { Members } from '@/components/tabs/Members';
-import { Assets } from '@/components/tabs/Assets';
-import { Manufacturing } from '@/components/tabs/Manufacturing';
-import { Market } from '@/components/tabs/Market';
-import { Wallet } from '@/components/tabs/Wallet';
 import { Settings } from '@/components/tabs/Settings';
-import { Notifications } from '@/components/tabs/Notifications';
-import { Corporations } from '@/components/Corporations';
-import { Theme } from '@/components/tabs/Theme';
-import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
-import { Buyback } from '@/components/tabs/Buyback';
+import { PRIMARY_NAV_TABS, findPrimaryTab } from '@/lib/app-navigation';
+import { startEsiLogin } from '@/lib/start-esi-login';
+import { useInactivityLogout } from '@/hooks/useInactivityLogout';
+import { useTabNavigation } from '@/hooks/useTabNavigation';
+import { AppPrimaryNav } from '@/components/layout/AppPrimaryNav';
 
 function AppContent() {
   // NUCLEAR RESET: Clear ALL browser data on first load to eliminate stale state issues
@@ -456,35 +427,11 @@ function AppContent() {
     }
   }, [isAuthenticated, isTokenExpired, refreshUserToken]);
 
-  // Auto logout after inactivity based on General Settings
-  useEffect(() => {
-    if (!generalSettings?.sessionTimeout) return;
-    const minutes = Math.max(5, Math.min(480, generalSettings.sessionTimeoutMinutes || 60));
-    const timeoutMs = minutes * 60 * 1000;
-    let lastActivity = Date.now();
-    let timer: number | undefined;
-
-    const resetTimer = () => {
-      lastActivity = Date.now();
-      if (timer) window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        // If still inactive, log out
-        if (Date.now() - lastActivity >= timeoutMs) {
-          try { console.log('⏳ Inactivity timeout reached - logging out'); } catch {}
-          logout();
-        }
-      }, timeoutMs + 1000);
-    };
-
-    const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
-    events.forEach(evt => window.addEventListener(evt, resetTimer, { passive: true } as any));
-    resetTimer();
-
-    return () => {
-      if (timer) window.clearTimeout(timer);
-      events.forEach(evt => window.removeEventListener(evt, resetTimer as any));
-    };
-  }, [generalSettings?.sessionTimeout, generalSettings?.sessionTimeoutMinutes, logout]);
+  useInactivityLogout(
+    generalSettings?.sessionTimeout,
+    generalSettings?.sessionTimeoutMinutes,
+    logout
+  );
 
   // Handle successful authentication
   const handleLoginSuccess = () => {
@@ -537,33 +484,14 @@ function AppContent() {
     }
   };
 
-  // Handle ESI SSO login
-  const handleESILogin = async (scopeType?: 'basic' | 'enhanced' | 'corporation') => {
-    try {
-      if (!esiConfig?.clientId) {
-        toast.error('ESI authentication is not configured. Please contact your administrator.');
-        return;
-      }
-
-      // Admin already signed in -> character handoff should request corporation scopes.
-      // Everyone else still gets roles via server "basic" expansion.
-      const role = currentUser?.role;
-      const resolvedScope: 'basic' | 'enhanced' | 'corporation' =
-        scopeType ||
-        (role === 'super_admin' || role === 'corp_admin' ? 'corporation' : 'basic');
-      
-      console.log('🚀 Starting ESI SSO login with scope type:', resolvedScope, {
-        handoffFrom: role || null,
-      });
-      const authUrl = await loginWithESI(resolvedScope);
-      
-      // Redirect to EVE Online SSO
-      window.location.href = authUrl;
-    } catch (error) {
-      console.error('❌ ESI login error:', error);
-      toast.error('Failed to initiate ESI login. Please try again.');
-    }
-  };
+  // Canonical ESI SSO start (header, welcome, admin handoff)
+  const handleESILogin = useCallback(async (scopeType?: 'basic' | 'enhanced' | 'corporation') => {
+    await startEsiLogin(loginWithESI, {
+      scopeType,
+      role: currentUser?.role,
+      clientId: esiConfig?.clientId,
+    });
+  }, [loginWithESI, currentUser?.role, esiConfig?.clientId]);
 
   // Handle failed authentication
   const handleLoginError = () => {
@@ -594,79 +522,16 @@ function AppContent() {
   // App is always visible - authentication handled via modal
   // No dedicated login page blocking access
 
-  const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: House, component: Dashboard },
-    { id: 'members', label: 'Members', icon: Users, component: Members, badge: '42' },
-    { id: 'assets', label: 'Assets', icon: Package, component: Assets },
-    { id: 'manufacturing', label: 'Manufacturing', icon: Factory, component: Manufacturing, badge: '3' },
-    { id: 'planetary', label: 'Planetary Interaction', icon: Planet, component: PlanetaryInteraction, badge: '5' },
-    { id: 'market', label: 'Market', icon: TrendUp, component: Market },
-    { id: 'wallet', label: 'Wallet', icon: CurrencyDollar, component: Wallet },
-    { id: 'buyback', label: 'Buyback', icon: Receipt, component: Buyback },
-    { id: 'notifications', label: 'Notifications', icon: Bell, component: Notifications },
-    { id: 'corporations', label: 'ESI', icon: Key, component: Corporations },
-    { id: 'theme', label: 'Theme', icon: Palette, component: Theme },
-  ];
+  const tabs = PRIMARY_NAV_TABS;
 
-  const settingsTabs = [
-    { id: 'general', label: 'General', icon: Globe },
-    { id: 'database', label: 'Database', icon: Database },
-    { id: 'esi', label: 'ESI / SSO', icon: Key },
-    { id: 'sync', label: 'Data Sync', icon: Clock },
-    { id: 'sync-monitoring', label: 'Sync Monitoring', icon: ChartLine },
-    { id: 'permissions', label: 'Permissions', icon: Shield },
-  ];
-
-  const handleTabChange = (value: string) => {
-    console.log('🔄 Tab change request:', value, 'Current user:', currentUser?.characterName || 'null');
-    console.log('🔄 Tab change - Auth state:', { hasUser: !!currentUser, isAuthenticated: currentAuth, authTrigger });
-    
-    // Restrict navigation when not authenticated - except dashboard
-    if (!currentUser && value !== 'dashboard') {
-      console.log('❌ Tab change blocked - user not authenticated');
-      setShowQuickLogin(true);
-      return;
-    }
-    
-    // Check tab access permissions for authenticated users
-    if (currentUser && !canAccessTab(currentUser, value)) {
-      console.log('❌ Tab change blocked - insufficient permissions');
-      toast.error('You do not have permission to access this section');
-      return;
-    }
-    
-    console.log('🔄 Allowing tab change to:', value);
-    
-    if (value === 'settings') {
-      // Only allow settings access if authenticated
-      if (!currentUser) {
-        setShowQuickLogin(true);
-        return;
-      }
-      setSettingsExpanded(!settingsExpanded);
-      if (!settingsExpanded) {
-        setActiveTab('settings' as TabType);
-      } else {
-        setActiveTab('dashboard');
-      }
-    } else {
-      setActiveTab(value as TabType);
-      setSettingsExpanded(false);
-    }
-    
-    console.log('✅ Tab change complete - new active tab:', value);
-  };
-
-  const handleSettingsTabChange = (value: string) => {
-    // Check settings tab access permissions
-    if (currentUser && !canAccessSettingsTab(currentUser, value)) {
-      console.log('❌ Settings tab change blocked - insufficient permissions');
-      toast.error('You do not have permission to access this section');
-      return;
-    }
-    
-    setActiveSettingsTab(value);
-  };
+  const { handleTabChange, handleSettingsTabChange } = useTabNavigation({
+    currentUser,
+    settingsExpanded,
+    setActiveTab,
+    setActiveSettingsTab,
+    setSettingsExpanded,
+    onRequireLogin: () => setShowQuickLogin(true),
+  });
 
   return (
     <DatabaseProvider>
@@ -995,98 +860,16 @@ function AppContent() {
                   <div className="flex items-center justify-between text-muted-foreground"><span>External IP</span><span className="font-medium">{serverPublicIp || 'Unknown'}</span></div>
                   <div className="border-b border-border pt-1" />
                 </div>
-                {/* Main navigation tabs */}
-                {tabs.map((tab) => {
-                  const IconComponent = tab.icon;
-                  const isActive = activeTab === tab.id;
-                  // Check accessibility based on authentication and permissions
-                  const isAccessible = canAccessTab(currentUser, tab.id);
-                  const isDisabled = !isAccessible;
-                  return (
-                    <Button
-                      key={tab.id}
-                      variant={isActive ? "default" : "ghost"}
-                      disabled={isDisabled}
-                      className={`w-full justify-start gap-3 ${
-                        isActive 
-                          ? "bg-accent text-accent-foreground shadow-sm" 
-                          : isDisabled
-                          ? "opacity-50 cursor-not-allowed text-muted-foreground"
-                          : "hover:bg-muted text-muted-foreground hover:text-foreground"
-                      }`}
-                      onClick={() => handleTabChange(tab.id)}
-                    >
-                      <IconComponent size={18} />
-                      <span className="text-sm font-medium">{tab.label}</span>
-                      {'badge' in tab && tab.badge && (
-                        <Badge 
-                          variant="secondary" 
-                          className={`ml-auto text-xs h-5 px-1.5 ${
-                            isActive 
-                              ? "bg-accent-foreground/20 text-accent-foreground" 
-                              : "bg-accent/20 text-accent"
-                          }`}
-                        >
-                          {tab.badge}
-                        </Badge>
-                      )}
-                    </Button>
-                  );
-                })}
-
-                {/* Settings section with expandable sub-menu — local admin always has a free pass */}
-                <div className="pt-2 border-t border-border">
-                  <Button
-                    variant={activeTab === 'settings' ? "default" : "ghost"}
-                    disabled={!currentUser || !canAccessTab(currentUser, 'settings')}
-                    className={`w-full justify-start gap-3 ${
-                      activeTab === 'settings'
-                        ? "bg-accent text-accent-foreground shadow-sm" 
-                        : !currentUser || !canAccessTab(currentUser, 'settings')
-                        ? "opacity-50 cursor-not-allowed text-muted-foreground"
-                        : "hover:bg-muted text-muted-foreground hover:text-foreground"
-                    }`}
-                    onClick={() => handleTabChange('settings')}
-                  >
-                    <Gear size={18} />
-                    <span className="text-sm font-medium">Settings</span>
-                    {settingsExpanded ? (
-                      <CaretDown size={16} className="ml-auto" />
-                    ) : (
-                      <CaretRight size={16} className="ml-auto" />
-                    )}
-                  </Button>
-
-                  {/* Settings sub-menu - only show when authenticated */}
-                  {settingsExpanded && currentUser && (
-                    <div className="mt-2 ml-6 space-y-1">
-                      {settingsTabs.map((settingsTab) => {
-                        const IconComponent = settingsTab.icon;
-                        const isActiveSettings = activeSettingsTab === settingsTab.id;
-                        const isAccessible = canAccessSettingsTab(currentUser, settingsTab.id);
-                        
-                        if (!isAccessible) return null;
-                        
-                        return (
-                          <Button
-                            key={settingsTab.id}
-                            variant={isActiveSettings ? "secondary" : "ghost"}
-                            size="sm"
-                            className={`w-full justify-start gap-2 text-xs ${
-                              isActiveSettings 
-                                ? "bg-secondary text-secondary-foreground" 
-                                : "hover:bg-muted/50 text-muted-foreground hover:text-foreground"
-                            }`}
-                            onClick={() => handleSettingsTabChange(settingsTab.id)}
-                          >
-                            <IconComponent size={14} />
-                            <span>{settingsTab.label}</span>
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <AppPrimaryNav
+                  variant="desktop"
+                  currentUser={currentUser}
+                  activeTab={activeTab}
+                  activeSettingsTab={activeSettingsTab}
+                  settingsExpanded={settingsExpanded}
+                  onTabChange={handleTabChange}
+                  onSettingsTabChange={handleSettingsTabChange}
+                  tabs={tabs}
+                />
               </div>
             </div>
           )}
@@ -1145,101 +928,19 @@ function AppContent() {
                   </div>
                 </div>
 
-                {/* Mobile Menu Dropdown */}
                 {showMobileMenu && (
                   <div className="border-t border-border bg-card">
-                    <div className="p-3 space-y-2 max-h-96 overflow-y-auto">
-                      {/* Main navigation tabs */}
-                      <div className="space-y-1">
-                        {tabs.map((tab) => {
-                          const IconComponent = tab.icon;
-                          const isActive = activeTab === tab.id;
-                          const isAccessible = canAccessTab(currentUser, tab.id);
-                          const isDisabled = !isAccessible;
-                          
-                          return (
-                            <Button
-                              key={tab.id}
-                              variant={isActive ? "default" : "ghost"}
-                              disabled={isDisabled}
-                              className={`w-full justify-start gap-3 ${
-                                isActive 
-                                  ? "bg-accent text-accent-foreground" 
-                                  : isDisabled
-                                  ? "opacity-50 cursor-not-allowed text-muted-foreground"
-                                  : "hover:bg-muted text-muted-foreground hover:text-foreground"
-                              }`}
-                              onClick={() => {
-                                handleTabChange(tab.id);
-                                setShowMobileMenu(false);
-                              }}
-                            >
-                              <IconComponent size={18} />
-                              <span className="text-sm font-medium">{tab.label}</span>
-                              {'badge' in tab && tab.badge && (
-                                <Badge variant="secondary" className="ml-auto text-xs">
-                                  {tab.badge}
-                                </Badge>
-                              )}
-                            </Button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Settings section */}
-                      {currentUser && (
-                        <div className="pt-2 border-t border-border space-y-1">
-                          <Button
-                            variant={activeTab === 'settings' ? "default" : "ghost"}
-                            className={`w-full justify-start gap-3 ${
-                              activeTab === 'settings'
-                                ? "bg-accent text-accent-foreground" 
-                                : "hover:bg-muted text-muted-foreground hover:text-foreground"
-                            }`}
-                            onClick={() => {
-                              handleTabChange('settings');
-                              setShowMobileMenu(false);
-                            }}
-                          >
-                            <Gear size={18} />
-                            <span className="text-sm font-medium">Settings</span>
-                          </Button>
-
-                          {/* Settings sub-menu for mobile */}
-                          {activeTab === 'settings' && (
-                            <div className="ml-6 space-y-1">
-                              {settingsTabs.map((settingsTab) => {
-                                const IconComponent = settingsTab.icon;
-                                const isActiveSettings = activeSettingsTab === settingsTab.id;
-                                const isAccessible = canAccessSettingsTab(currentUser, settingsTab.id);
-                                
-                                if (!isAccessible) return null;
-                                
-                                return (
-                                  <Button
-                                    key={settingsTab.id}
-                                    variant={isActiveSettings ? "secondary" : "ghost"}
-                                    size="sm"
-                                    className={`w-full justify-start gap-2 text-xs ${
-                                      isActiveSettings 
-                                        ? "bg-secondary text-secondary-foreground" 
-                                        : "hover:bg-muted/50 text-muted-foreground hover:text-foreground"
-                                    }`}
-                                    onClick={() => {
-                                      handleSettingsTabChange(settingsTab.id);
-                                      setShowMobileMenu(false);
-                                    }}
-                                  >
-                                    <IconComponent size={14} />
-                                    <span>{settingsTab.label}</span>
-                                  </Button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <AppPrimaryNav
+                      variant="mobile"
+                      currentUser={currentUser}
+                      activeTab={activeTab}
+                      activeSettingsTab={activeSettingsTab}
+                      settingsExpanded={settingsExpanded}
+                      onTabChange={handleTabChange}
+                      onSettingsTabChange={handleSettingsTabChange}
+                      onNavigateComplete={() => setShowMobileMenu(false)}
+                      tabs={tabs}
+                    />
                   </div>
                 )}
               </div>
