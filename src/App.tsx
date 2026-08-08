@@ -289,17 +289,20 @@ function AppContent() {
     return 'configured';
   };
 
-  // Debug ESI config
+  // Debug ESI config (never assume clientId is a string — bad saves used to store an object)
   React.useEffect(() => {
-    console.log('🔧 ESI Config Debug:', {
-      hasClientId: !!esiConfig?.clientId,
-      clientId: esiConfig?.clientId ? esiConfig.clientId.substring(0, 8) + '...' : 'none',
-      hasSecret: !!esiConfig?.clientSecret,
-      isConfigured: esiConfig?.isConfigured,
-      registeredCorpsCount: registeredCorps.length,
-      validationStatus: getValidationStatus()
-    });
-  }, [esiConfig, registeredCorps]);
+      const rawId = esiConfig?.clientId;
+      const idStr = typeof rawId === 'string' ? rawId : (rawId == null ? '' : String(rawId));
+      console.log('ESI Config Debug:', {
+        hasClientId: !!idStr,
+        clientId: idStr ? `${idStr.slice(0, 8)}...` : 'none',
+        clientIdType: rawId == null ? 'null' : typeof rawId,
+        hasSecret: !!esiConfig?.clientSecret,
+        isConfigured: esiConfig?.isConfigured,
+        registeredCorpsCount: registeredCorps.length,
+        validationStatus: getValidationStatus()
+      });
+    }, [esiConfig, registeredCorps]);
 
   // Force re-render when user changes to ensure UI updates
   React.useEffect(() => {

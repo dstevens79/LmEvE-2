@@ -54,8 +54,12 @@ export function ESISettings({ isMobileView = false }: ESISettingsProps) {
 
   // ESI Configuration state
   const [showClientSecret, setShowClientSecret] = useState(false);
-  const [clientId, setClientId] = useState(esiConfig?.clientId || '');
-  const [clientSecret, setClientSecret] = useState(esiConfig?.clientSecret || '');
+  const [clientId, setClientId] = useState(
+    typeof esiConfig?.clientId === 'string' ? esiConfig.clientId : ''
+  );
+  const [clientSecret, setClientSecret] = useState(
+    typeof esiConfig?.clientSecret === 'string' ? esiConfig.clientSecret : ''
+  );
   
   // Corporation management state
   const [registeredCorps, setRegisteredCorps] = useState<RegisteredCorporation[]>([]);
@@ -68,8 +72,10 @@ export function ESISettings({ isMobileView = false }: ESISettingsProps) {
 
   // Update local state when auth config changes
   useEffect(() => {
-    setClientId(esiConfig?.clientId || '');
-    setClientSecret(esiConfig?.clientSecret || '');
+    const id = typeof esiConfig?.clientId === 'string' ? esiConfig.clientId : '';
+    const secret = typeof esiConfig?.clientSecret === 'string' ? esiConfig.clientSecret : '';
+    setClientId(id);
+    setClientSecret(secret);
   }, [esiConfig]);
 
   const loadCorporationData = () => {
@@ -100,12 +106,13 @@ export function ESISettings({ isMobileView = false }: ESISettingsProps) {
     }
 
     try {
-      await updateESIConfig({
+      // Auth provider expects (clientId: string, clientSecret?: string) — not an object.
+      await updateESIConfig(clientId.trim(), clientSecret.trim());
+      updateESISettings({
         clientId: clientId.trim(),
         clientSecret: clientSecret.trim(),
-        isConfigured: true
       });
-      
+
       toast.success('ESI configuration updated successfully');
     } catch (error) {
       console.error('Failed to update ESI config:', error);

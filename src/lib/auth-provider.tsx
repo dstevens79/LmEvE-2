@@ -64,6 +64,38 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+/**
+ * Normalize ESI credentials.
+ * Accepts correct (clientId, clientSecret) args and the legacy mistaken object form
+ * updateESIConfig({ clientId, clientSecret }) that stored an object as clientId.
+ */
+function normalizeEsiCredentials(
+  clientIdOrConfig: unknown,
+  clientSecret?: unknown
+): { clientId: string; clientSecret?: string } {
+  let idRaw: unknown = clientIdOrConfig;
+  let secretRaw: unknown = clientSecret;
+
+  if (idRaw && typeof idRaw === 'object' && !Array.isArray(idRaw)) {
+    const obj = idRaw as Record<string, unknown>;
+    if (obj.clientId && typeof obj.clientId === 'object') {
+      return normalizeEsiCredentials(obj.clientId, obj.clientSecret ?? secretRaw);
+    }
+    idRaw = obj.clientId ?? obj.client_id ?? '';
+    if (secretRaw == null) {
+      secretRaw = obj.clientSecret ?? obj.client_secret;
+    }
+  }
+
+  const clientId = idRaw == null ? '' : String(idRaw).trim();
+  const secret =
+    secretRaw == null || secretRaw === ''
+      ? undefined
+      : String(secretRaw).trim();
+
+  return { clientId, clientSecret: secret };
+}
+
 interface AuthProviderProps {
   children: React.ReactNode;
 }
@@ -212,21 +244,46 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Do not create admin locally. Admin should be provisioned in DB setup script.
 
+  // Repair corrupted ESI config shape (object stored as clientId from bad save path).
+  useEffect(() => {
+    const raw = esiConfiguration as any;
+    if (!raw || typeof raw !== 'object') return;
+    const needsRepair =
+      (raw.clientId != null && typeof raw.clientId !== 'string') ||
+      (raw.clientSecret != null && typeof raw.clientSecret !== 'string');
+    if (!needsRepair) return;
+
+    const fixed = normalizeEsiCredentials(raw);
+    console.warn('Repairing corrupted lmeve-esi-config shape', {
+      wasType: typeof raw.clientId,
+      fixedIdLen: fixed.clientId.length,
+    });
+    setESIConfiguration({
+      clientId: fixed.clientId || undefined,
+      clientSecret: fixed.clientSecret,
+    });
+  }, [esiConfiguration, setESIConfiguration]);
+
   // Initialize ESI service when configuration changes (respect auth flow from settings).
   // Server mode: callback URL is owned by PHP settings — do not bind to browser host.
   useEffect(() => {
-    if (esiConfiguration.clientId) {
-      try {
-        const useSpa = (generalSettings?.authFlow || 'server') === 'spa';
-        // Placeholder only for client helper init; real OAuth start uses server callbackUrl.
-        const callbackRedirect = useSpa
-          ? `${window.location.origin}/`
-          : (esiConfiguration as any).callbackUrl || 'about:blank';
-        initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, callbackRedirect);
-        console.log(`✅ ESI Auth initialized (${useSpa ? 'SPA' : 'Server'} callback mode)`);
-      } catch (error) {
-        console.error('❌ Failed to initialize ESI Auth:', error);
-      }
+    const clientId =
+      typeof esiConfiguration.clientId === 'string' ? esiConfiguration.clientId.trim() : '';
+    if (!clientId) return;
+    try {
+      const useSpa = (generalSettings?.authFlow || 'server') === 'spa';
+      // Placeholder only for client helper init; real OAuth start uses server callbackUrl.
+      const callbackRedirect = useSpa
+        ? `${window.location.origin}/`
+        : (esiConfiguration as any).callbackUrl || 'about:blank';
+      const secret =
+        typeof esiConfiguration.clientSecret === 'string'
+          ? esiConfiguration.clientSecret
+          : undefined;
+      initializeESIAuth(clientId, secret, registeredCorporations, callbackRedirect);
+      console.log(`ESI Auth initialized (${useSpa ? 'SPA' : 'Server'} callback mode)`);
+    } catch (error) {
+      console.error('Failed to initialize ESI Auth:', error);
     }
   }, [esiConfiguration, registeredCorporations, generalSettings?.authFlow]);
   
@@ -1266,21 +1323,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Update ESI configuration
   const updateESIConfig = useCallback((clientId: string, clientSecret?: string) => {
-    console.log('🔧 Updating ESI configuration');
-    
-    const newConfig = { clientId, clientSecret };
+    console.log('Updating ESI configuration');
+
+    const normalized = normalizeEsiCredentials(clientId, clientSecret);
+    if (!normalized.clientId) {
+      throw new Error('ESI Client ID is required');
+    }
+
+    const newConfig = {
+      clientId: normalized.clientId,
+      clientSecret: normalized.clientSecret,
+    };
     setESIConfiguration(newConfig);
-    
+
     // Initialize ESI service with new config (server owns real callback URL)
     try {
       const useSpa2 = (generalSettings?.authFlow || 'server') === 'spa';
       const callbackRedirect = useSpa2
         ? `${window.location.origin}/`
         : 'about:blank';
-      initializeESIAuth(clientId, clientSecret, registeredCorporations, callbackRedirect);
-      console.log('✅ ESI configuration updated');
+      initializeESIAuth(normalized.clientId, normalized.clientSecret, registeredCorporations, callbackRedirect);
+      console.log('ESI configuration updated');
     } catch (error) {
-      console.error('❌ Failed to update ESI configuration:', error);
+      console.error('Failed to update ESI configuration:', error);
       throw error;
     }
   }, [registeredCorporations, setESIConfiguration, generalSettings?.authFlow]);
@@ -1369,12 +1434,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     deleteCorporation,
     getRegisteredCorporations,
     
-    // Configuration
-    esiConfig: {
-      clientId: esiConfiguration.clientId,
-      clientSecret: esiConfiguration.clientSecret,
-      isConfigured: !!esiConfiguration.clientId
-    },
+    // Configuration — always expose string clientId/secret (repair nested corruption)
+    esiConfig: (() => {
+      const n = normalizeEsiCredentials(esiConfiguration);
+      return {
+        clientId: n.clientId || undefined,
+        clientSecret: n.clientSecret,
+        isConfigured: !!n.clientId,
+      };
+    })(),
     updateESIConfig,
     adminConfig,
     updateAdminConfig,

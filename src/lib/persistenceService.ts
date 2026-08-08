@@ -675,18 +675,33 @@ export const useESISettings = () => {
           const data = await resp.json();
           const srv = data?.settings?.esi;
           if (srv && typeof srv === 'object') {
-            setVal(prev => ({
-              ...prev,
-              clientId: srv.clientId ?? prev.clientId,
-              // Keep current in-memory secret when masked
-              clientSecret: (srv.clientSecret && srv.clientSecret !== '***') ? srv.clientSecret : prev.clientSecret,
-              callbackUrl: srv.callbackUrl ?? prev.callbackUrl,
-              userAgent: srv.userAgent ?? prev.userAgent,
-              scopes: Array.isArray(srv.scopes) ? srv.scopes : prev.scopes,
-              rateLimitBuffer: typeof srv.rateLimitBuffer === 'number' ? srv.rateLimitBuffer : prev.rateLimitBuffer,
-              maxRetries: typeof srv.maxRetries === 'number' ? srv.maxRetries : prev.maxRetries,
-              requestTimeout: typeof srv.requestTimeout === 'number' ? srv.requestTimeout : prev.requestTimeout,
-            }));
+            setVal(prev => {
+              const rawId = srv.clientId ?? prev.clientId;
+              // Unwrap accidental nested object saves; always keep strings.
+              const clientId =
+                rawId && typeof rawId === 'object'
+                  ? String((rawId as any).clientId ?? (rawId as any).client_id ?? '')
+                  : String(rawId ?? '');
+              const rawSecret =
+                (srv.clientSecret && srv.clientSecret !== '***')
+                  ? srv.clientSecret
+                  : prev.clientSecret;
+              const clientSecret =
+                rawSecret && typeof rawSecret === 'object'
+                  ? String((rawSecret as any).clientSecret ?? '')
+                  : String(rawSecret ?? '');
+              return {
+                ...prev,
+                clientId,
+                clientSecret,
+                callbackUrl: String(srv.callbackUrl ?? prev.callbackUrl ?? ''),
+                userAgent: String(srv.userAgent ?? prev.userAgent ?? ''),
+                scopes: Array.isArray(srv.scopes) ? srv.scopes : prev.scopes,
+                rateLimitBuffer: typeof srv.rateLimitBuffer === 'number' ? srv.rateLimitBuffer : prev.rateLimitBuffer,
+                maxRetries: typeof srv.maxRetries === 'number' ? srv.maxRetries : prev.maxRetries,
+                requestTimeout: typeof srv.requestTimeout === 'number' ? srv.requestTimeout : prev.requestTimeout,
+              };
+            });
           }
         }
       } catch {}
