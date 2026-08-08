@@ -7,10 +7,6 @@
 
 set -e
 
-# Always install from the main line only — no feature/agent/temp branches.
-REPO_URL="${LMEVE_REPO_URL:-https://github.com/dstevens79/LmEvE-2.git}"
-REPO_BRANCH="${LMEVE_REPO_BRANCH:-main}"
-
 # Color output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -345,24 +341,12 @@ echo "  Install directory  : ${FINAL_DIR}"
 echo "  SSL (certbot)      : ${ENABLE_SSL}"
 echo "  UFW firewall       : ${CONFIG_FIREWALL}"
 
-echo -e "\n${GREEN}6. Cloning Repository (main line only)${NC}"
+echo -e "\n${GREEN}6. Cloning Repository to Temporary Location${NC}"
 echo "Build directory: ${BUILD_DIR}"
-echo "Source: ${REPO_URL} @ branch ${REPO_BRANCH}"
-# Explicit main-only clone. Never follow a random default or leftover local branch.
-rm -rf "$BUILD_DIR"
-git clone --branch "$REPO_BRANCH" --single-branch --depth 1 "$REPO_URL" "$BUILD_DIR"
+git clone https://github.com/dstevens79/LmEvE-2.git "$BUILD_DIR"
+echo -e "${GREEN}✓ Repository cloned${NC}"
+
 cd "$BUILD_DIR"
-ACTIVE_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-ACTIVE_SHA="$(git rev-parse --short HEAD)"
-if [ "$ACTIVE_BRANCH" != "$REPO_BRANCH" ]; then
-    echo -e "${RED}Error: expected branch '${REPO_BRANCH}' but cloned '${ACTIVE_BRANCH}'${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✓ Repository cloned from ${REPO_BRANCH} @ ${ACTIVE_SHA}${NC}"
-# Record deploy identity for support/debug
-printf 'branch=%s\ncommit=%s\nrepo=%s\ncloned_at=%s\n' \
-  "$ACTIVE_BRANCH" "$(git rev-parse HEAD)" "$REPO_URL" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  > "$BUILD_DIR/.lmeve-deploy-info"
 
 echo -e "\n${GREEN}7. Installing Dependencies${NC}"
 echo "Running npm install (this may take a few minutes)..."
@@ -386,11 +370,7 @@ fi
 # Move the dist folder and rename it
 echo "Moving dist to ${FINAL_DIR}..."
 mv "$BUILD_DIR/dist" "$FINAL_DIR"
-# Keep a tiny breadcrumb of what was deployed (branch + commit)
-if [ -f "$BUILD_DIR/.lmeve-deploy-info" ]; then
-    cp "$BUILD_DIR/.lmeve-deploy-info" "$FINAL_DIR/.lmeve-deploy-info" 2>/dev/null || true
-fi
-echo -e "${GREEN}✓ Application deployed from ${REPO_BRANCH} @ ${ACTIVE_SHA}${NC}"
+echo -e "${GREEN}✓ Application deployed${NC}"
 
 echo -e "\n${GREEN}10. Cleaning Up Build Files${NC}"
 echo "Removing temporary build directory..."
@@ -556,8 +536,6 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 echo -e "${BLUE}Installation Details:${NC}"
 echo -e "  Application: ${GREEN}${FINAL_DIR}${NC}"
-echo -e "  Source branch: ${GREEN}${REPO_BRANCH}${NC}"
-echo -e "  Source commit: ${GREEN}${ACTIVE_SHA}${NC}"
 if [ "$HTTP_PORT" == "80" ]; then
     echo -e "  URL: ${GREEN}http://${SERVER_NAME}${NC}"
 else
