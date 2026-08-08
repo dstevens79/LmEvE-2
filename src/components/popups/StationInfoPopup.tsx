@@ -1,4 +1,5 @@
 import React from 'react';
+import { localKv } from '@/lib/kv';
 import { X, Building, Package, ArrowRight, Wrench, Users, Clock } from '@phosphor-icons/react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -51,8 +52,8 @@ export function StationInfoPopup({ stationId, stationName, onClose, onViewAssets
     const loadStationData = async () => {
       setLoading(true);
       try {
-        const cachedStation = await spark.kv.get<StationData>(`station-info-${stationId}`);
-        const cachedSupplies = await spark.kv.get<SupplyItem[]>(`station-supplies-${stationId}`);
+        const cachedStation = await localKv.get<StationData>(`station-info-${stationId}`);
+        const cachedSupplies = await localKv.get<SupplyItem[]>(`station-supplies-${stationId}`);
         
         if (cachedStation) {
           setStationData(cachedStation);
@@ -69,7 +70,7 @@ export function StationInfoPopup({ stationId, stationName, onClose, onViewAssets
           });
         }
         
-        const tasks = await spark.kv.get<ManufacturingTask[]>('manufacturing-tasks') || [];
+        const tasks = await localKv.get<ManufacturingTask[]>('manufacturing-tasks') || [];
         const stationTasks = tasks.filter(task => task.stationId === stationId);
         
         const supplyMap = new Map<number, SupplyItem>();

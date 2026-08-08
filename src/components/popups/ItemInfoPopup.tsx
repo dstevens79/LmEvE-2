@@ -1,4 +1,5 @@
 import React from 'react';
+import { localKv } from '@/lib/kv';
 import { X, Factory } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -19,8 +20,8 @@ export function ItemInfoPopup({ itemTypeId, itemName, onClose, onAssignJob }: It
     const loadItemData = async () => {
       setLoading(true);
       try {
-        const manufacturingStats = await spark.kv.get<any>(`item-manufacturing-stats-${itemTypeId}`);
-        const salesStats = await spark.kv.get<any>(`item-sales-stats-${itemTypeId}`);
+        const manufacturingStats = await localKv.get<any>(`item-manufacturing-stats-${itemTypeId}`);
+        const salesStats = await localKv.get<any>(`item-sales-stats-${itemTypeId}`);
         
         setItemStats({
           manufacturing: manufacturingStats || {

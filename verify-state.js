@@ -29,7 +29,7 @@ const criticalFiles = [
 ];
 
 const criticalDependencies = [
-  '@github/spark',
+  // '@github/spark' removed
   '@phosphor-icons/react',
   'react',
   'react-dom',

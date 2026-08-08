@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useCallback } from 'react';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,12 +25,15 @@ import { useAuth } from '@/lib/auth-provider';
 import { ESICallback } from '@/components/ESICallback';
 import { EVELoginButton } from '@/components/EVELoginButton';
 import { useThemeManager } from '@/lib/themeManager';
-import { Settings } from '@/components/tabs/Settings';
 import { PRIMARY_NAV_TABS, findPrimaryTab } from '@/lib/app-navigation';
 import { startEsiLogin } from '@/lib/start-esi-login';
 import { useInactivityLogout } from '@/hooks/useInactivityLogout';
 import { useTabNavigation } from '@/hooks/useTabNavigation';
 import { AppPrimaryNav } from '@/components/layout/AppPrimaryNav';
+
+const Settings = React.lazy(() =>
+  import('@/components/tabs/Settings').then((m) => ({ default: m.Settings }))
+);
 
 function AppContent() {
   // NUCLEAR RESET: Clear ALL browser data on first load to eliminate stale state issues
@@ -509,31 +512,28 @@ function AppContent() {
     }
   };
 
-  // Show ESI callback handler if this is a callback
-  if (isESICallback) {
-    return (
-      <ESICallback 
-        onLoginSuccess={handleLoginSuccess}
-        onLoginError={handleLoginError}
-      />
-    );
-  }
-
-  // App is always visible - authentication handled via modal
-  // No dedicated login page blocking access
-
   const tabs = PRIMARY_NAV_TABS;
 
-  const { handleTabChange, handleSettingsTabChange } = useTabNavigation({
-    currentUser,
-    settingsExpanded,
-    setActiveTab,
-    setActiveSettingsTab,
-    setSettingsExpanded,
-    onRequireLogin: () => setShowQuickLogin(true),
-  });
+    const { handleTabChange, handleSettingsTabChange } = useTabNavigation({
+      currentUser,
+      settingsExpanded,
+      setActiveTab,
+      setActiveSettingsTab,
+      setSettingsExpanded,
+      onRequireLogin: () => setShowQuickLogin(true),
+    });
 
-  return (
+    // Show ESI callback handler if this is a callback (after all hooks)
+    if (isESICallback) {
+      return (
+        <ESICallback
+          onLoginSuccess={handleLoginSuccess}
+          onLoginError={handleLoginError}
+        />
+      );
+    }
+
+    return (
     <DatabaseProvider>
       <LMeveDataProvider>
         <div className="min-h-screen bg-background text-foreground">
@@ -987,26 +987,39 @@ function AppContent() {
                       </div>
                     </div>
                   ) : activeTab === 'settings' ? (
-                    <Settings 
-                      activeTab={activeSettingsTab || 'general'} 
-                      onTabChange={handleSettingsTabChange}
-                      isMobileView={isMobileView}
-                    />
-                  ) : (
-                    <Tabs value={activeTab} onValueChange={handleTabChange}>
-                      {tabs.map((tab) => {
-                        const Component = tab.component;
-                        return (
-                          <TabsContent key={tab.id} value={tab.id} className="mt-0">
-                            <Component 
-                              onLoginClick={() => setShowQuickLogin(true)} 
-                              isMobileView={isMobileView}
-                            />
-                          </TabsContent>
-                        );
-                      })}
-                    </Tabs>
-                  )}
+                                      <Suspense
+                                        fallback={
+                                          <div className="py-16 text-center text-muted-foreground">Loading settings…</div>
+                                        }
+                                      >
+                                        <Settings
+                                          activeTab={activeSettingsTab || 'general'}
+                                          onTabChange={handleSettingsTabChange}
+                                          isMobileView={isMobileView}
+                                        />
+                                      </Suspense>
+                                    ) : (
+                                      <Suspense
+                                        fallback={
+                                          <div className="py-16 text-center text-muted-foreground">Loading…</div>
+                                        }
+                                      >
+                                        <Tabs value={activeTab} onValueChange={handleTabChange}>
+                                          {tabs.map((tab) => {
+                                            const Component = tab.component;
+                                            if (!Component) return null;
+                                            return (
+                                              <TabsContent key={tab.id} value={tab.id} className="mt-0">
+                                                <Component
+                                                  onLoginClick={() => setShowQuickLogin(true)}
+                                                  isMobileView={isMobileView}
+                                                />
+                                              </TabsContent>
+                                            );
+                                          })}
+                                        </Tabs>
+                                      </Suspense>
+                                    )}
                 </div>
               </div>
             </div>

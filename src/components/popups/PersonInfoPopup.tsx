@@ -1,4 +1,5 @@
 import React from 'react';
+import { localKv } from '@/lib/kv';
 import { X, Briefcase, Calendar, CurrencyDollar } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,7 +19,7 @@ export function PersonInfoPopup({ person, onClose }: PersonInfoPopupProps) {
     const loadPersonData = async () => {
       setLoading(true);
       try {
-        const stats = await spark.kv.get<any>(`member-stats-${person.characterId}`);
+        const stats = await localKv.get<any>(`member-stats-${person.characterId}`);
         
         setPersonStats(stats || {
           jobsCompleted: Math.floor(Math.random() * 250),

@@ -1,4 +1,5 @@
 import React from 'react';
+import { localKv } from '@/lib/kv';
 import { X, Factory, Clock, Wrench, Flask, Copy } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -19,7 +20,7 @@ export function BlueprintInfoPopup({ blueprint, onClose, onAssignJob }: Blueprin
     const loadBlueprintData = async () => {
       setLoading(true);
       try {
-        const data = await spark.kv.get<any>(`blueprint-data-${blueprint.typeId}`);
+        const data = await localKv.get<any>(`blueprint-data-${blueprint.typeId}`);
         
         setBlueprintData(data || {
           materials: [

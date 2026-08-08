@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { localKv } from '@/lib/kv';
 
 export interface SyncStatus {
   processId: string;
@@ -51,8 +52,8 @@ export class SyncStateManager {
 
   private async loadState() {
     try {
-      const statuses = await spark.kv.get<Record<string, SyncStatus>>('sync-statuses');
-      const history = await spark.kv.get<SyncHistory[]>('sync-history');
+      const statuses = await localKv.get<Record<string, SyncStatus>>('sync-statuses');
+      const history = await localKv.get<SyncHistory[]>('sync-history');
       
       if (statuses) {
         this.state.statuses = statuses;
@@ -69,8 +70,8 @@ export class SyncStateManager {
 
   private async saveState() {
     try {
-      await spark.kv.set('sync-statuses', this.state.statuses);
-      await spark.kv.set('sync-history', this.state.history.slice(-100));
+      await localKv.set('sync-statuses', this.state.statuses);
+      await localKv.set('sync-history', this.state.history.slice(-100));
     } catch (error) {
       console.error('Failed to save sync state:', error);
     }
@@ -218,7 +219,7 @@ export class SyncStateManager {
 
   async setNextRunTime(processId: string, timestamp: number) {
     try {
-      await spark.kv.set(`sync-next-run-${processId}`, timestamp);
+      await localKv.set(`sync-next-run-${processId}`, timestamp);
     } catch (error) {
       console.error('Failed to save next run time:', error);
     }
@@ -226,7 +227,7 @@ export class SyncStateManager {
 
   async getNextRunTime(processId: string): Promise<number | undefined> {
     try {
-      return await spark.kv.get<number>(`sync-next-run-${processId}`);
+      return await localKv.get<number>(`sync-next-run-${processId}`);
     } catch (error) {
       console.error('Failed to get next run time:', error);
       return undefined;

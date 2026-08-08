@@ -5,6 +5,7 @@
  */
 
 import { LMeveUser, UserRole, ESICharacterData, ESIConfig } from './types';
+import { localKv } from '@/lib/kv';
 import { createUserWithRole, getRolePermissions, getEVERoleMapping, isSessionValid, refreshUserSession } from './roles';
 
 // Password hash utility (simple implementation for demo)
@@ -68,10 +69,10 @@ export interface UserService {
 export function createUserService(): UserService {
   // Initialize default users if none exist
   const initializeDefaultUsers = async () => {
-    const users = await spark.kv.get<LMeveUser[]>('users') || [];
+    const users = await localKv.get<LMeveUser[]>('users') || [];
     if (users.length === 0) {
       const defaultUsers = getDefaultUsers();
-      await spark.kv.set('users', defaultUsers);
+      await localKv.set('users', defaultUsers);
       console.log('🔧 Default users initialized');
     }
   };
@@ -84,7 +85,7 @@ export function createUserService(): UserService {
     async loginWithCredentials(username: string, password: string): Promise<LMeveUser> {
       console.log('👤 User service: Attempting login for:', username);
       
-      const users = await spark.kv.get<LMeveUser[]>('users') || [];
+      const users = await localKv.get<LMeveUser[]>('users') || [];
       const user = users.find(u => u.username === username && u.isActive);
       
       if (!user) {
@@ -104,10 +105,10 @@ export function createUserService(): UserService {
       
       // Update user in storage
       const updatedUsers = users.map(u => u.id === user.id ? updatedUser : u);
-      await spark.kv.set('users', updatedUsers);
+      await localKv.set('users', updatedUsers);
       
       // Store current user session
-      await spark.kv.set('current-user', updatedUser);
+      await localKv.set('current-user', updatedUser);
       
       console.log('✅ User service: Login successful for:', username);
       return updatedUser;
@@ -116,7 +117,7 @@ export function createUserService(): UserService {
     async loginWithESI(characterData: ESICharacterData, tokenData: any): Promise<LMeveUser> {
       console.log('👤 User service: Attempting ESI login for character:', characterData.character_name);
       
-      const users = await spark.kv.get<LMeveUser[]>('users') || [];
+      const users = await localKv.get<LMeveUser[]>('users') || [];
       let user = users.find(u => u.characterId === characterData.character_id);
       
       if (user) {
@@ -136,8 +137,8 @@ export function createUserService(): UserService {
         
         // Update user in storage
         const updatedUsers = users.map(u => u.id === user.id ? updatedUser : u);
-        await spark.kv.set('users', updatedUsers);
-        await spark.kv.set('current-user', updatedUser);
+        await localKv.set('users', updatedUsers);
+        await localKv.set('current-user', updatedUser);
         
         console.log('✅ User service: ESI login successful for existing user:', characterData.character_name);
         return updatedUser;
@@ -162,8 +163,8 @@ export function createUserService(): UserService {
         
         // Add new user to storage
         const updatedUsers = [...users, newUser];
-        await spark.kv.set('users', updatedUsers);
-        await spark.kv.set('current-user', newUser);
+        await localKv.set('users', updatedUsers);
+        await localKv.set('current-user', newUser);
         
         console.log('✅ User service: ESI login successful for new user:', characterData.character_name);
         return newUser;
@@ -172,40 +173,40 @@ export function createUserService(): UserService {
 
     async logout(): Promise<void> {
       console.log('👤 User service: Logging out user');
-      await spark.kv.delete('current-user');
+      await localKv.delete('current-user');
     },
 
     async refreshToken(): Promise<void> {
-      const currentUser = await spark.kv.get<LMeveUser>('current-user');
+      const currentUser = await localKv.get<LMeveUser>('current-user');
       if (!currentUser) return;
 
       // Refresh session expiry
       const refreshedUser = refreshUserSession(currentUser);
       
-      const users = await spark.kv.get<LMeveUser[]>('users') || [];
+      const users = await localKv.get<LMeveUser[]>('users') || [];
       const updatedUsers = users.map(u => u.id === currentUser.id ? refreshedUser : u);
       
-      await spark.kv.set('users', updatedUsers);
-      await spark.kv.set('current-user', refreshedUser);
+      await localKv.set('users', updatedUsers);
+      await localKv.set('current-user', refreshedUser);
     },
 
     // User management
     async getUsers(): Promise<LMeveUser[]> {
-      return await spark.kv.get<LMeveUser[]>('users') || [];
+      return await localKv.get<LMeveUser[]>('users') || [];
     },
 
     async getUserById(id: string): Promise<LMeveUser | undefined> {
-      const users = await spark.kv.get<LMeveUser[]>('users') || [];
+      const users = await localKv.get<LMeveUser[]>('users') || [];
       return users.find(u => u.id === id);
     },
 
     async getUserByCharacterId(characterId: number): Promise<LMeveUser | undefined> {
-      const users = await spark.kv.get<LMeveUser[]>('users') || [];
+      const users = await localKv.get<LMeveUser[]>('users') || [];
       return users.find(u => u.characterId === characterId);
     },
 
     async createUser(userData: Partial<LMeveUser> & { password?: string }, role: UserRole): Promise<LMeveUser> {
-      const users = await spark.kv.get<LMeveUser[]>('users') || [];
+      const users = await localKv.get<LMeveUser[]>('users') || [];
       
       // Check for duplicates
       if (userData.username && users.some(u => u.username === userData.username)) {
@@ -223,13 +224,13 @@ export function createUserService(): UserService {
       }
       
       const updatedUsers = [...users, newUser];
-      await spark.kv.set('users', updatedUsers);
+      await localKv.set('users', updatedUsers);
       
       return newUser;
     },
 
     async updateUser(id: string, updates: Partial<LMeveUser>): Promise<LMeveUser> {
-      const users = await spark.kv.get<LMeveUser[]>('users') || [];
+      const users = await localKv.get<LMeveUser[]>('users') || [];
       const userIndex = users.findIndex(u => u.id === id);
       
       if (userIndex === -1) {
@@ -248,26 +249,26 @@ export function createUserService(): UserService {
       }
       
       users[userIndex] = updatedUser;
-      await spark.kv.set('users', users);
+      await localKv.set('users', users);
       
       // Update current user session if this is the current user
-      const currentUser = await spark.kv.get<LMeveUser>('current-user');
+      const currentUser = await localKv.get<LMeveUser>('current-user');
       if (currentUser && currentUser.id === id) {
-        await spark.kv.set('current-user', updatedUser);
+        await localKv.set('current-user', updatedUser);
       }
       
       return updatedUser;
     },
 
     async deleteUser(id: string): Promise<void> {
-      const users = await spark.kv.get<LMeveUser[]>('users') || [];
+      const users = await localKv.get<LMeveUser[]>('users') || [];
       const updatedUsers = users.filter(u => u.id !== id);
-      await spark.kv.set('users', updatedUsers);
+      await localKv.set('users', updatedUsers);
       
       // Log out user if they're currently logged in
-      const currentUser = await spark.kv.get<LMeveUser>('current-user');
+      const currentUser = await localKv.get<LMeveUser>('current-user');
       if (currentUser && currentUser.id === id) {
-        await spark.kv.delete('current-user');
+        await localKv.delete('current-user');
       }
     },
 
@@ -288,12 +289,12 @@ export function createUserService(): UserService {
 
     // Session management
     async getCurrentUser(): Promise<LMeveUser | null> {
-      const user = await spark.kv.get<LMeveUser>('current-user');
+      const user = await localKv.get<LMeveUser>('current-user');
       if (!user) return null;
       
       // Check if session is still valid
       if (!isSessionValid(user)) {
-        await spark.kv.delete('current-user');
+        await localKv.delete('current-user');
         return null;
       }
       
@@ -306,7 +307,7 @@ export function createUserService(): UserService {
     },
 
     async validateSession(): Promise<boolean> {
-      const user = await spark.kv.get<LMeveUser>('current-user');
+      const user = await localKv.get<LMeveUser>('current-user');
       return user ? isSessionValid(user) : false;
     },
   };

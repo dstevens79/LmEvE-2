@@ -51,7 +51,7 @@ export class SyncErrorLogger {
 
   private async loadErrors() {
     try {
-      const stored = await spark.kv.get<SyncError[]>('sync-errors');
+      const stored = await localKv.get<SyncError[]>('sync-errors');
       if (stored && Array.isArray(stored)) {
         this.errors = stored;
         this.notifyListeners();
@@ -64,7 +64,7 @@ export class SyncErrorLogger {
   private async saveErrors() {
     try {
       const toSave = this.errors.slice(-this.maxErrors);
-      await spark.kv.set('sync-errors', toSave);
+      await localKv.set('sync-errors', toSave);
     } catch (error) {
       console.error('Failed to save sync errors:', error);
     }
@@ -263,3 +263,4 @@ export function useSyncErrors() {
 }
 
 import React from 'react';
+import { localKv } from '@/lib/kv';

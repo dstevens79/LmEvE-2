@@ -1,18 +1,19 @@
 {
-  "name": "spark-template",
+  "name": "lmeve-2",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "kill": "fuser -k 5000/tcp",
     "build": "tsc -b --noCheck && vite build",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 9999",
     "optimize": "vite optimize",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "@github/spark": "^0.39.0",
     "@heroicons/react": "^2.2.0",
     "@hookform/resolvers": "^4.1.3",
     "@octokit/core": "^6.1.4",
@@ -57,6 +58,7 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^0.484.0",
     "marked": "^15.0.7",
+    "mysql2": "^3.11.5",
     "next-themes": "^0.4.6",
     "octokit": "^4.1.2",
     "react": "^19.0.0",
@@ -72,11 +74,13 @@
     "tw-animate-css": "^1.2.4",
     "uuid": "^11.1.0",
     "vaul": "^1.1.2",
-    "zod": "^3.25.76",
-    "mysql2": "^3.11.5"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
+    "@rollup/rollup-win32-x64-msvc": "^4.62.4",
+    "@swc/core": "^1.15.47",
+    "@swc/core-win32-x64-msvc": "^1.15.47",
     "@tailwindcss/postcss": "^4.1.8",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
@@ -89,11 +93,16 @@
     "tailwindcss": "^4.1.11",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.38.0",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vitest": "^3.2.7"
   },
   "workspaces": {
     "packages": [
       "packages/*"
     ]
+  },
+  "description": "LmEvE-2 EVE Online corporation management",
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.62.4"
   }
 }

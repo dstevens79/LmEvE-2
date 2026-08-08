@@ -7,7 +7,7 @@
 
 import React from 'react';
 
-// Lightweight fallback to localStorage when Spark KV isn't available or isn't persisting
+// Lightweight fallback to localStorage when browser KV isn't available or isn't persisting
 function useLocalStorageKV<T>(key: string, defaultValue: T): [T, (value: T | ((prev: T) => T)) => void] {
   const initializer = () => {
     try {
@@ -27,7 +27,7 @@ function useLocalStorageKV<T>(key: string, defaultValue: T): [T, (value: T | ((p
   return [value, setAndPersist];
 }
 
-// Expose a local KV hook for use across the app (no Spark KV dependency)
+// Expose a local KV hook for use across the app (no browser KV dependency)
 export const useLocalKV = useLocalStorageKV;
 
 // Server write-through: debounce saves to disk per category

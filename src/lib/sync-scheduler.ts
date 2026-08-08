@@ -1,4 +1,5 @@
 import { SyncStateManager } from './sync-state-manager';
+import { localKv } from '@/lib/kv';
 import { SyncExecutor, SyncProcessType } from './sync-executor';
 import { ESIDataFetchService } from './esi-data-service';
 import { ESIDataStorageService } from './database';
@@ -45,7 +46,7 @@ export class SyncScheduler {
 
   async loadScheduleConfig() {
     try {
-      const configs = await spark.kv.get<SyncScheduleConfig[]>('sync-schedule-configs');
+      const configs = await localKv.get<SyncScheduleConfig[]>('sync-schedule-configs');
       if (configs) {
         configs.forEach(config => {
           this.state.scheduledProcesses.set(config.processId, config);
@@ -60,7 +61,7 @@ export class SyncScheduler {
   async saveScheduleConfig() {
     try {
       const configs = Array.from(this.state.scheduledProcesses.values());
-      await spark.kv.set('sync-schedule-configs', configs);
+      await localKv.set('sync-schedule-configs', configs);
       console.log(`💾 Saved ${configs.length} scheduled sync processes`);
     } catch (error) {
       console.error('Failed to save schedule config:', error);

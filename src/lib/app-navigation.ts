@@ -18,19 +18,42 @@ import {
   Shield,
   Gear,
 } from '@phosphor-icons/react';
-import type { ComponentType } from 'react';
+import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import type { TabType } from '@/lib/types';
-import { Dashboard } from '@/components/tabs/Dashboard';
-import { Members } from '@/components/tabs/Members';
-import { Assets } from '@/components/tabs/Assets';
-import { Manufacturing } from '@/components/tabs/Manufacturing';
-import { Market } from '@/components/tabs/Market';
-import { Wallet } from '@/components/tabs/Wallet';
-import { Notifications } from '@/components/tabs/Notifications';
-import { Corporations } from '@/components/Corporations';
-import { Theme } from '@/components/tabs/Theme';
-import { PlanetaryInteraction } from '@/components/tabs/PlanetaryInteraction';
-import { Buyback } from '@/components/tabs/Buyback';
+
+const Dashboard = lazy(() =>
+  import('@/components/tabs/Dashboard').then((m) => ({ default: m.Dashboard }))
+);
+const Members = lazy(() =>
+  import('@/components/tabs/Members').then((m) => ({ default: m.Members }))
+);
+const Assets = lazy(() =>
+  import('@/components/tabs/Assets').then((m) => ({ default: m.Assets }))
+);
+const Manufacturing = lazy(() =>
+  import('@/components/tabs/Manufacturing').then((m) => ({ default: m.Manufacturing }))
+);
+const Market = lazy(() =>
+  import('@/components/tabs/Market').then((m) => ({ default: m.Market }))
+);
+const Wallet = lazy(() =>
+  import('@/components/tabs/Wallet').then((m) => ({ default: m.Wallet }))
+);
+const Notifications = lazy(() =>
+  import('@/components/tabs/Notifications').then((m) => ({ default: m.Notifications }))
+);
+const Corporations = lazy(() =>
+  import('@/components/Corporations').then((m) => ({ default: m.Corporations }))
+);
+const Theme = lazy(() =>
+  import('@/components/tabs/Theme').then((m) => ({ default: m.Theme }))
+);
+const PlanetaryInteraction = lazy(() =>
+  import('@/components/tabs/PlanetaryInteraction').then((m) => ({ default: m.PlanetaryInteraction }))
+);
+const Buyback = lazy(() =>
+  import('@/components/tabs/Buyback').then((m) => ({ default: m.Buyback }))
+);
 
 export type PrimaryTabId = Exclude<TabType, 'settings'> | string;
 
@@ -38,7 +61,7 @@ export interface AppNavTab {
   id: string;
   label: string;
   icon: Icon;
-  component?: ComponentType;
+  component?: ComponentType<any> | LazyExoticComponent<ComponentType<any>>;
   badge?: string;
 }
 

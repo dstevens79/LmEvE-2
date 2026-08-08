@@ -5,8 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LoginPrompt } from '@/components/LoginPrompt';
-import { useAuth } from '@/lib/auth-provider';
 import { TabComponentProps, IncomeRecord, IncomeAnalytics } from '@/lib/types';
 import { 
   TrendUp,
@@ -26,8 +24,7 @@ import { useKV } from '@/lib/kv';
 import { toast } from 'sonner';
 import { useIncomeSettings } from '@/lib/persistenceService';
 
-export function Income({ onLoginClick }: TabComponentProps) {
-  const { user } = useAuth();
+export function Income(_props: TabComponentProps) {
   const [incomeRecords] = useKV<IncomeRecord[]>('income-records', []);
   const [incomeSettings, setIncomeSettings] = useIncomeSettings();
   const [selectedPeriod, setSelectedPeriod] = useState('30d');
@@ -278,18 +275,6 @@ export function Income({ onLoginClick }: TabComponentProps) {
     });
     return Array.from(pilots.entries()).map(([id, name]) => ({ id, name }));
   }, [records]);
-
-  // Show login prompt if not authenticated
-  // Show login prompt if not authenticated - TEMPORARILY DISABLED FOR DEBUG
-  if (!user && onLoginClick && false) { // Added && false to disable this check
-    return (
-      <LoginPrompt 
-        onLoginClick={onLoginClick || (() => {})}
-        title="Income Analytics"
-        description="Sign in to view and manage pilot compensation and income tracking"
-      />
-    );
-  }
 
   return (
     <div className="space-y-6">
