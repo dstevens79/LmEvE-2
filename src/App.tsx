@@ -36,84 +36,12 @@ const Settings = React.lazy(() =>
 );
 
 function AppContent() {
-  // NUCLEAR RESET: Clear ALL browser data on first load to eliminate stale state issues
+  // Settings hooks load from the server with credentials and re-pull after login.
+  // No full-page reload / nuclear localStorage wipe — those erased setup state per-origin.
   React.useEffect(() => {
-    try {
-      const RESET_FLAG = 'lmeve-reset-v3'; // Increment version to force re-reset
-      const resetMarker = localStorage.getItem(RESET_FLAG);
-      
-      if (!resetMarker) {
-        console.log('🧹 NUCLEAR RESET: Clearing ALL browser storage...');
-        
-        // 1. Clear ALL localStorage (will restore reset flag after)
-        const keysToPreserve: string[] = [];
-        localStorage.clear();
-        
-        // 2. Clear ALL sessionStorage
-        sessionStorage.clear();
-        
-        // 3. Clear IndexedDB databases
-        if (window.indexedDB && window.indexedDB.databases) {
-          window.indexedDB.databases().then(databases => {
-            databases.forEach(db => {
-              if (db.name) {
-                console.log(`🗑️ Deleting IndexedDB: ${db.name}`);
-                window.indexedDB.deleteDatabase(db.name);
-              }
-            });
-          }).catch(() => {});
-        }
-        
-        // 4. Clear service worker caches
-        if ('caches' in window) {
-          caches.keys().then(cacheNames => {
-            cacheNames.forEach(cacheName => {
-              console.log(`🗑️ Deleting cache: ${cacheName}`);
-              caches.delete(cacheName);
-            });
-          }).catch(() => {});
-        }
-        
-        // 5. Unregister service workers
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.getRegistrations().then(registrations => {
-            registrations.forEach(registration => {
-              console.log('🗑️ Unregistering service worker');
-              registration.unregister();
-            });
-          }).catch(() => {});
-        }
-        
-        // Mark reset as complete
-        localStorage.setItem(RESET_FLAG, String(Date.now()));
-        
-        console.log('🧹 NUCLEAR RESET completed - browser storage cleared');
-        console.log('🔄 Reloading page to start fresh...');
-        
-        // Force reload to start completely fresh
-        window.location.reload();
-      }
-    } catch (err) {
-      console.error('❌ Reset error:', err);
-    }
-  }, []);
-
-  // One-time settings hydration on first load only if local storage is empty; avoid reload loops
-  React.useEffect(() => {
-    (async () => {
-      try {
-        // Skip if we've already hydrated once this session
-        if (sessionStorage.getItem('settings-hydrated') === '1') return;
-        const result = await bootstrapSettingsFromServerIfEmpty();
-        if (result === 'loaded') {
-          sessionStorage.setItem('settings-hydrated', '1');
-          // Reload once to let components pick up hydrated values without repeated cycles
-          window.location.reload();
-        }
-      } catch {}
-    })();
-    // Legacy cleanup: remove browser-only setup status in favor of server-backed site-data
     try { localStorage.removeItem('lmeve-setup-status'); } catch {}
+    try { localStorage.removeItem('lmeve-reset-v3'); } catch {}
+    void bootstrapSettingsFromServerIfEmpty();
   }, []);
   const [activeTab, setActiveTab] = useLocalKV<TabType>('active-tab', 'dashboard');
   const [activeSettingsTab, setActiveSettingsTab] = useLocalKV<string>('active-settings-tab', 'general');
@@ -164,9 +92,9 @@ function AppContent() {
     return () => window.removeEventListener('lmeve-db-connected' as any, handler as any);
   }, [setDbConnected]);
 
-  // Listen for login success to refresh metrics immediately
+  // Listen for login success to refresh metrics + DB status immediately
   React.useEffect(() => {
-    const refreshMetrics = async () => {
+      const refreshAfterLogin = async () => {
       try {
         const m = await fetch('/api/app-metrics.php', { method: 'GET', credentials: 'include' });
         if (m.ok) {
@@ -176,13 +104,25 @@ function AppContent() {
             if (typeof data.ssoLoginCount === 'number') setSsoLoginCount(data.ssoLoginCount);
             if (typeof data.registeredPilotsCount === 'number') setRegisteredPilots(data.registeredPilotsCount);
             if (typeof data.registeredCorpsCount === 'number') setRegisteredCorpsCount(data.registeredCorpsCount);
+              if (typeof data.dbConnected === 'boolean') setDbConnected(!!data.dbConnected);
+            }
           }
-        }
-      } catch {}
-    };
-    window.addEventListener('lmeve-login-success' as any, refreshMetrics as any);
-    return () => window.removeEventListener('lmeve-login-success' as any, refreshMetrics as any);
-  }, []);
+        } catch {}
+        try {
+          const ss = await fetch('/api/system-status.php?refresh=1', { method: 'GET', credentials: 'include' });
+          if (ss.ok) {
+            const j = await ss.json();
+            const s = j?.status || {};
+            setDbConnected(!!s?.database?.connected);
+            setEsiServiceStatus(s?.esi?.status === 'online' ? 'online' : 'offline');
+            setEveServerStatus(s?.eve?.status === 'online' ? 'online' : 'offline');
+            setEvePlayersOnline(typeof s?.eve?.players === 'number' ? s.eve.players : 0);
+          }
+        } catch {}
+      };
+      window.addEventListener('lmeve-login-success' as any, refreshAfterLogin as any);
+      return () => window.removeEventListener('lmeve-login-success' as any, refreshAfterLogin as any);
+    }, [setDbConnected]);
 
   React.useEffect(() => {
     (async () => {
@@ -246,22 +186,23 @@ function AppContent() {
     }, 10 * 60 * 1000);
     return () => window.clearInterval(interval);
   }, []);
-  // Database setup completion check
-  // Only require setup if DB is NOT connected AND no credentials saved
+  // Database setup completion: server-owned credentials (password may be masked as ***).
+    // Defaults ship with host/username placeholders — only a stored password / configured flag counts.
   const needsDBSetup = React.useMemo(() => {
-    // If database is connected, setup is complete
-    if (dbConnected) return false;
-    
-    // Check if credentials are actually configured (not just default empty values)
-    const hostOk = !!databaseSettings?.host && databaseSettings.host.trim() !== '';
-    const userOk = !!databaseSettings?.username && databaseSettings.username.trim() !== '';
-    const passOk = !!databaseSettings?.password && databaseSettings.password.trim() !== '' && databaseSettings.password !== '***';
-    const hasCredentials = hostOk && userOk && passOk;
-    
-    // If credentials exist but not connected, don't force setup (user can test/connect manually)
-    // Only force setup if NO credentials exist at all
-    return !hasCredentials;
-  }, [dbConnected, databaseSettings]);
+      if (dbConnected) return false;
+
+      const host = (databaseSettings?.host || '').trim();
+      const user = (databaseSettings?.username || '').trim();
+      const pass = (databaseSettings?.password || '').trim();
+      const configuredFlag = !!(databaseSettings as any)?.configured;
+
+      // Password present (real or server mask ***) OR explicit server configured flag
+      const secretConfigured = pass !== '' || configuredFlag;
+      const hasCredentials = host !== '' && user !== '' && secretConfigured;
+
+      // Credentials saved => setup done even if MySQL is temporarily down
+      return !hasCredentials;
+    }, [dbConnected, databaseSettings]);
   const [isESICallback, setIsESICallback] = useState(false);
   const [forceRender, setForceRender] = useState(0);
   

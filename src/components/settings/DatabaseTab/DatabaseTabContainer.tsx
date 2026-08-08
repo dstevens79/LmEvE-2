@@ -17,7 +17,11 @@ import { toast } from 'sonner';
 // Local site-data helpers (best-effort) to reflect setup status
 async function loadSiteData(key: string) {
   try {
-    const resp = await fetch(`/api/site-data.php?key=${encodeURIComponent(key)}`);
+    const resp = await fetch(`/api/site-data.php?key=${encodeURIComponent(key)}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
     if (resp.ok) {
       const json = await resp.json();
       return json?.value ?? null;
@@ -34,6 +38,7 @@ async function saveSiteData(key: string, value: any) {
   try {
     const resp = await fetch('/api/site-data.php', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, value })
     });
@@ -119,13 +124,21 @@ const DatabaseTabContainer: React.FC = () => {
         if (realPassword !== null) backup.settings.database.password = realPassword;
         if (realSudoPassword !== null) backup.settings.database.sudoPassword = realSudoPassword;
       }
-      await fetch('/api/settings.php', {
+      const resp = await fetch('/api/settings.php', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(backup)
-      });
-    } catch {}
-  };
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(backup)
+            });
+            if (!resp.ok) {
+              console.warn('syncServerSettings failed', resp.status);
+              toast.error('Failed to save database settings to server');
+            }
+          } catch (err) {
+            console.warn('syncServerSettings error', err);
+            toast.error('Failed to save database settings to server');
+          }
+        };
 
   const saveDatabase = async () => {
     const errors = validateSettings('database', databaseSettings as any);

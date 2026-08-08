@@ -120,9 +120,26 @@ if ($method === 'GET') {
     }
     return $value;
   };
-  $maskedJson = $maskSecrets($json);
-  api_respond(['ok' => true, 'settings' => $maskedJson]);
-}
+  // Always return a flat category map: { database, esi, general, ... }
+    // regardless of whether the file used a nested { settings: {...} } wrapper.
+    $root = resolve_settings_root($json);
+    $maskedRoot = $maskSecrets($root);
+    // Flag DB as configured when a real password is stored (client only sees ***).
+    if (isset($root['database']) && is_array($root['database'])) {
+      if (!isset($maskedRoot['database']) || !is_array($maskedRoot['database'])) {
+        $maskedRoot['database'] = [];
+      }
+      $rawPass = isset($root['database']['password']) ? (string)$root['database']['password'] : '';
+      $rawUser = trim((string)($root['database']['username'] ?? ''));
+      $rawHost = trim((string)($root['database']['host'] ?? ''));
+      $hasSecret = ($rawPass !== '' && $rawPass !== '***');
+      $maskedRoot['database']['configured'] = ($rawHost !== '' && $rawUser !== '' && $hasSecret);
+      if ($hasSecret) {
+        $maskedRoot['database']['password'] = '***';
+      }
+    }
+    api_respond(['ok' => true, 'settings' => $maskedRoot]);
+  }
 
 if ($method === 'POST') {
   $payload = api_read_json();

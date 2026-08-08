@@ -32,6 +32,46 @@ export const useLocalKV = useLocalStorageKV;
 
 // Server write-through: debounce saves to disk per category
 const saveDebounceTimers: Record<string, number | undefined> = {};
+const SETTINGS_CREDENTIALS: RequestCredentials = 'include';
+
+/** Ask all settings hooks to re-pull from the server (e.g. after login). */
+export function requestSettingsReload(): void {
+  try {
+    window.dispatchEvent(new CustomEvent('lmeve-settings-reload'));
+  } catch {}
+}
+
+/** Normalize GET /api/settings.php payload into a flat category map. */
+function extractServerSettingsRoot(data: any): Record<string, any> | null {
+  if (!data || typeof data !== 'object') return null;
+  const payload = data.settings ?? data;
+  if (!payload || typeof payload !== 'object') return null;
+  // Nested export shape: { version, settings: { database, ... } }
+  if (payload.settings && typeof payload.settings === 'object' && !payload.database && !payload.esi) {
+    return payload.settings as Record<string, any>;
+  }
+  return payload as Record<string, any>;
+}
+
+/**
+ * Secret fields come back masked as '***'. Keep a real in-memory secret when
+ * present; otherwise keep the mask so UI knows "configured" vs empty.
+ */
+function mergeSecretField(serverValue: unknown, prevValue: unknown): string {
+  if (typeof serverValue === 'string' && serverValue !== '' && serverValue !== '***') {
+    return serverValue;
+  }
+  if (serverValue === '***') {
+    // Prefer a real password already typed this session; else keep mask marker.
+    if (typeof prevValue === 'string' && prevValue !== '' && prevValue !== '***') {
+      return prevValue;
+    }
+    return '***';
+  }
+  if (typeof prevValue === 'string') return prevValue;
+  return '';
+}
+
 function scheduleCategorySave(category: string, payload: any, delayMs = 400) {
   try {
     if (saveDebounceTimers[category]) {
@@ -39,15 +79,62 @@ function scheduleCategorySave(category: string, payload: any, delayMs = 400) {
     }
     saveDebounceTimers[category] = window.setTimeout(async () => {
       try {
-        await fetch('/api/settings.php', {
+        const resp = await fetch('/api/settings.php', {
           method: 'POST',
-          credentials: 'include',
+          credentials: SETTINGS_CREDENTIALS,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ [category]: payload })
         });
-      } catch {}
+        if (!resp.ok) {
+          console.warn(`settings save failed for ${category}: HTTP ${resp.status}`);
+        }
+      } catch (err) {
+        console.warn(`settings save error for ${category}`, err);
+      }
     }, delayMs);
   } catch {}
+}
+
+async function fetchServerSettingsCategory<T extends object>(
+  category: string
+): Promise<T | null> {
+  try {
+    const resp = await fetch('/api/settings.php', {
+      method: 'GET',
+      credentials: SETTINGS_CREDENTIALS,
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const root = extractServerSettingsRoot(data);
+    if (!root) return null;
+    const slice = root[category];
+    if (slice == null) return null;
+    return slice as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Subscribe a settings hook to mount + post-login reloads. */
+function useServerSettingsLoader(load: () => void | Promise<void>) {
+  React.useEffect(() => {
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      void load();
+    };
+    run();
+    const onReload = () => run();
+    window.addEventListener('lmeve-settings-reload', onReload as any);
+    window.addEventListener('lmeve-login-success', onReload as any);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('lmeve-settings-reload', onReload as any);
+      window.removeEventListener('lmeve-login-success', onReload as any);
+    };
+  }, [load]);
 }
 
 export interface GeneralSettings {
@@ -591,21 +678,14 @@ export const defaultApplicationData: ApplicationData = {
 // Server-backed only: do NOT persist general settings in localStorage
 export const useGeneralSettings = () => {
   const [val, setVal] = React.useState<GeneralSettings>(defaultGeneralSettings);
-  React.useEffect(() => {
+  const load = React.useCallback(async () => {
     try { localStorage.removeItem('lmeve-settings-general'); } catch {}
-    (async () => {
-      try {
-        const resp = await fetch('/api/settings.php', { method: 'GET' });
-        if (resp.ok) {
-          const data = await resp.json();
-          const srv = data?.settings?.general;
-          if (srv && typeof srv === 'object') {
-            setVal(prev => ({ ...prev, ...srv }));
-          }
-        }
-      } catch {}
-    })();
+    const srv = await fetchServerSettingsCategory<Partial<GeneralSettings>>('general');
+    if (srv && typeof srv === 'object') {
+      setVal(prev => ({ ...prev, ...srv }));
+    }
   }, []);
+  useServerSettingsLoader(load);
   const setter = (next: GeneralSettings | ((prev: GeneralSettings) => GeneralSettings)) => {
     setVal(prev => {
       const resolved = typeof next === 'function' ? (next as any)(prev) : next;
@@ -617,46 +697,49 @@ export const useGeneralSettings = () => {
 };
 
 // Server-backed only: do NOT persist database settings (secrets) in localStorage
+export interface DatabaseSettingsState extends DatabaseSettings {
+  /** Server says a real DB password is stored (client may only see ***). */
+  configured?: boolean;
+}
+
 export const useDatabaseSettings = () => {
-  const [val, setVal] = React.useState<DatabaseSettings>(defaultDatabaseSettings);
+  const [val, setVal] = React.useState<DatabaseSettingsState>(defaultDatabaseSettings);
 
-  // Load from server once; purge any legacy local copies
-  React.useEffect(() => {
+  const load = React.useCallback(async () => {
     try { localStorage.removeItem('lmeve-settings-database'); } catch {}
-    (async () => {
-      try {
-        const ok = await loadSettingsFromServer();
-        // Pull current snapshot directly from server API for accuracy
-        const resp = await fetch('/api/settings.php', { method: 'GET' });
-        if (resp.ok) {
-          const data = await resp.json();
-          const srv = data?.settings?.database;
-          if (srv && typeof srv === 'object') {
-            setVal(prev => ({
-              ...prev,
-              host: srv.host ?? prev.host,
-              port: srv.port ?? prev.port,
-              database: srv.database ?? prev.database,
-              username: srv.username ?? prev.username,
-              // Server masks secrets as '***' on GET – retain current in-memory secret if masked
-              password: (srv.password && srv.password !== '***') ? srv.password : prev.password,
-              sudoHost: srv.sudoHost ?? prev.sudoHost ?? 'localhost',
-              sudoPort: srv.sudoPort ?? prev.sudoPort ?? 3306,
-              sudoUsername: srv.sudoUsername ?? prev.sudoUsername ?? 'root',
-              sudoPassword: (srv.sudoPassword && srv.sudoPassword !== '***') ? srv.sudoPassword : prev.sudoPassword,
-            }));
-          }
-        }
-      } catch {}
-    })();
+    const srv = await fetchServerSettingsCategory<Record<string, any>>('database');
+    if (!srv || typeof srv !== 'object') return;
+    setVal(prev => ({
+      ...prev,
+      host: String(srv.host ?? prev.host ?? ''),
+      port: typeof srv.port === 'number' ? srv.port : Number(srv.port ?? prev.port ?? 3306),
+      database: String(srv.database ?? prev.database ?? 'lmeve2'),
+      username: String(srv.username ?? prev.username ?? ''),
+      // Keep real typed password, else preserve *** mask so setup knows credentials exist
+      password: mergeSecretField(srv.password, prev.password),
+      sudoHost: String(srv.sudoHost ?? prev.sudoHost ?? 'localhost'),
+      sudoPort: typeof srv.sudoPort === 'number' ? srv.sudoPort : Number(srv.sudoPort ?? prev.sudoPort ?? 3306),
+      sudoUsername: String(srv.sudoUsername ?? prev.sudoUsername ?? 'root'),
+      sudoPassword: mergeSecretField(srv.sudoPassword, prev.sudoPassword),
+      configured: typeof srv.configured === 'boolean'
+        ? srv.configured
+        : !!(mergeSecretField(srv.password, prev.password)),
+    }));
   }, []);
+  useServerSettingsLoader(load);
 
-  const setter = (next: DatabaseSettings | ((prev: DatabaseSettings) => DatabaseSettings)) => {
+  const setter = (next: DatabaseSettingsState | ((prev: DatabaseSettingsState) => DatabaseSettingsState)) => {
     setVal(prev => {
       const resolved = typeof next === 'function' ? (next as any)(prev) : next;
       // Write-through to server only; no localStorage persistence
-      scheduleCategorySave('database', resolved);
-      return resolved;
+      const { configured: _configured, ...toSave } = resolved as DatabaseSettingsState;
+      scheduleCategorySave('database', toSave);
+      return {
+        ...resolved,
+        configured:
+          !!(resolved.password && String(resolved.password).trim() !== '')
+          || !!resolved.configured,
+      };
     });
   };
   return [val, setter] as const;
@@ -666,47 +749,30 @@ export const useDatabaseSettings = () => {
 export const useESISettings = () => {
   const [val, setVal] = React.useState<ESISettings>(defaultESISettings);
 
-  React.useEffect(() => {
+  const load = React.useCallback(async () => {
     try { localStorage.removeItem('lmeve-settings-esi'); } catch {}
-    (async () => {
-      try {
-        const resp = await fetch('/api/settings.php', { method: 'GET', credentials: 'include' });
-        if (resp.ok) {
-          const data = await resp.json();
-          const srv = data?.settings?.esi;
-          if (srv && typeof srv === 'object') {
-            setVal(prev => {
-              const rawId = srv.clientId ?? prev.clientId;
-              // Unwrap accidental nested object saves; always keep strings.
-              const clientId =
-                rawId && typeof rawId === 'object'
-                  ? String((rawId as any).clientId ?? (rawId as any).client_id ?? '')
-                  : String(rawId ?? '');
-              const rawSecret =
-                (srv.clientSecret && srv.clientSecret !== '***')
-                  ? srv.clientSecret
-                  : prev.clientSecret;
-              const clientSecret =
-                rawSecret && typeof rawSecret === 'object'
-                  ? String((rawSecret as any).clientSecret ?? '')
-                  : String(rawSecret ?? '');
-              return {
-                ...prev,
-                clientId,
-                clientSecret,
-                callbackUrl: String(srv.callbackUrl ?? prev.callbackUrl ?? ''),
-                userAgent: String(srv.userAgent ?? prev.userAgent ?? ''),
-                scopes: Array.isArray(srv.scopes) ? srv.scopes : prev.scopes,
-                rateLimitBuffer: typeof srv.rateLimitBuffer === 'number' ? srv.rateLimitBuffer : prev.rateLimitBuffer,
-                maxRetries: typeof srv.maxRetries === 'number' ? srv.maxRetries : prev.maxRetries,
-                requestTimeout: typeof srv.requestTimeout === 'number' ? srv.requestTimeout : prev.requestTimeout,
-              };
-            });
-          }
-        }
-      } catch {}
-    })();
+    const srv = await fetchServerSettingsCategory<Record<string, any>>('esi');
+    if (!srv || typeof srv !== 'object') return;
+    setVal(prev => {
+      const rawId = srv.clientId ?? prev.clientId;
+      const clientId =
+        rawId && typeof rawId === 'object'
+          ? String((rawId as any).clientId ?? (rawId as any).client_id ?? '')
+          : String(rawId ?? '');
+      return {
+        ...prev,
+        clientId,
+        clientSecret: mergeSecretField(srv.clientSecret, prev.clientSecret),
+        callbackUrl: String(srv.callbackUrl ?? prev.callbackUrl ?? ''),
+        userAgent: String(srv.userAgent ?? prev.userAgent ?? ''),
+        scopes: Array.isArray(srv.scopes) ? srv.scopes : prev.scopes,
+        rateLimitBuffer: typeof srv.rateLimitBuffer === 'number' ? srv.rateLimitBuffer : prev.rateLimitBuffer,
+        maxRetries: typeof srv.maxRetries === 'number' ? srv.maxRetries : prev.maxRetries,
+        requestTimeout: typeof srv.requestTimeout === 'number' ? srv.requestTimeout : prev.requestTimeout,
+      };
+    });
   }, []);
+  useServerSettingsLoader(load);
 
   const setter = (next: ESISettings | ((prev: ESISettings) => ESISettings)) => {
     setVal(prev => {
@@ -721,21 +787,12 @@ export const useESISettings = () => {
 // Server-backed only: do NOT persist SDE settings in localStorage
 export const useSDESettings = () => {
   const [val, setVal] = React.useState<SDESettings>(defaultSDESettings);
-  React.useEffect(() => {
+  const load = React.useCallback(async () => {
     try { localStorage.removeItem('lmeve-settings-sde'); } catch {}
-    ;(async () => {
-      try {
-        const resp = await fetch('/api/settings.php', { method: 'GET' });
-        if (resp.ok) {
-          const data = await resp.json();
-          const srv = data?.settings?.sde;
-          if (srv && typeof srv === 'object') {
-            setVal(prev => ({ ...prev, ...srv }));
-          }
-        }
-      } catch {}
-    })();
+    const srv = await fetchServerSettingsCategory<Partial<SDESettings>>('sde');
+    if (srv && typeof srv === 'object') setVal(prev => ({ ...prev, ...srv }));
   }, []);
+  useServerSettingsLoader(load);
   const setter = (next: SDESettings | ((prev: SDESettings) => SDESettings)) => {
     setVal(prev => {
       const resolved = typeof next === 'function' ? (next as any)(prev) : next;
@@ -749,21 +806,12 @@ export const useSDESettings = () => {
 // Server-backed only
 export const useSyncSettings = () => {
   const [val, setVal] = React.useState<SyncSettings>(defaultSyncSettings);
-  React.useEffect(() => {
+  const load = React.useCallback(async () => {
     try { localStorage.removeItem('lmeve-settings-sync'); } catch {}
-    ;(async () => {
-      try {
-        const resp = await fetch('/api/settings.php', { method: 'GET' });
-        if (resp.ok) {
-          const data = await resp.json();
-          const srv = data?.settings?.sync;
-          if (srv && typeof srv === 'object') {
-            setVal(prev => ({ ...prev, ...srv }));
-          }
-        }
-      } catch {}
-    })();
+    const srv = await fetchServerSettingsCategory<Partial<SyncSettings>>('sync');
+    if (srv && typeof srv === 'object') setVal(prev => ({ ...prev, ...srv }));
   }, []);
+  useServerSettingsLoader(load);
   const setter = (next: SyncSettings | ((prev: SyncSettings) => SyncSettings)) => {
     setVal(prev => {
       const resolved = typeof next === 'function' ? (next as any)(prev) : next;
@@ -777,21 +825,12 @@ export const useSyncSettings = () => {
 // Server-backed only
 export const useNotificationSettings = () => {
   const [val, setVal] = React.useState<NotificationSettings>(defaultNotificationSettings);
-  React.useEffect(() => {
+  const load = React.useCallback(async () => {
     try { localStorage.removeItem('lmeve-settings-notifications'); } catch {}
-    ;(async () => {
-      try {
-        const resp = await fetch('/api/settings.php', { method: 'GET' });
-        if (resp.ok) {
-          const data = await resp.json();
-          const srv = data?.settings?.notifications;
-          if (srv && typeof srv === 'object') {
-            setVal(prev => ({ ...prev, ...srv }));
-          }
-        }
-      } catch {}
-    })();
+    const srv = await fetchServerSettingsCategory<Partial<NotificationSettings>>('notifications');
+    if (srv && typeof srv === 'object') setVal(prev => ({ ...prev, ...srv }));
   }, []);
+  useServerSettingsLoader(load);
   const setter = (next: NotificationSettings | ((prev: NotificationSettings) => NotificationSettings)) => {
     setVal(prev => {
       const resolved = typeof next === 'function' ? (next as any)(prev) : next;
@@ -805,21 +844,12 @@ export const useNotificationSettings = () => {
 // Server-backed only
 export const useIncomeSettings = () => {
   const [val, setVal] = React.useState<IncomeSettings>(defaultIncomeSettings);
-  React.useEffect(() => {
+  const load = React.useCallback(async () => {
     try { localStorage.removeItem('lmeve-settings-income'); } catch {}
-    ;(async () => {
-      try {
-        const resp = await fetch('/api/settings.php', { method: 'GET' });
-        if (resp.ok) {
-          const data = await resp.json();
-          const srv = data?.settings?.income;
-          if (srv && typeof srv === 'object') {
-            setVal(prev => ({ ...prev, ...srv }));
-          }
-        }
-      } catch {}
-    })();
+    const srv = await fetchServerSettingsCategory<Partial<IncomeSettings>>('income');
+    if (srv && typeof srv === 'object') setVal(prev => ({ ...prev, ...srv }));
   }, []);
+  useServerSettingsLoader(load);
   const setter = (next: IncomeSettings | ((prev: IncomeSettings) => IncomeSettings)) => {
     setVal(prev => {
       const resolved = typeof next === 'function' ? (next as any)(prev) : next;
@@ -833,21 +863,12 @@ export const useIncomeSettings = () => {
 // Server-backed only: manual users list
 export const useManualUsers = () => {
   const [val, setVal] = React.useState<ManualUser[]>([]);
-  React.useEffect(() => {
+  const load = React.useCallback(async () => {
     try { localStorage.removeItem('lmeve-manual-users'); } catch {}
-    ;(async () => {
-      try {
-        const resp = await fetch('/api/settings.php', { method: 'GET' });
-        if (resp.ok) {
-          const data = await resp.json();
-          const srv = data?.settings?.users;
-          if (Array.isArray(srv)) {
-            setVal(srv as ManualUser[]);
-          }
-        }
-      } catch {}
-    })();
+    const srv = await fetchServerSettingsCategory<ManualUser[]>('users');
+    if (Array.isArray(srv)) setVal(srv);
   }, []);
+  useServerSettingsLoader(load);
   const setter = (next: ManualUser[] | ((prev: ManualUser[]) => ManualUser[])) => {
     setVal(prev => {
       const resolved = typeof next === 'function' ? (next as any)(prev) : next;
@@ -861,21 +882,12 @@ export const useManualUsers = () => {
 // Server-backed only
 export const useApplicationData = () => {
   const [val, setVal] = React.useState<ApplicationData>(defaultApplicationData);
-  React.useEffect(() => {
+  const load = React.useCallback(async () => {
     try { localStorage.removeItem('lmeve-application-data'); } catch {}
-    ;(async () => {
-      try {
-        const resp = await fetch('/api/settings.php', { method: 'GET' });
-        if (resp.ok) {
-          const data = await resp.json();
-          const srv = data?.settings?.application;
-          if (srv && typeof srv === 'object') {
-            setVal(prev => ({ ...prev, ...srv }));
-          }
-        }
-      } catch {}
-    })();
+    const srv = await fetchServerSettingsCategory<Partial<ApplicationData>>('application');
+    if (srv && typeof srv === 'object') setVal(prev => ({ ...prev, ...srv }));
   }, []);
+  useServerSettingsLoader(load);
   const setter = (next: ApplicationData | ((prev: ApplicationData) => ApplicationData)) => {
     setVal(prev => {
       const resolved = typeof next === 'function' ? (next as any)(prev) : next;
@@ -889,21 +901,12 @@ export const useApplicationData = () => {
 // Server-backed only
 export const useCorporationData = () => {
   const [val, setVal] = React.useState<CorporationData[]>([]);
-  React.useEffect(() => {
+  const load = React.useCallback(async () => {
     try { localStorage.removeItem('lmeve-corporation-data'); } catch {}
-    ;(async () => {
-      try {
-        const resp = await fetch('/api/settings.php', { method: 'GET' });
-        if (resp.ok) {
-          const data = await resp.json();
-          const srv = data?.settings?.corporations;
-          if (Array.isArray(srv)) {
-            setVal(srv as CorporationData[]);
-          }
-        }
-      } catch {}
-    })();
+    const srv = await fetchServerSettingsCategory<CorporationData[]>('corporations');
+    if (Array.isArray(srv)) setVal(srv);
   }, []);
+  useServerSettingsLoader(load);
   const setter = (next: CorporationData[] | ((prev: CorporationData[]) => CorporationData[])) => {
     setVal(prev => {
       const resolved = typeof next === 'function' ? (next as any)(prev) : next;
@@ -1001,6 +1004,7 @@ export const saveSettingsToServer = async (): Promise<boolean> => {
     const backup = await exportAllSettings();
     const resp = await fetch('/api/settings.php', {
       method: 'POST',
+      credentials: SETTINGS_CREDENTIALS,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(backup)
     });
@@ -1012,41 +1016,19 @@ export const saveSettingsToServer = async (): Promise<boolean> => {
 
 export const loadSettingsFromServer = async (): Promise<boolean> => {
   try {
-    const resp = await fetch('/api/settings.php', { method: 'GET' });
+    const resp = await fetch('/api/settings.php', {
+      method: 'GET',
+      credentials: SETTINGS_CREDENTIALS,
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
     if (!resp.ok) return false;
     const data = await resp.json();
-    if (!data) return false;
-    // Accept both shapes:
-    // 1) { ok, settings: { general, database, ... } }
-    // 2) { ok, settings: { version, exportDate, settings: { ... } } }
-    // 3) Fallback legacy: { ok, settings: { database: {...} } }
-    const settingsPayload = data.settings;
-    if (!settingsPayload) return false;
-    // If the payload already has a 'settings' key, pass the whole object
-    // Otherwise, wrap it so importAllSettings receives expected shape
-    const importObj = settingsPayload.settings
-      ? settingsPayload
-      : { settings: settingsPayload };
+    const root = extractServerSettingsRoot(data);
+    if (!root) return false;
 
-    // Build current local snapshot for comparison
-    const localSnapshot = {
-      general: (await safeKVGet<GeneralSettings>('lmeve-settings-general')) ?? defaultGeneralSettings,
-      database: (await safeKVGet<DatabaseSettings>('lmeve-settings-database')) ?? defaultDatabaseSettings,
-      esi: (await safeKVGet<ESISettings>('lmeve-settings-esi')) ?? defaultESISettings,
-      sde: (await safeKVGet<SDESettings>('lmeve-settings-sde')) ?? defaultSDESettings,
-      sync: (await safeKVGet<SyncSettings>('lmeve-settings-sync')) ?? defaultSyncSettings,
-      notifications: (await safeKVGet<NotificationSettings>('lmeve-settings-notifications')) ?? defaultNotificationSettings,
-      income: (await safeKVGet<IncomeSettings>('lmeve-settings-income')) ?? defaultIncomeSettings,
-      users: (await safeKVGet<ManualUser[]>('lmeve-manual-users')) ?? [],
-      application: (await safeKVGet<ApplicationData>('lmeve-application-data')) ?? defaultApplicationData,
-    };
-    const incomingSnapshot = importObj.settings;
-
-    // Compare shallow JSON of categories to avoid unnecessary import/reload
-    const isSame = JSON.stringify(localSnapshot) === JSON.stringify(incomingSnapshot);
-    if (isSame) return false;
-
-    await importAllSettings(importObj);
+    // Notify live hooks; server is source of truth (no localStorage category copies).
+    requestSettingsReload();
     return true;
   } catch {
     return false;
@@ -1055,14 +1037,8 @@ export const loadSettingsFromServer = async (): Promise<boolean> => {
 
 export const bootstrapSettingsFromServerIfEmpty = async (): Promise<'loaded' | 'skipped' | 'failed'> => {
   try {
-    // If any critical category is missing locally, hydrate from server.
-    const hasESI = localStorage.getItem('lmeve-settings-esi');
-    const hasDB = localStorage.getItem('lmeve-settings-database');
-    const hasGeneral = localStorage.getItem('lmeve-settings-general');
-
-    const needsHydration = !hasESI || !hasDB || !hasGeneral;
-    if (!needsHydration) return 'skipped';
-
+    // Server-owned settings — always try once when authenticated hooks mount.
+    // Local category keys are intentionally not used anymore.
     const ok = await loadSettingsFromServer();
     return ok ? 'loaded' : 'failed';
   } catch {

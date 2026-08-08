@@ -17,9 +17,26 @@ function api_session_start(): void {
         return;
     }
 
-    $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
-        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');
+    // Prefer the host the browser actually used. Private/LAN HTTP must NOT get
+    // Secure cookies or login appears broken on local IP while public HTTPS works.
+    $host = (string)($_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '');
+    $hostNoPort = strtolower(preg_replace('/:\d+$/', '', $host) ?? $host);
+    $isLoopback = in_array($hostNoPort, ['localhost', '127.0.0.1', '::1'], true)
+            || strpos($hostNoPort, '127.') === 0;
+    $isPrivateLan = (bool)preg_match(
+        '/^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/',
+        $hostNoPort
+    );
+
+    $httpsDirect = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+    $httpsForwarded = isset($_SERVER['HTTP_X_FORWARDED_PROTO'])
+        && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https';
+
+    // Only trust forwarded proto for non-LAN hosts (public reverse proxy).
+    $secure = $isLoopback || $isPrivateLan
+        ? $httpsDirect
+        : ($httpsDirect || $httpsForwarded);
 
     // Allow same-origin SPA + PHP API cookie auth.
     if (PHP_VERSION_ID >= 70300) {

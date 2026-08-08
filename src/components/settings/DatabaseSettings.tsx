@@ -37,7 +37,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   const warnedSiteDataFailureRef = useRef(false);
   const loadSetupStatus = async (): Promise<any> => {
     try {
-      const resp = await fetch('/api/site-data.php?key=setup-status');
+      const resp = await fetch('/api/site-data.php?key=setup-status', { credentials: 'include' });
       if (resp.ok) {
         const json = await resp.json();
         return json?.value ?? {};
@@ -57,7 +57,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   };
   const saveSetupStatus = async (value: any) => {
     try {
-      const resp = await fetch('/api/site-data.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'setup-status', value }) });
+      const resp = await fetch('/api/site-data.php', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'setup-status', value }) });
       if (resp.ok) return;
       try {
         const diag = await resp.json();
@@ -86,7 +86,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     // Load server-backed settings (if available) to hydrate local config for all users
     (async () => {
       try {
-        const resp = await fetch('/api/settings.php', { method: 'GET' });
+        const resp = await fetch('/api/settings.php', { method: 'GET', credentials: 'include', cache: 'no-store' });
         if (resp.ok) {
           const data = await resp.json();
           const srv = data?.settings?.database;
@@ -153,6 +153,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         try {
           await fetch('/api/settings.php', {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ database: { ...dbForm } })
           });
@@ -233,6 +234,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         try {
           await fetch('/api/settings.php', {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ database: { ...databaseSettings } })
           });

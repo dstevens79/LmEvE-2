@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useKV } from '@/lib/kv';
-import { useGeneralSettings, useDatabaseSettings } from '@/lib/persistenceService';
+import { useGeneralSettings, useDatabaseSettings, requestSettingsReload } from '@/lib/persistenceService';
 import { toast } from 'sonner';
 import { LMeveUser, UserRole, CorporationConfig } from './types';
 import { createUserWithRole, isLocalSiteAdmin, isSessionValid, normalizeUserRole, refreshUserSession } from './roles';
@@ -416,13 +416,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setCurrentUser(fullUser);
       setSessionReady(true);
       setServerSessionChecked(true);
-      console.log('✅ Manual login successful:', username, {
+      console.log('Manual login successful:', username, {
         role: fullUser.role,
         id: fullUser.id,
         isAdmin: fullUser.isAdmin,
         authSource: json?.authSource || 'unknown',
       });
       triggerAuthChange();
+      // Server settings require an admin session — reload them now that we have one.
+      try { requestSettingsReload(); } catch {}
       // Trigger metrics refresh so UI updates login counts immediately
       try {
         window.dispatchEvent(new CustomEvent('lmeve-login-success'));
