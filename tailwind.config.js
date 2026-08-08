@@ -18,11 +18,8 @@ const defaultTheme = {
     padding: "2rem",
   },
   extend: {
-    screens: {
-      coarse: { raw: "(pointer: coarse)" },
-      fine: { raw: "(pointer: fine)" },
-      pwa: { raw: "(display-mode: standalone)" },
-    },
+    // Custom raw screens removed: Tailwind v4 was emitting invalid
+    // `@media (width >= (pointer: …))` rules from these entries.
     colors: {
       neutral: {
         1: "var(--color-neutral-1)",

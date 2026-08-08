@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,9 +11,9 @@ import {
   FileText, 
   Copy,
   Check,
-  AlertTriangle,
+  Warning,
   Info,
-  Settings,
+  Gear,
   Code
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
@@ -125,7 +125,7 @@ export function DatabaseSchemaManager({ className }: DatabaseSchemaManagerProps)
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Columns</CardTitle>
-            <Settings className="h-4 w-4 text-muted-foreground" />
+            <Gear className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalColumns}</div>
@@ -145,7 +145,7 @@ export function DatabaseSchemaManager({ className }: DatabaseSchemaManagerProps)
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Foreign Keys</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+            <Warning className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalForeignKeys}</div>
@@ -280,7 +280,7 @@ export function DatabaseSchemaManager({ className }: DatabaseSchemaManagerProps)
                                       <code className="font-mono">{fk.name}</code>
                                     </div>
                                     <code className="text-xs text-muted-foreground">
-                                      {fk.column} → {fk.referencedTable}.{fk.referencedColumn}
+                                      {fk.column} â†’ {fk.referencedTable}.{fk.referencedColumn}
                                     </code>
                                   </div>
                                 ))}

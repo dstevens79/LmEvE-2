@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Users, Star, Clock, Factory, TrendUp, Save } from '@phosphor-icons/react';
+import { Plus, Users, Star, Clock, Factory, TrendUp, FloppyDisk } from '@phosphor-icons/react';
 import { Member } from '@/lib/types';
 import { toast } from 'sonner';
 
@@ -131,7 +131,7 @@ export function AdministrationView({
                       Cancel
                     </Button>
                     <Button size="sm" onClick={handleSaveModifiers} className="h-7 text-xs px-2">
-                      <Save size={12} className="mr-1" />
+                      <FloppyDisk size={12} className="mr-1" />
                       Save
                     </Button>
                   </>
@@ -222,7 +222,7 @@ export function AdministrationView({
                       Cancel
                     </Button>
                     <Button size="sm" onClick={handleSaveRates} className="h-7 text-xs px-2">
-                      <Save size={12} className="mr-1" />
+                      <FloppyDisk size={12} className="mr-1" />
                       Save
                     </Button>
                   </>

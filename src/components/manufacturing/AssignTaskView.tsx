@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Search, Users, Package, Star } from '@phosphor-icons/react';
+import { ArrowLeft, MagnifyingGlass, Users, Package, Star } from '@phosphor-icons/react';
 import { Member } from '@/lib/types';
 import { toast } from 'sonner';
 
@@ -139,7 +139,7 @@ export function AssignTaskView({
               <div>
                 <Label htmlFor="item-search">Item to Manufacture</Label>
                 <div className="relative">
-                  <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
+                  <MagnifyingGlass size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="item-search"
                     type="text"
@@ -288,7 +288,7 @@ export function AssignTaskView({
               <div>
                 <Label htmlFor="pilot-search">Select Pilot</Label>
                 <div className="relative">
-                  <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
+                  <MagnifyingGlass size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="pilot-search"
                     type="text"
@@ -322,7 +322,7 @@ export function AssignTaskView({
                         <div>
                           <p className="font-medium">{pilot.characterName}</p>
                           <p className="text-xs text-muted-foreground">
-                            {pilot.title} • {pilot.accessLevel}
+                            {pilot.title} â€¢ {pilot.accessLevel}
                           </p>
                         </div>
                       </button>
@@ -344,7 +344,7 @@ export function AssignTaskView({
                     <div className="flex-1">
                       <p className="font-medium">{selectedPilot.characterName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {selectedPilot.title} • Last seen: {new Date(selectedPilot.lastLogin).toLocaleDateString()}
+                        {selectedPilot.title} â€¢ Last seen: {new Date(selectedPilot.lastLogin).toLocaleDateString()}
                       </p>
                     </div>
                     <Button

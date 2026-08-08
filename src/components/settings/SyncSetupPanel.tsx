@@ -26,7 +26,7 @@ import {
   CurrencyDollar,
   Crosshair,
   Archive,
-  Activity,
+  Pulse,
   FileText,
   Globe,
   UserCheck

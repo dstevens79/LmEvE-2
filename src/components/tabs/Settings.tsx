@@ -57,7 +57,7 @@ import {
   CaretDown,
   CaretRight,
   Question,
-  Settings as SettingsIcon
+  Gear as SettingsIcon
 } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/auth-provider';
 import { startEsiLogin } from '@/lib/start-esi-login';

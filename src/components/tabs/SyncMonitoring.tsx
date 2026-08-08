@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,13 +6,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import {
-  Chart,
+  ChartBar,
   Database,
   Warning,
   CheckCircle,
   XCircle,
   Clock,
-  Activity,
+  Pulse,
   Trash,
   ArrowClockwise,
   Info
@@ -86,7 +86,7 @@ export function SyncMonitoring({ isMobileView = false }: SyncMonitoringProps) {
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-3">
-              <Activity size={32} className={healthStatus.color} />
+              <Pulse size={32} className={healthStatus.color} />
               <div>
                 <div className={`text-2xl font-bold ${healthStatus.color}`}>
                   {healthStatus.label}

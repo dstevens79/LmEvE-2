@@ -15,7 +15,7 @@ import {
   X,
   Plus,
   Trash,
-  Edit,
+  PencilSimple,
   Key,
   UserCheck,
   Eye,

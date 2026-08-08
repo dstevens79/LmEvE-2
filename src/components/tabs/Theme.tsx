@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,10 +19,9 @@ import {
   Copy, 
   Trash, 
   Plus, 
-  RefreshCw, 
+  ArrowsClockwise, 
   Eye, 
   Sliders,
-  Type,
   Square,
   Circle,
   Sun,
@@ -107,9 +106,9 @@ const ThemePreview: React.FC<{
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {theme.backgroundMode === 'dark' ? <Moon size={12} /> : <Sun size={12} />}
           <span>{theme.backgroundMode}</span>
-          <span>•</span>
+          <span>â€¢</span>
           <span>{theme.accentColor}</span>
-          <span>•</span>
+          <span>â€¢</span>
           <span>{theme.fontFamily}</span>
         </div>
         
@@ -695,7 +694,7 @@ export const Theme: React.FC<ThemeProps> = ({ isMobileView = false }) => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <RefreshCw size={20} />
+            <ArrowsClockwise size={20} />
             Quick Actions
           </CardTitle>
         </CardHeader>
@@ -714,7 +713,7 @@ export const Theme: React.FC<ThemeProps> = ({ isMobileView = false }) => {
               size="sm"
               onClick={() => themeManager.resetToDefault()}
             >
-              <RefreshCw size={16} className="mr-2" />
+              <ArrowsClockwise size={16} className="mr-2" />
               Reset to Default
             </Button>
           </div>

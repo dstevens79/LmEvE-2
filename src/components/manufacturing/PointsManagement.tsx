@@ -11,12 +11,12 @@ import {
   Star,
   TrendUp,
   Clock,
-  Award,
+  Trophy,
   Users,
   Calculator,
-  Edit,
+  PencilSimple,
   Plus,
-  History,
+  ClockCounterClockwise,
   CheckCircle,
   Factory
 } from '@phosphor-icons/react';
@@ -307,7 +307,7 @@ export function PointsManagement({ members, isMobileView }: PointsManagementProp
     <div className="space-y-6">
       <div>
         <h3 className="text-xl font-bold flex items-center gap-2">
-          <Award size={24} className="text-accent" />
+          <Trophy size={24} className="text-accent" />
           Manufacturing Points Management
         </h3>
         <p className="text-muted-foreground">
@@ -482,8 +482,8 @@ export function PointsManagement({ members, isMobileView }: PointsManagementProp
                           size="sm"
                           onClick={() => openEditRate(rate)}
                         >
-                          <Edit size={14} className="mr-1" />
-                          Edit
+                          <PencilSimple size={14} className="mr-1" />
+                          PencilSimple
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -552,7 +552,7 @@ export function PointsManagement({ members, isMobileView }: PointsManagementProp
             <div>
               <h4 className="font-semibold">Points Transactions</h4>
               <p className="text-sm text-muted-foreground">
-                History of all points earned and awarded
+                ClockCounterClockwise of all points earned and awarded
               </p>
             </div>
 
@@ -560,7 +560,7 @@ export function PointsManagement({ members, isMobileView }: PointsManagementProp
               <Card>
                 <CardContent className="p-6">
                   <div className="text-center py-12">
-                    <History size={48} className="mx-auto text-muted-foreground mb-4" />
+                    <ClockCounterClockwise size={48} className="mx-auto text-muted-foreground mb-4" />
                     <h4 className="text-lg font-semibold mb-2">No Transactions</h4>
                     <p className="text-muted-foreground">
                       Points transactions will appear here when tasks are completed and processed.
@@ -616,13 +616,13 @@ export function PointsManagement({ members, isMobileView }: PointsManagementProp
         </TabsContent>
       </Tabs>
 
-      {/* Edit Rate Dialog */}
+      {/* PencilSimple Rate Dialog */}
       <Dialog open={editRateDialog} onOpenChange={setEditRateDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calculator size={20} />
-              {editingRate ? 'Edit Points Rate' : 'Create Points Rate'}
+              {editingRate ? 'PencilSimple Points Rate' : 'Create Points Rate'}
             </DialogTitle>
           </DialogHeader>
 

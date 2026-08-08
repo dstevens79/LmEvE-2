@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import {
   ArrowClockwise,
   Copy,
   Info,
-  Activity,
+  Pulse,
   Clock
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
@@ -156,7 +156,7 @@ export function GeneralSettings({ isMobileView = false }: GeneralSettingsProps) 
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Overall Status</span>
             <Badge variant={systemStatus.overall === 'online' ? 'default' : 'destructive'}>
-              <Activity size={12} className="mr-1" />
+              <Pulse size={12} className="mr-1" />
               {systemStatus.overall.toUpperCase()}
             </Badge>
           </div>

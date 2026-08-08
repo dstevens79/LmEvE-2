@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,7 +19,7 @@ import {
   EyeSlash,
   Plus,
   Trash,
-  Mail,
+  Envelope,
   ChatCircle,
   Info,
   TestTube
@@ -419,13 +419,13 @@ export function NotificationSettings({ isMobileView = false }: NotificationSetti
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
-            <Mail size={20} />
+            <Envelope size={20} />
             EVE Online Mail
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <Alert>
-            <Mail className="h-4 w-4" />
+            <Envelope className="h-4 w-4" />
             <AlertDescription>
               Configure in-game EVE Online mail notifications. These require ESI scopes to send 
               mail on behalf of your corporation.

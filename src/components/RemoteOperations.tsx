@@ -12,7 +12,7 @@ import {
   Upload,
   Database,
   Terminal,
-  AlertCircle
+  WarningCircle
 } from '@phosphor-icons/react';
 import { DatabaseTask } from '@/hooks/useRemoteOperations';
 
@@ -248,7 +248,7 @@ export const RemoteOperations: React.FC<RemoteOperationsProps> = ({
                       
                       {task.error && (
                         <div className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                          <AlertCircle size={12} />
+                          <WarningCircle size={12} />
                           {task.error}
                         </div>
                       )}
@@ -274,7 +274,7 @@ export const RemoteOperations: React.FC<RemoteOperationsProps> = ({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <AlertCircle size={20} />
+            <WarningCircle size={20} />
             Setup Requirements
           </CardTitle>
         </CardHeader>

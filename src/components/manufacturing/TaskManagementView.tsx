@@ -17,14 +17,14 @@ import {
   Calendar,
   Tag,
   CheckCircle,
-  AlertTriangle,
+  Warning,
   Play,
   Pause,
   Stop,
   Eye,
-  Edit,
+  PencilSimple,
   Archive,
-  MessageCircle,
+  ChatCircle,
   Upload,
   Check,
   X
@@ -303,8 +303,8 @@ export function TaskManagementView({
                   size="sm"
                   onClick={() => onEditTask(task)}
                 >
-                  <Edit size={14} className="mr-1" />
-                  Edit
+                  <PencilSimple size={14} className="mr-1" />
+                  PencilSimple
                 </Button>
 
                 {task.status === 'assigned' && (
@@ -326,7 +326,7 @@ export function TaskManagementView({
                       size="sm"
                       onClick={() => handleAddProgress(task)}
                     >
-                      <MessageCircle size={14} className="mr-1" />
+                      <ChatCircle size={14} className="mr-1" />
                       Progress
                     </Button>
                     <Button

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,8 +17,8 @@ import {
   Play,
   Stop,
   ArrowClockwise,
-  Settings as SettingsIcon,
-  Activity,
+  Gear as SettingsIcon,
+  Pulse,
   Info,
   Users,
   Package,
@@ -299,7 +299,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
     const processName = syncProcesses.find(p => p.id === processId)?.name || processId;
     
     try {
-      console.log(`🚀 Starting sync process: ${processId}`);
+      console.log(`ðŸš€ Starting sync process: ${processId}`);
       
       const dbService = getDatabaseService();
       const storageService = new ESIDataStorageService(dbService);
@@ -341,7 +341,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
         toast.error(`${processName} sync failed: ${result.errorMessage}`);
       }
     } catch (error) {
-      console.error(`❌ Sync process ${processId} failed:`, error);
+      console.error(`âŒ Sync process ${processId} failed:`, error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       toast.error(`${processName} sync failed: ${errorMessage}`);
     }
@@ -362,7 +362,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       const validationResults: Record<string, string> = {};
       
       for (const [processName, validation] of Object.entries(results.validations)) {
-        validationResults[processName] = validation.isValid ? '✓ Valid' : `✗ Failed: ${validation.error}`;
+        validationResults[processName] = validation.isValid ? 'âœ“ Valid' : `âœ— Failed: ${validation.error}`;
       }
       
       setESIRouteValidation(validationResults);
@@ -411,7 +411,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'running': return <Activity size={12} className="animate-spin" />;
+      case 'running': return <Pulse size={12} className="animate-spin" />;
       case 'success': return <CheckCircle size={12} />;
       case 'error': return <X size={12} />;
       default: return <Clock size={12} />;
@@ -585,7 +585,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                 
                 {esiRouteValidation[process.id] && (
                   <div className={`text-xs ${
-                    esiRouteValidation[process.id].startsWith('✓') 
+                    esiRouteValidation[process.id].startsWith('âœ“') 
                       ? 'text-green-400' 
                       : 'text-red-400'
                   }`}>
@@ -625,7 +625,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
             >
               {isInstallingCron ? (
                 <>
-                  <Activity size={16} className="mr-2 animate-spin" />
+                  <Pulse size={16} className="mr-2 animate-spin" />
                   Installing...
                 </>
               ) : cronInstalled ? (
@@ -710,7 +710,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                         {process.lastSync && (
                           <>
-                            <span>•</span>
+                            <span>â€¢</span>
                             <span>Last: {formatLastSync(process.lastSync)}</span>
                           </>
                         )}
@@ -740,7 +740,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                       className="h-8"
                     >
                       {isRunning ? (
-                        <Activity size={14} className="animate-spin" />
+                        <Pulse size={14} className="animate-spin" />
                       ) : (
                         <Play size={14} />
                       )}
@@ -800,7 +800,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                       className="h-8"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Minimum: 1 day (1440 min) • Maximum: 7 days (10080 min)
+                      Minimum: 1 day (1440 min) â€¢ Maximum: 7 days (10080 min)
                     </p>
                   </div>
 
@@ -874,7 +874,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
-              <Activity size={20} />
+              <Pulse size={20} />
               Recent Sync History
             </CardTitle>
             <Button
@@ -916,11 +916,11 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                         </div>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
                           <span>{new Date(historyItem.timestamp).toLocaleString()}</span>
-                          <span>•</span>
+                          <span>â€¢</span>
                           <span>{(historyItem.duration / 1000).toFixed(1)}s</span>
                           {historyItem.itemsProcessed !== undefined && (
                             <>
-                              <span>•</span>
+                              <span>â€¢</span>
                               <span>{historyItem.itemsProcessed} items</span>
                             </>
                           )}

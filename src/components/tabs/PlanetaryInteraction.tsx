@@ -17,7 +17,7 @@ import {
   Package,
   Truck,
   Plus,
-  Trash2,
+  Trash,
   CurrencyDollar,
   TrendUp,
   CheckCircle,
@@ -835,7 +835,7 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
                           variant="outline"
                           onClick={() => handleDeleteAssignment(assignment.id)}
                         >
-                          <Trash2 size={14} />
+                          <Trash size={14} />
                         </Button>
                       </div>
                     );
@@ -1153,7 +1153,7 @@ export function PlanetaryInteraction({ isMobileView = false }: PlanetaryInteract
                                       variant="outline"
                                       onClick={() => handleDeleteAssignment(assignment.id)}
                                     >
-                                      <Trash2 size={14} />
+                                      <Trash size={14} />
                                     </Button>
                                   </div>
                                 </div>

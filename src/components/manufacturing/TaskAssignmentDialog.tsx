@@ -20,7 +20,7 @@ import {
   Calendar,
   Tag,
   CheckCircle,
-  AlertTriangle,
+  Warning,
   Info,
   CaretUpDown,
   Check,
