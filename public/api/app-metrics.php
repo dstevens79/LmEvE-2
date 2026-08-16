@@ -81,7 +81,7 @@ try {
                 }
             }
         }
-        $managedCorpIds = array_values(array_unique(array_filter($managedCorpIds, fn($v) => is_int($v) || is_numeric($v))));
+        $managedCorpIds = array_values(array_unique(array_filter($managedCorpIds, static function ($v) { return is_int($v) || is_numeric($v); })));
         $registeredCorpsCount = count($managedCorpIds);
 
         // Build WHERE fragments

@@ -12,7 +12,7 @@ $mysqli = api_connect($payload);
 api_select_db($mysqli, $sdeDb);
 
 // Prepare IN clause safely
-$ids = array_values(array_filter(array_map('intval', $ids), fn($x) => $x > 0));
+$ids = array_values(array_filter(array_map('intval', $ids), static function ($x) { return $x > 0; }));
 if (count($ids) === 0) { api_fail(400, 'No valid typeIds provided'); }
 $placeholders = implode(',', array_fill(0, count($ids), '?'));
 $sql = "SELECT typeID, typeName FROM invTypes WHERE typeID IN ($placeholders)";

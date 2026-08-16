@@ -33,7 +33,7 @@ function esi_http_get(string $url, array $headers = []): array {
  */
 function esi_parse_scopes($scopes): array {
     if (is_array($scopes)) {
-        return array_values(array_filter(array_map('strval', $scopes), fn($s) => $s !== ''));
+        return array_values(array_filter(array_map('strval', $scopes), static function ($s) { return $s !== ''; }));
     }
     if (!is_string($scopes) || trim($scopes) === '') {
         return [];
@@ -56,7 +56,7 @@ function esi_map_eve_roles_to_site_role(array $eveRoles): string {
 
     foreach ($normalized as $role) {
         if (
-            str_contains($role, 'director')
+            strpos($role, 'director') !== false
             || $role === 'personnel_manager'
             || $role === 'security_officer'
             || $role === 'communications_officer'
@@ -74,7 +74,7 @@ function esi_map_eve_roles_to_site_role(array $eveRoles): string {
             'trader',
             'config_equipment',
             'config_starbase_equipment',
-        ], true) || str_starts_with($role, 'hangar_can_take') || str_starts_with($role, 'container_can_take')) {
+        ], true) || strpos($role, 'hangar_can_take') === 0 || strpos($role, 'container_can_take') === 0) {
             return 'corp_manager';
         }
     }
@@ -86,15 +86,15 @@ function esi_map_eve_roles_to_site_role(array $eveRoles): string {
  * Rank roles for elevation comparisons (higher = more privilege).
  */
 function esi_role_rank(string $role): int {
-    return match ($role) {
+    $ranks = [
         'super_admin' => 100,
         'corp_admin' => 80,
         'corp_director' => 60,
         'corp_manager' => 40,
         'corp_member' => 20,
         'guest' => 10,
-        default => 0,
-    };
+    ];
+    return $ranks[$role] ?? 0;
 }
 
 /**
