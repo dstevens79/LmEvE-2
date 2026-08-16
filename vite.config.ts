@@ -52,7 +52,6 @@ export default defineConfig({
           if (id.includes("@phosphor-icons")) return "icons";
           if (id.includes("recharts") || id.includes("/d3")) return "charts";
           if (id.includes("@radix-ui")) return "radix";
-          if (id.includes("react-dom") || id.includes("node_modules/react/")) return "react-vendor";
           if (id.includes("three") || id.includes("framer-motion")) return "motion";
           return "vendor";
         },
