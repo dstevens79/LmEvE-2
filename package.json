@@ -78,9 +78,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
-    "@rollup/rollup-win32-x64-msvc": "^4.62.4",
     "@swc/core": "^1.15.47",
-    "@swc/core-win32-x64-msvc": "^1.15.47",
     "@tailwindcss/postcss": "^4.1.8",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
@@ -102,8 +100,5 @@
       "packages/*"
     ]
   },
-  "description": "LmEvE-2 EVE Online corporation management",
-  "optionalDependencies": {
-    "@rollup/rollup-win32-x64-msvc": "^4.62.4"
-  }
+  "description": "LmEvE-2 EVE Online corporation management"
 }
