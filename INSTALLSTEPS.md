@@ -111,14 +111,14 @@ Ubuntu 20.04 has older npm — pull Node v20.x (includes npm 10+):
 
 Clone and Build LMeve-2 Frontend
   cd /var/www/
-  sudo git clone https://github.com/dstevens79/eve-online-api-moder.git 
-  cd eve-online-api-moder
+  sudo git clone https://github.com/dstevens79/LmEvE-2.git 
+  cd LmEvE-2
   sudo npm install
   sudo npm run build
     
     cd /var/www/
-    sudo git clone https://github.com/dstevens79/eve-online-api-moder.git 
-    cd eve-online-api-moder
+    sudo git clone https://github.com/dstevens79/LmEvE-2 
+    cd LmEvE-2
     sudo npm install
     sudo npm run build
 
