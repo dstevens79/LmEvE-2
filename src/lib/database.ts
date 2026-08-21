@@ -138,7 +138,13 @@ export class DatabaseManager {
             'Content-Type': 'application/json',
           },
           credentials: 'include',
-          body: JSON.stringify({}),
+          body: JSON.stringify({
+            host: this.config.host,
+            port: this.config.port,
+            database: this.config.database,
+            username: this.config.username,
+            password: this.config.password,
+          }),
           signal: controller.signal,
         });
       } finally {
@@ -683,20 +689,36 @@ export class DatabaseManager {
         throw new Error('Database not connected');
       }
 
-      // Simulate query execution
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 200 + 50));
-      
+      // Execute against the real database via the PHP executor (server-owned credentials).
+      const response = await fetch('/api/lmeve/execute.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ sql, params })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Query request failed with status ${response.status}`);
+      }
+      const json = await response.json();
+
       const executionTime = Date.now() - startTime;
       this.status.queryCount++;
       this.status.avgQueryTime = (this.status.avgQueryTime + executionTime) / 2;
 
-      // Return simulated result based on query type
-      const result = this.simulateQueryResult<T>(sql);
-      
+      if (json.ok === false) {
+        return {
+          success: false,
+          error: json.error || 'Query failed',
+          executionTime,
+          query: sql
+        };
+      }
+
       return {
         success: true,
-        data: result.data,
-        rowCount: result.rowCount,
+        data: (json.rows as T[]) || [],
+        rowCount: typeof json.rowCount === 'number' ? json.rowCount : 0,
         executionTime,
         query: sql
       };
@@ -708,31 +730,6 @@ export class DatabaseManager {
         query: sql
       };
     }
-  }
-
-  private simulateQueryResult<T>(sql: string): { data: T[]; rowCount: number } {
-    // Simple query simulation based on SQL content
-    if (sql.toLowerCase().includes('select')) {
-      // Return mock data based on query
-      const rowCount = Math.floor(Math.random() * 100) + 1;
-      return { data: [] as T[], rowCount };
-    }
-    
-    if (sql.toLowerCase().includes('insert')) {
-      return { data: [] as T[], rowCount: 1 };
-    }
-    
-    if (sql.toLowerCase().includes('update')) {
-      const rowCount = Math.floor(Math.random() * 10) + 1;
-      return { data: [] as T[], rowCount };
-    }
-    
-    if (sql.toLowerCase().includes('delete')) {
-      const rowCount = Math.floor(Math.random() * 5) + 1;
-      return { data: [] as T[], rowCount };
-    }
-
-    return { data: [] as T[], rowCount: 0 };
   }
 
   async getTableInfo(): Promise<TableInfo[]> {
