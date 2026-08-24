@@ -214,7 +214,7 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ database: { ...databaseSettings } })
+            body: JSON.stringify({ database: { ...databaseSettings, ...dbForm } })
           });
         } catch {}
         try {

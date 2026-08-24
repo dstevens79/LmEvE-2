@@ -31,7 +31,8 @@ import {
   FileText,
   Receipt,
   Planet,
-  User
+  User,
+  Activity
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useSyncSettings } from '@/lib/persistenceService';
@@ -39,7 +40,7 @@ import { esiRouteManager, useESIRoutes } from '@/lib/esi-routes';
 import { SyncStateManager, useSyncState } from '@/lib/sync-state-manager';
 import { SyncExecutor, type SyncProcessType } from '@/lib/sync-executor';
 import { ESIDataFetchService } from '@/lib/esi-data-service';
-import { ESIDataStorageService, getDatabaseService } from '@/lib/database';
+import { getDatabaseService } from '@/lib/database';
 import { useAuth } from '@/lib/auth-provider';
 
 interface DataSyncSettingsProps {
@@ -50,7 +51,7 @@ interface SyncProcess {
   id: string;
   name: string;
   description: string;
-  icon: React.ComponentType<{ size?: number }>;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
   enabled: boolean;
   interval: number; // minutes
   lastSync: string | null;
@@ -277,10 +278,11 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
     ));
 
     // Update settings
+    const existingProcessConfig = (syncSettings as any)[processId];
     updateSyncSettings({
       [processId]: {
-        enabled: updates.enabled ?? syncSettings[processId as keyof typeof syncSettings]?.enabled,
-        interval: updates.interval ?? syncSettings[processId as keyof typeof syncSettings]?.interval
+        enabled: updates.enabled ?? existingProcessConfig?.enabled,
+        interval: updates.interval ?? existingProcessConfig?.interval
       }
     });
   };
@@ -301,8 +303,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
     try {
       console.log(`ðŸš€ Starting sync process: ${processId}`);
       
-      const dbService = getDatabaseService();
-      const storageService = new ESIDataStorageService(dbService);
+      const storageService = getDatabaseService();
       const fetchService = new ESIDataFetchService();
       const executor = new SyncExecutor();
 

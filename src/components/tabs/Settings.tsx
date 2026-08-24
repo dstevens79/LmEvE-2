@@ -84,7 +84,7 @@ import { useGeneralSettings,
   validateSettings
 } from '@/lib/persistenceService';
 import { UserManagement } from '@/components/UserManagement';
-import { SyncSetupPanel } from '@/components/settings/SyncSetupPanel';
+import { DataSyncSettings } from '@/components/settings/DataSyncSettings';
 import { PermissionsTab } from '@/components/settings/PermissionsTab';
 import { SyncMonitoring } from '@/components/tabs/SyncMonitoring';
 // Database tab containerized
@@ -1054,6 +1054,9 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
           </Card>
         </TabsContent>
 
+        <TabsContent value="sync" className="space-y-6">
+          <DataSyncSettings isMobileView={isMobileView} />
+        </TabsContent>
         <TabsContent value="notifications" className="space-y-6">
           <NotificationSettings />
         </TabsContent>
