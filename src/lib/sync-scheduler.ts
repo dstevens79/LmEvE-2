@@ -3,7 +3,7 @@ import { localKv } from '@/lib/kv';
 import { SyncExecutor, SyncProcessType } from './sync-executor';
 import { ESIDataFetchService } from './esi-data-service';
 import { ESIDataStorageService } from './database';
-import { AuthUser } from './auth-provider';
+import { runCorpSyncSegment, resolveCorpSyncSegment } from './corp-sync-service';
 
 export interface SyncScheduleConfig {
   processId: string;
@@ -25,6 +25,7 @@ export class SyncScheduler {
   private executor: SyncExecutor;
   private state: SchedulerState;
   private checkIntervalHandle?: number;
+  private unsupportedWarned = new Set<string>();
 
   private constructor() {
     this.stateManager = SyncStateManager.getInstance();
@@ -170,11 +171,57 @@ export class SyncScheduler {
           const newNextRunTime = now + (config.intervalMinutes * 60 * 1000);
           this.state.nextRunTimes.set(processId, newNextRunTime);
           await this.stateManager.setNextRunTime(processId, newNextRunTime);
+          
+          this.executeScheduledProcess(processId, config);
         } else {
           console.log(`⏭️ Skipping scheduled run for ${processId} - already running`);
         }
       }
     }
+  }
+
+  /**
+   * Execute a due scheduled process. The server owns the vaulted corp token,
+   * fetches the ESI segment, and upserts rows — the browser only requests it.
+   * Process ids are named `corp_<corporationId>_<processType>`.
+   */
+  private executeScheduledProcess(processId: string, _config: SyncScheduleConfig): void {
+    const match = /^corp_(\d+)_(.+)$/.exec(processId);
+    if (!match) {
+      console.warn(`⚠️ Cannot execute scheduled process (unrecognized id): ${processId}`);
+      return;
+    }
+    const corporationId = Number(match[1]);
+    const processType = match[2] as SyncProcessType;
+
+    if (!resolveCorpSyncSegment(processType)) {
+      // No server-side segment for this process type (e.g. wallet, mining).
+      // Leave sync state untouched; log once so it isn't repeated every tick.
+      if (!this.unsupportedWarned.has(processId)) {
+        this.unsupportedWarned.add(processId);
+        console.warn(`⚠️ No automated sync endpoint for '${processType}' yet — scheduled runs skipped`);
+      }
+      return;
+    }
+
+    void (async () => {
+      try {
+        await this.stateManager.startSync(processId);
+        const result = await runCorpSyncSegment(processType, corporationId);
+        if (!result.ok) {
+          throw new Error(result.error || 'Scheduled corp sync failed');
+        }
+        await this.stateManager.updateSyncProgress(processId, 100, 'Complete', 0, 0);
+        await this.stateManager.completeSync(processId, result.fetched ?? 0);
+        console.log(`✅ Scheduled sync complete: ${processId} (${result.fetched ?? 0} items, ${result.tookMs ?? 0}ms)`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`❌ Scheduled sync failed: ${processId}`, message);
+        try {
+          await this.stateManager.failSync(processId, message);
+        } catch {}
+      }
+    })();
   }
 
   async runProcessNow(

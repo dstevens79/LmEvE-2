@@ -623,7 +623,7 @@ export interface WalletTransaction {
   amount: number;
   clientId: number;
   clientName: string;
-  locationId: number;
+  locationId?: number;
   locationName?: string;
   isBuy: boolean;
   isPersonal: boolean;
@@ -645,7 +645,7 @@ export interface MarketOrder {
   orderId: number;
   typeId: number;
   typeName: string;
-  locationId: number;
+  locationId?: number;
   locationName?: string;
   isBuyOrder: boolean;
   price: number;
@@ -875,4 +875,10 @@ export interface CorporationConfig {
   isActive: boolean;
   registrationDate: string;
   lastTokenRefresh?: string;
+  /** Browser-held corp token (SPA consent mode only; never persisted to localStorage). */
+  accessToken?: string;
+  /** True when the server vault holds a refreshable token for this corporation. */
+  hasVaultedToken?: boolean;
+  /** ISO/MySQL datetime of the last completed sync (null = never synced). */
+  last_sync?: string | null;
 }

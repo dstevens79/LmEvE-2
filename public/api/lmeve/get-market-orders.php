@@ -7,12 +7,8 @@ api_require_corporation_access($user, $corp);
 $mysqli = api_connect($payload);
 $dbCfg = api_get_db_config($payload);
 api_select_db($mysqli, (string)($dbCfg['database'] ?? 'lmeve2'));
-$limit = api_limit($payload, 200, 2000);
-// The members table is the real roster (populated by the sync core). There is no
-// `characters` table in this schema.
-$sql = $corp > 0
-    ? "SELECT * FROM members WHERE corporation_id = $corp ORDER BY character_name LIMIT $limit"
-    : "SELECT * FROM members ORDER BY character_name LIMIT $limit";
+$limit = api_limit($payload, 1000, 5000);
+$sql = "SELECT * FROM market_orders WHERE corporation_id = $corp ORDER BY issued DESC LIMIT $limit";
 $res = @$mysqli->query($sql);
 if ($res === false) { api_fail(200, 'Query failed', ['error' => $mysqli->error]); }
 $rows = [];

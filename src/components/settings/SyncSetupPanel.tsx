@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +36,12 @@ import { useAuth } from '@/lib/auth-provider';
 import { SyncScheduler, getSyncScheduler, initializeSyncScheduler, SyncScheduleConfig } from '@/lib/sync-scheduler';
 import { useSyncState } from '@/lib/sync-state-manager';
 import { DatabaseManager } from '@/lib/database';
+import { CorporationTokenManager } from '@/lib/corp-token-manager';
+import {
+  runCorpSyncSegment,
+  runInitialCorpSync,
+  CORP_SYNC_SEGMENTS
+} from '@/lib/corp-sync-service';
 import { useDatabaseSettings } from '@/lib/persistenceService';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -174,15 +180,22 @@ export function SyncSetupPanel() {
   const registeredCorps = getRegisteredCorporations();
   const activeCorp = registeredCorps.find(c => c.isActive);
 
+  // ESI auth is satisfied when the browser holds a valid corp token (SPA
+  // consent flow) OR the server vault holds one for the active corp (server
+  // consent flow — the sync endpoint refreshes it as needed).
+  const tokenManager = CorporationTokenManager.getInstance();
+  const hasBrowserCorpToken = !!activeCorp && tokenManager.hasValidToken(activeCorp.corporationId);
+  const hasVaultedCorpToken = !!(activeCorp as any)?.hasVaultedToken;
+
   useEffect(() => {
     const schedulerInstance = getSyncScheduler();
     setScheduler(schedulerInstance);
     setIsSchedulerRunning(schedulerInstance.isRunning());
-    
+
     const configs = schedulerInstance.getScheduledProcesses();
     const configMap = new Map(configs.map(c => [c.processId, c]));
     setProcessConfigs(configMap);
-    
+
     if (configs.length > 0) {
       setSetupComplete(true);
     }
@@ -193,15 +206,25 @@ export function SyncSetupPanel() {
       hasUser: !!user,
       hasActiveCorp: !!activeCorp,
       hasDatabase: !!(databaseSettings?.host && databaseSettings?.username && databaseSettings?.password),
-      hasESIAuth: !!(activeCorp?.accessToken)
+      hasESIAuth: hasBrowserCorpToken || hasVaultedCorpToken
     };
-    
+
     const isReady = Object.values(requirements).every(Boolean);
-    
+
     return { requirements, isReady };
   };
 
   const { requirements, isReady } = checkRequirements();
+
+  // Auto-install sync schedules as soon as everything is ready, so a freshly
+  // registered corp starts syncing without a manual step.
+  const autoInitRef = useRef(false);
+  useEffect(() => {
+    if (!isReady || setupComplete || autoInitRef.current) return;
+    autoInitRef.current = true;
+    handleSetupSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, setupComplete]);
 
   const handleSetupSync = async () => {
     if (!isReady) {
@@ -306,9 +329,9 @@ export function SyncSetupPanel() {
 
   const handleRunNow = async (processId: string, processType: string) => {
     if (!scheduler || !activeCorp) return;
-    
-    if (!activeCorp.accessToken) {
-      toast.error('No valid access token for corporation');
+
+    if (!hasBrowserCorpToken && !hasVaultedCorpToken) {
+      toast.error('No corp ESI access yet. Have a Director/CEO complete Corp ESI consent from the Corporations page.');
       return;
     }
 
@@ -317,27 +340,79 @@ export function SyncSetupPanel() {
       return;
     }
 
-    try {
-      const databaseService = new DatabaseManager({
-        host: databaseSettings.host,
-        port: databaseSettings.port || 3306,
-        username: databaseSettings.username!,
-        password: databaseSettings.password!,
-        database: databaseSettings.database || 'lmeve'
-      });
+    // Preferred path: the server resolves the vaulted corp token, fetches the
+    // ESI segment, and upserts rows. No raw token crosses to the browser.
+    const result = await runCorpSyncSegment(processType, activeCorp.corporationId);
 
-      await scheduler.runProcessNow(
-        processId,
-        processType as any,
-        activeCorp.corporationId,
-        activeCorp.accessToken,
-        databaseService
-      );
-      
-      toast.success('Sync process started');
-    } catch (error) {
-      console.error('Failed to run sync:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to run sync');
+    if (result.ok) {
+      toast.success(`${processType} synced: ${result.fetched ?? 0} items (${result.tookMs ?? 0}ms)`);
+      return;
+    }
+
+    // Fallback (SPA mode): run the in-browser executor when we hold a live
+    // corp token locally and the server endpoint is unavailable.
+    const serverUnavailable = result.status === 404 || result.status === 405 || result.status === 500 || !result.status;
+    if (serverUnavailable) {
+      const token = await tokenManager.getToken(activeCorp.corporationId);
+      if (token) {
+        try {
+          const databaseService = new DatabaseManager({
+            host: databaseSettings.host,
+            port: Number(databaseSettings.port) || 3306,
+            database: databaseSettings.database || 'lmeve',
+            username: databaseSettings.username!,
+            password: databaseSettings.password!,
+            ssl: !!databaseSettings.ssl,
+            connectionPoolSize: databaseSettings.connectionPoolSize,
+            queryTimeout: Number(databaseSettings.queryTimeout) || 30,
+            autoReconnect: !!databaseSettings.autoReconnect,
+            charset: databaseSettings.charset || 'utf8mb4'
+          });
+
+          await scheduler.runProcessNow(
+            processId,
+            processType as any,
+            activeCorp.corporationId,
+            token.accessToken,
+            databaseService
+          );
+          toast.success('Sync process completed (browser mode)');
+          return;
+        } catch (browserError) {
+          console.error('Browser sync fallback failed:', browserError);
+          toast.error(browserError instanceof Error ? browserError.message : 'Failed to run sync');
+          return;
+        }
+      }
+    }
+
+    toast.error(result.error || 'Failed to run sync');
+  };
+
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+
+  const handleSyncAll = async () => {
+    if (!activeCorp || isSyncingAll) return;
+    if (!hasBrowserCorpToken && !hasVaultedCorpToken) {
+      toast.error('No corp ESI access yet. Have a Director/CEO complete Corp ESI consent from the Corporations page.');
+      return;
+    }
+    if (!databaseSettings?.host) {
+      toast.error('Database not configured');
+      return;
+    }
+
+    setIsSyncingAll(true);
+    toast.info('Syncing corporation data...');
+    const batch = await runInitialCorpSync(activeCorp.corporationId, (segment, index, total) => {
+      console.log(`🔄 Corp sync ${index + 1}/${total}: ${segment}`);
+    });
+    setIsSyncingAll(false);
+
+    if (batch.failed.length === 0) {
+      toast.success(`Corp sync complete: ${batch.completed.length}/${CORP_SYNC_SEGMENTS.length} segments`);
+    } else {
+      toast.warning(`Corp sync partial: ${batch.failed.map(f => `${f.segment} (${f.error})`).join('; ')}`);
     }
   };
 
@@ -389,13 +464,21 @@ export function SyncSetupPanel() {
                   <span className="text-sm">Database configured</span>
                 </div>
                 
-                <div className="flex items-center gap-2">
+                <div className="flex items-start gap-2">
                   {requirements.hasESIAuth ? (
                     <CheckCircle size={18} className="text-green-400" />
                   ) : (
                     <X size={18} className="text-red-400" />
                   )}
-                  <span className="text-sm">ESI authentication active</span>
+                  <div>
+                    <span className="text-sm">ESI authentication active</span>
+                    {!requirements.hasESIAuth && activeCorp && (
+                      <p className="text-xs text-red-400/80 mt-0.5">
+                        {activeCorp.corporationName} is registered but has no ESI token. Have a
+                        Director/CEO complete Corp ESI consent from the Corporations page.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -448,6 +531,20 @@ export function SyncSetupPanel() {
           </div>
           
           <div className="flex items-center gap-2">
+            <Button
+              onClick={handleSyncAll}
+              variant="outline"
+              size="sm"
+              disabled={isSyncingAll}
+              className="border-accent/50 text-accent hover:bg-accent/10"
+            >
+              {isSyncingAll ? (
+                <ArrowClockwise size={16} className="mr-2 animate-spin" />
+              ) : (
+                <CloudArrowDown size={16} className="mr-2" />
+              )}
+              {isSyncingAll ? 'Syncing...' : 'Sync All Now'}
+            </Button>
             {isSchedulerRunning ? (
               <Button
                 onClick={handleStopScheduler}

@@ -7,6 +7,16 @@ import { UnifiedDataService } from './unified-data-service';
 import { eveApi } from './eveApi';
 import { useKV } from '@/lib/kv';
 import { useDatabaseSettings } from './persistenceService';
+import {
+  fetchMembers,
+  fetchAssets,
+  fetchIndustryJobs,
+  fetchWalletTransactions,
+  fetchWalletDivisions,
+  fetchMarketOrders,
+  fetchMiningLedger,
+  fetchKillmails,
+} from './corp-data';
 import type { 
   Member, 
   Asset, 
@@ -246,179 +256,205 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Refresh functions using unified data service
+  // All reads go to the server DB via corp-data (rows cached by cron/manual sync).
   const refreshMembers = async () => {
-    if (!unifiedService) return;
-    
+    if (!user?.corporationId) return;
+
     setLoading(prev => ({ ...prev, members: true }));
     try {
-      const result = await unifiedService.getMembers(user?.corporationId);
-      setMembers(result.data);
-      setDataSource(prev => ({ ...prev, members: result.source }));
-      console.log(`📊 Members loaded from ${result.source}: ${result.data.length} members`);
+      const data = await fetchMembers(user.corporationId);
+      setMembers(data);
+      setDataSource(prev => ({ ...prev, members: 'database' }));
+      console.log(`📊 Members loaded from database: ${data.length} members`);
     } catch (error) {
       console.error('Failed to refresh members:', error);
-      setMembers([]);
     } finally {
       setLoading(prev => ({ ...prev, members: false }));
     }
   };
 
   const refreshAssets = async () => {
-    if (!unifiedService) return;
-    
+    if (!user?.corporationId) return;
+
     setLoading(prev => ({ ...prev, assets: true }));
     try {
-      const result = await unifiedService.getAssets(user?.corporationId);
-      setAssets(result.data);
-      setDataSource(prev => ({ ...prev, assets: result.source }));
-      console.log(`📊 Assets loaded from ${result.source}: ${result.data.length} assets`);
+      const data = await fetchAssets(user.corporationId);
+      setAssets(data);
+      setDataSource(prev => ({ ...prev, assets: 'database' }));
+      console.log(`📊 Assets loaded from database: ${data.length} assets`);
     } catch (error) {
       console.error('Failed to refresh assets:', error);
-      setAssets([]);
     } finally {
       setLoading(prev => ({ ...prev, assets: false }));
     }
   };
 
   const refreshManufacturing = async () => {
-    if (!unifiedService) return;
-    
+    if (!user?.corporationId) return;
+
     setLoading(prev => ({ ...prev, manufacturing: true }));
     try {
-      const result = await unifiedService.getManufacturingJobs(user?.corporationId);
-      setManufacturingJobs(result.data);
-      setDataSource(prev => ({ ...prev, manufacturing: result.source }));
-      console.log(`📊 Manufacturing jobs loaded from ${result.source}: ${result.data.length} jobs`);
+      const data = await fetchIndustryJobs(user.corporationId);
+      setManufacturingJobs(data);
+      setDataSource(prev => ({ ...prev, manufacturing: 'database' }));
+      console.log(`📊 Manufacturing jobs loaded from database: ${data.length} jobs`);
     } catch (error) {
       console.error('Failed to refresh manufacturing:', error);
-      setManufacturingJobs([]);
     } finally {
       setLoading(prev => ({ ...prev, manufacturing: false }));
     }
   };
 
   const refreshWallet = async () => {
-    if (!unifiedService) return;
-    
+    if (!user?.corporationId) return;
+
     setLoading(prev => ({ ...prev, wallet: true }));
     try {
-      const result = await unifiedService.getWalletTransactions(user?.corporationId);
-      setWalletTransactions(result.data);
-      setDataSource(prev => ({ ...prev, wallet: result.source }));
-      console.log(`📊 Wallet transactions loaded from ${result.source}: ${result.data.length} transactions`);
+      const data = await fetchWalletTransactions(user.corporationId);
+      setWalletTransactions(data);
+      setDataSource(prev => ({ ...prev, wallet: 'database' }));
+      console.log(`📊 Wallet transactions loaded from database: ${data.length} transactions`);
     } catch (error) {
       console.error('Failed to refresh wallet:', error);
-      setWalletTransactions([]);
     } finally {
       setLoading(prev => ({ ...prev, wallet: false }));
     }
   };
 
   const refreshPlanetary = async () => {
-    if (!unifiedService) return;
-    
+    if (!user?.corporationId) return;
+
     setLoading(prev => ({ ...prev, planetary: true }));
     try {
-      const result = await unifiedService.getPlanetaryColonies(user?.corporationId);
-      setPlanetaryColonies(result.data);
-      setDataSource(prev => ({ ...prev, planetary: result.source }));
-      console.log(`📊 Planetary colonies loaded from ${result.source}: ${result.data.length} colonies`);
+      // Planetary colonies are not yet synced server-side; leave empty until then.
+      setPlanetaryColonies([]);
+      console.log('📭 Planetary colonies have no server sync segment yet');
     } catch (error) {
       console.error('Failed to refresh planetary:', error);
-      setPlanetaryColonies([]);
     } finally {
       setLoading(prev => ({ ...prev, planetary: false }));
     }
   };
 
   const refreshMining = async () => {
+    if (!user?.corporationId) return;
+
     setLoading(prev => ({ ...prev, mining: true }));
     try {
-      // Mining data not yet in unified service - placeholder
-      setMiningOperations([]);
+      const data = await fetchMiningLedger(user.corporationId);
+      setMiningOperations(data);
+      console.log(`📊 Mining ledger loaded from database: ${data.length} entries`);
+    } catch (error) {
+      console.error('Failed to refresh mining:', error);
     } finally {
       setLoading(prev => ({ ...prev, mining: false }));
     }
   };
 
   const refreshMarket = async () => {
+    // Market prices are populated by the item_pricing process; keep as-is.
     if (!unifiedService) return;
-    
+
     setLoading(prev => ({ ...prev, market: true }));
     try {
       const result = await unifiedService.getMarketPrices();
       setMarketPrices(result.data);
       setDataSource(prev => ({ ...prev, market: result.source }));
-      console.log(`📊 Market prices loaded from ${result.source}: ${result.data.length} prices`);
     } catch (error) {
       console.error('Failed to refresh market:', error);
-      setMarketPrices([]);
     } finally {
       setLoading(prev => ({ ...prev, market: false }));
     }
   };
 
   const refreshWalletDivisions = async () => {
-    if (!unifiedService) return;
-    
+    if (!user?.corporationId) return;
+
     setLoading(prev => ({ ...prev, wallet: true }));
     try {
-      const result = await unifiedService.getWalletDivisions(user?.corporationId);
-      setWalletDivisions(result.data);
-      setDataSource(prev => ({ ...prev, wallet: result.source }));
-      console.log(`📊 Wallet divisions loaded from ${result.source}: ${result.data.length} divisions`);
+      const data = await fetchWalletDivisions(user.corporationId);
+      setWalletDivisions(data);
+      console.log(`📊 Wallet divisions loaded from database: ${data.length} divisions`);
     } catch (error) {
       console.error('Failed to refresh wallet divisions:', error);
-      setWalletDivisions([]);
     } finally {
       setLoading(prev => ({ ...prev, wallet: false }));
     }
   };
 
   const refreshMarketOrders = async () => {
-    if (!unifiedService) return;
-    
+    if (!user?.corporationId) return;
+
     setLoading(prev => ({ ...prev, market: true }));
     try {
-      const result = await unifiedService.getMarketOrders(user?.corporationId);
-      setMarketOrders(result.data);
-      setDataSource(prev => ({ ...prev, market: result.source }));
-      console.log(`📊 Market orders loaded from ${result.source}: ${result.data.length} orders`);
+      const data = await fetchMarketOrders(user.corporationId);
+      setMarketOrders(data);
+      setDataSource(prev => ({ ...prev, market: 'database' }));
+      console.log(`📊 Market orders loaded from database: ${data.length} orders`);
     } catch (error) {
       console.error('Failed to refresh market orders:', error);
-      setMarketOrders([]);
     } finally {
       setLoading(prev => ({ ...prev, market: false }));
     }
   };
 
   const refreshKillmails = async () => {
+    if (!user?.corporationId) return;
+
     setLoading(prev => ({ ...prev, killmails: true }));
     try {
-      // Killmails not yet in unified service - placeholder
-      setKillmails([]);
+      const data = await fetchKillmails(user.corporationId);
+      setKillmails(data);
+      console.log(`📊 Killmails loaded from database: ${data.length} losses`);
+    } catch (error) {
+      console.error('Failed to refresh killmails:', error);
     } finally {
       setLoading(prev => ({ ...prev, killmails: false }));
     }
   };
 
   const refreshIncome = async () => {
+    if (!user?.corporationId) return;
+
     setLoading(prev => ({ ...prev, income: true }));
     try {
-      // Income not yet in unified service - placeholder
+      // Income records are not yet synced server-side; leave empty until then.
       setIncomeRecords([]);
+    } catch (error) {
+      console.error('Failed to refresh income:', error);
     } finally {
       setLoading(prev => ({ ...prev, income: false }));
     }
   };
 
   const refreshDashboard = async () => {
-    if (!unifiedService) return;
-    
+    if (!user?.corporationId) return;
     try {
-      const result = await unifiedService.getDashboardStats(user?.corporationId);
-      setDashboardStats(result.data);
-      console.log(`📊 Dashboard stats loaded from ${result.source}`);
+      const [m, a, j, o, k] = await Promise.all([
+        fetchMembers(user.corporationId),
+        fetchAssets(user.corporationId),
+        fetchIndustryJobs(user.corporationId),
+        fetchMarketOrders(user.corporationId),
+        fetchKillmails(user.corporationId),
+      ]);
+
+      const activeJobStatuses = new Set(['active', 'paused']);
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+
+      setDashboardStats({
+        totalMembers: m.length,
+        activeMembers: m.filter(x => x.isActive).length,
+        onlineMembers: m.filter(x => x.isOnline).length,
+        totalAssets: a.length,
+        activeJobs: j.filter(x => activeJobStatuses.has((x.status || '').toLowerCase())).length,
+        completedJobs: j.filter(x => (x.status || '').toLowerCase() === 'delivered' || (x.status || '').toLowerCase() === 'completed').length,
+        completedJobsThisMonth: j.filter(x => x.completedDate && new Date(x.completedDate) >= monthStart).length,
+        marketOrders: o.length,
+        recentKills: k.length,
+        timestamp: new Date().toISOString(),
+      });
     } catch (error) {
       console.error('Failed to refresh dashboard:', error);
       setDashboardStats(null);

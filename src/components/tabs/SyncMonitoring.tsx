@@ -270,7 +270,8 @@ export function SyncMonitoring({ isMobileView = false }: SyncMonitoringProps) {
             <Alert>
               <Info size={16} />
               <AlertDescription>
-                No corporation tokens found. Users must authenticate with ESI to enable automatic sync.
+                No corp ESI access detected. When a Director/CEO completes Corp ESI consent from the
+                Corporations page, sync runs automatically on the schedule below.
               </AlertDescription>
             </Alert>
           ) : (

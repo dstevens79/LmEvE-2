@@ -7,6 +7,7 @@ import { createUserWithRole, isLocalSiteAdmin, isSessionValid, normalizeUserRole
 import { getESIAuthService, initializeESIAuth } from './esi-auth';
 import { createDefaultCorporationConfig } from './corp-validation';
 import { CorporationTokenManager } from './corp-token-manager';
+import { runInitialCorpSync } from './corp-sync-service';
 
 interface CharacterInfo {
   characterId?: number;
@@ -584,6 +585,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
           toast.success(`Corporation access granted for ${esiUser.corporationName || 'corporation'}${(esiUser.corporationScopes?.length || 0) ? ` (${esiUser.corporationScopes!.length} scopes)` : ''}`);
         } catch {}
 
+        // Kick off initial data sync so every page gets real corp data right
+        // away (server endpoint owns the token + fetch + upsert).
+        try {
+          const syncCorpId = esiUser.corporationId!;
+          toast.info('Syncing corporation data...');
+          void runInitialCorpSync(syncCorpId).then(batch => {
+            if (batch.failed.length === 0) {
+              try { toast.success('Corporation data synced'); } catch {}
+            } else {
+              try { toast.warning(`Corp sync partial: ${batch.failed.map(f => f.segment).join(', ')} failed`); } catch {}
+            }
+          }).catch(() => {
+            try { toast.error('Corp data sync failed — retry from Settings → Data Sync'); } catch {}
+          });
+        } catch {}
+
         // Do NOT replace current user session; return current user if exists, else sanitized ESI user
         if (currentUser) {
           return currentUser;
@@ -823,6 +840,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 isActive: r.is_active === undefined ? true : !!(r.is_active || r.isActive),
                 registrationDate: r.registration_date ?? r.registrationDate ?? new Date().toISOString(),
                 lastTokenRefresh: r.last_token_refresh ?? r.lastTokenRefresh ?? undefined,
+                hasVaultedToken: r.has_vaulted_token === 1 || r.has_vaulted_token === true,
+                last_sync: r.last_sync ?? null,
               } as CorporationConfig;
             })
             .filter(Boolean) as CorporationConfig[];

@@ -27,6 +27,7 @@ import { EVELoginButton } from '@/components/EVELoginButton';
 import { useThemeManager } from '@/lib/themeManager';
 import { PRIMARY_NAV_TABS, findPrimaryTab } from '@/lib/app-navigation';
 import { startEsiLogin } from '@/lib/start-esi-login';
+import { runInitialCorpSync } from '@/lib/corp-sync-service';
 import { useInactivityLogout } from '@/hooks/useInactivityLogout';
 import { useTabNavigation } from '@/hooks/useTabNavigation';
 import { AppPrimaryNav } from '@/components/layout/AppPrimaryNav';
@@ -81,6 +82,9 @@ function AppContent() {
   // ESI service and EVE server status (simple ping + players)
   const [esiServiceStatus, setEsiServiceStatus] = React.useState<'online' | 'offline' | 'unknown'>('unknown');
   const [eveServerStatus, setEveServerStatus] = React.useState<'online' | 'offline' | 'unknown'>('unknown');
+  // One-shot: run initial corp data sync after a server-side SSO completion
+  // (corp consent) so every page gets real data without a manual step.
+  const [pendingInitialSync, setPendingInitialSync] = React.useState(false);
   const [evePlayersOnline, setEvePlayersOnline] = React.useState<number>(0);
   const [registeredPilots, setRegisteredPilots] = React.useState<number>(0);
   const [registeredCorpsCount, setRegisteredCorpsCount] = React.useState<number>(0);
@@ -343,11 +347,13 @@ function AppContent() {
       // Server-side callback completed; hydrate session from server
       const setup = urlParams.get('setup');
       const handoff = urlParams.get('handoff');
-      (async () => {
-        console.log('🔗 Detected server auth completion (?auth=ok) - hydrating session', { setup, handoff });
-        await hydrateSessionFromServer();
-        // Clean URL params before optional navigation
-        window.history.replaceState({}, document.title, window.location.pathname);
+        (async () => {
+          console.log('🔗 Detected server auth completion (?auth=ok) - hydrating session', { setup, handoff });
+          await hydrateSessionFromServer();
+          // Corp was just consented/registered server-side: populate data now.
+          setPendingInitialSync(true);
+          // Clean URL params before optional navigation
+          window.history.replaceState({}, document.title, window.location.pathname);
         try {
           if (handoff === 'admin') {
             toast.success('Admin linked to EVE character - full site access retained');
@@ -372,6 +378,31 @@ function AppContent() {
       try { toast.error(`EVE SSO failed (${reason})`); } catch {}
     }
   }, []);
+
+  // After a server-side corp consent, run the initial data sync once.
+  // Skipped when the corp already has synced data (last_sync set).
+  useEffect(() => {
+    if (!pendingInitialSync) return;
+    setPendingInitialSync(false);
+
+    const corps = getRegisteredCorporations();
+    const active = corps.find(c => c.isActive) || (corps.length === 1 ? corps[0] : null);
+    if (!active) return;
+    if ((active as { last_sync?: string | null }).last_sync) return;
+
+    try { toast.info(`Syncing ${active.corporationName} data...`); } catch {}
+    void runInitialCorpSync(active.corporationId).then(batch => {
+      try {
+        if (batch.failed.length === 0) {
+          toast.success('Corporation data synced');
+        } else {
+          toast.warning(`Corp sync partial: ${batch.failed.map(f => f.segment).join(', ')} failed`);
+        }
+      } catch {}
+    }).catch(() => {
+      try { toast.error('Corp data sync failed — retry from Settings → Data Sync'); } catch {}
+    });
+  }, [pendingInitialSync, getRegisteredCorporations]);
 
   // Auto-refresh token when it's about to expire
   useEffect(() => {

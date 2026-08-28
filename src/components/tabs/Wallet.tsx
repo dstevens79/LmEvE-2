@@ -87,16 +87,15 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeView, setActiveView] = useState<'balance' | 'profit' | 'transactions'>('balance');
 
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    if (user && walletDivisions.length === 0 && !loading.wallet) {
-      refreshWalletDivisions();
-    }
-    if (user && walletTransactions.length === 0 && !loading.wallet) {
-      refreshWallet();
-    }
-  }, [user]);
+    if (!user || loaded) return;
+    let settled = false;
+    const done = () => { if (settled) return; settled = true; setTimeout(() => setLoaded(true), 0); };
+    Promise.all([refreshWalletDivisions(), refreshWallet()]).catch(() => {}).finally(done);
+  }, [user, loaded]);
 
-  // Mock data for demonstration
+  // Mock data for demonstration (shown only before the first DB read resolves).
   const mockDivisions: WalletDivision[] = [
     { divisionId: 1, divisionName: 'Master Wallet', balance: 15750000000 },
     { divisionId: 2, divisionName: 'Manufacturing', balance: 8250000000 },
@@ -150,45 +149,94 @@ export function Wallet({ onLoginClick, isMobileView }: TabComponentProps) {
     },
   ];
 
-  // Generate mock monthly data
-  const generateMonthlyData = (): MonthlyData[] => {
+  // Monthly P/L: derived from real transactions when loaded; otherwise demo.
+  const monthlyData = useMemo((): MonthlyData[] => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const currentMonth = new Date().getMonth();
-    const data: MonthlyData[] = [];
 
+    // Bucket real transactions by month + division.
+    const buckets = new Map<string, { income: number; expenses: number }>();
+    if (loaded && walletTransactions.length > 0) {
+      for (const t of walletTransactions as any[]) {
+        const d = new Date(t.date);
+        if (isNaN(d.getTime())) continue;
+        const key = `${d.getFullYear()}-${d.getMonth()}|${t.divisionId ?? 0}`;
+        const b = buckets.get(key) || { income: 0, expenses: 0 };
+        if ((t.amount ?? 0) >= 0) b.income += t.amount ?? 0; else b.expenses += Math.abs(t.amount ?? 0);
+        buckets.set(key, b);
+      }
+    }
+
+    const data: MonthlyData[] = [];
     for (let i = 11; i >= 0; i--) {
-      const monthIndex = (currentMonth - i + 12) % 12;
-      const month = months[monthIndex];
-      
+      const mIdx = (currentMonth - i + 12) % 12;
+      const mDate = new Date();
+      mDate.setMonth(currentMonth - i, 1);
+      const monthKeyYear = mDate.getFullYear();
+
       const monthData: MonthlyData = {
-        month,
+        month: months[mIdx],
         divisions: {},
         totalIncome: 0,
         totalExpenses: 0,
-        totalProfit: 0
+        totalProfit: 0,
       };
 
-      mockDivisions.forEach(div => {
-        const income = Math.random() * 10000000000;
-        const expenses = Math.random() * 7000000000;
-        const profit = income - expenses;
+      if (loaded && walletTransactions.length > 0) {
+        // Real data: only divisions that had activity this month.
+        for (const [key, b] of buckets) {
+          const [ym, divIdStr] = key.split('|');
+          const [, ymMonth] = ym.split('-').map(Number);
+          if (Number(ymMonth) !== mIdx || Number(ym.split('-')[0]) !== monthKeyYear) continue;
+          const divId = Number(divIdStr) || 1;
+          monthData.divisions[divId] = { income: b.income, expenses: b.expenses, profit: b.income - b.expenses };
+        }
+      } else {
+        // Demo data before the first read.
+        (mockDivisions).forEach(div => {
+          const income = Math.random() * 10000000000;
+          const expenses = Math.random() * 7000000000;
+          monthData.divisions[div.divisionId] = { income, expenses, profit: income - expenses };
+        });
+      }
 
-        monthData.divisions[div.divisionId] = { income, expenses, profit };
-        monthData.totalIncome += income;
-        monthData.totalExpenses += expenses;
-        monthData.totalProfit += profit;
-      });
+      for (const b of Object.values(monthData.divisions)) {
+        monthData.totalIncome += b.income;
+        monthData.totalExpenses += b.expenses;
+        monthData.totalProfit += b.profit;
+      }
 
       data.push(monthData);
     }
 
     return data;
-  };
+  }, [loaded, walletTransactions]);
 
-  const monthlyData = useMemo(() => generateMonthlyData(), []);
+  // Context returns plain arrays. Real DB rows win; before the first read
+  // resolves we show demo data so the page isn't blank, and afterwards an empty
+  // DB shows "no transactions yet" instead of fabricated entries.
+  const divisions = useMemo(() => {
+    if (walletDivisions.length > 0) return walletDivisions as WalletDivision[];
+    return !loaded ? mockDivisions : [];
+  }, [walletDivisions, loaded]);
 
-  const divisions = (walletDivisions.data && walletDivisions.data.length > 0) ? walletDivisions.data : mockDivisions;
-  const transactions = (walletTransactions.data && walletTransactions.data.length > 0) ? walletTransactions.data : mockTransactions;
+  // Normalize DB transaction rows to this view's shape (description/client come
+  // from the ESI-synced typeName + clientName columns).
+  const transactions = useMemo<WalletTransaction[]>(() => {
+    if (walletTransactions.length > 0) {
+      return walletTransactions.map((t: any, i) => ({
+        id: String(t.id ?? t.transactionId ?? i),
+        date: t.date || '',
+        divisionId: Number(t.divisionId ?? 0),
+        amount: t.amount ?? (Number(t.quantity ?? 0) * Number(t.unitPrice ?? 0)),
+        balance: 0,
+        description: `${t.typeName ? t.typeName + ' — ' : ''}${t.isBuy ? 'purchase' : 'sale'}`,
+        refType: t.journalRefId ? `ref-${t.journalRefId}` : 'transaction',
+        secondPartyName: t.clientName || (t.clientId ? `Character ${t.clientId}` : ''),
+      }));
+    }
+    return !loaded ? mockTransactions : [];
+  }, [walletTransactions, loaded]);
 
   // Calculate total balance
   const totalBalance = divisions.reduce((sum, div) => sum + div.balance, 0);

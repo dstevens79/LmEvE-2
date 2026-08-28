@@ -26,15 +26,19 @@ export interface TokenRefreshResult {
   error?: string;
 }
 
+const CORP_TOKENS_SESSION_KEY = 'lmeve-corp-tokens';
+
 export class CorporationTokenManager {
   private static instance: CorporationTokenManager;
   private tokens: Map<number, CorporationToken> = new Map();
   private refreshPromises: Map<number, Promise<TokenRefreshResult>> = new Map();
 
   private constructor() {
+    // Legacy cleanup: tokens must never live in localStorage.
     try {
       localStorage.removeItem('corp-tokens');
     } catch {}
+    this.hydrateFromSession();
   }
 
   static getInstance(): CorporationTokenManager {
@@ -42,6 +46,39 @@ export class CorporationTokenManager {
       CorporationTokenManager.instance = new CorporationTokenManager();
     }
     return CorporationTokenManager.instance;
+  }
+
+  // Session-only persistence so a page reload does not drop a valid corp token
+  // mid-session. Mirrors the lmeve-session-tokens handling in auth-provider.
+  private hydrateFromSession(): void {
+    try {
+      const raw = sessionStorage.getItem(CORP_TOKENS_SESSION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      for (const entry of parsed) {
+        if (!entry || typeof entry.corporationId !== 'number' || !entry.accessToken) continue;
+        const token: CorporationToken = {
+          corporationId: entry.corporationId,
+          corporationName: entry.corporationName || `Corporation ${entry.corporationId}`,
+          characterId: entry.characterId || 0,
+          characterName: entry.characterName || 'Unknown',
+          accessToken: entry.accessToken,
+          refreshToken: entry.refreshToken || '',
+          expiresAt: entry.expiresAt || Date.now(),
+          scopes: Array.isArray(entry.scopes) ? entry.scopes : [],
+          lastRefreshed: entry.lastRefreshed || Date.now(),
+          isValid: entry.isValid !== false
+        };
+        this.tokens.set(token.corporationId, token);
+      }
+    } catch {}
+  }
+
+  private persistToSession(): void {
+    try {
+      sessionStorage.setItem(CORP_TOKENS_SESSION_KEY, JSON.stringify(this.getAllTokens()));
+    } catch {}
   }
 
   async storeToken(user: LMeveUser): Promise<void> {
@@ -64,7 +101,8 @@ export class CorporationTokenManager {
     };
 
     this.tokens.set(user.corporationId, token);
-    
+    this.persistToSession();
+
     console.log(`✅ Stored token for corporation ${user.corporationName} (${user.corporationId})`);
   }
 
@@ -149,6 +187,7 @@ export class CorporationTokenManager {
       };
 
       this.tokens.set(corporationId, updatedToken);
+      this.persistToSession();
 
       console.log(`✅ Token refreshed for corporation ${corporationId}`);
 
@@ -180,12 +219,16 @@ export class CorporationTokenManager {
 
   async removeToken(corporationId: number): Promise<void> {
     this.tokens.delete(corporationId);
+    this.persistToSession();
     console.log(`🗑️ Token removed for corporation ${corporationId}`);
   }
 
   clear(): void {
     this.tokens.clear();
     this.refreshPromises.clear();
+    try {
+      sessionStorage.removeItem(CORP_TOKENS_SESSION_KEY);
+    } catch {}
   }
 
   getAllTokens(): CorporationToken[] {

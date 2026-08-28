@@ -485,15 +485,41 @@ fi
 chown -R www-data:www-data "$FINAL_DIR"
 chmod -R 755 "$FINAL_DIR"
 
-# Ensure in-repo storage folder exists (for preferred relative path used by APIs)
-mkdir -p "${FINAL_DIR}/server/storage"
-chown -R www-data:www-data "${FINAL_DIR}/server/storage"
-chmod -R 775 "${FINAL_DIR}/server/storage"
+# Server storage folder: APIs resolve it as one level ABOVE the docroot
+# (see api_storage_dir() in public/api/_lib/common.php). Create it up front,
+# owned by www-data, so the web app and the CLI poller share the same
+# settings.json instead of falling back to different temp dirs.
+PARENT_DIR=$(dirname "$FINAL_DIR")
+mkdir -p "${PARENT_DIR}/server/storage"
+chown -R www-data:www-data "${PARENT_DIR}/server/storage"
+chmod -R 775 "${PARENT_DIR}/server/storage"
 
 # Restart Apache
 systemctl restart apache2
 
 echo -e "${GREEN}✓ Apache configured and restarted${NC}"
+
+echo -e "\n${GREEN}11b. Installing system cron for ESI sync poller${NC}"
+POLLER_PATH="${FINAL_DIR}/bin/poller.php"
+CRON_FILE="/etc/cron.d/lmeve2"
+
+if [ ! -f "$POLLER_PATH" ]; then
+    echo -e "${YELLOW}⚠ bin/poller.php not found in deployment; skipping cron install${NC}"
+else
+    # Runs as root (can read server settings + write the shared storage dir).
+    # poller.php writes its own log to <storage>/lmeve-poller.log; overlapping
+    # runs are prevented by flock() inside poller.php.
+    cat > "$CRON_FILE" << EOF
+# LMeve-2 ESI sync poller — per-process schedules are enforced in-app (DB).
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+*/5 * * * * root /usr/bin/php $POLLER_PATH
+EOF
+    chmod 644 "$CRON_FILE"
+    systemctl enable cron >/dev/null 2>&1 || true
+    systemctl restart cron 2>/dev/null || systemctl restart crond 2>/dev/null || true
+    echo -e "${GREEN}✓ Cron installed: ${CRON_FILE}${NC}"
+fi
 
 # SSL Setup (optional)
 if [[ "$ENABLE_SSL" =~ ^[Yy]$ ]]; then
@@ -552,7 +578,12 @@ fi
 echo "  2. Go to Settings tab"
 echo "  3. Configure database connection"
 echo "  4. Add your ESI developer application credentials"
-echo "  5. Start syncing data!"
+echo "  5. Complete Corp ESI consent (CEO/Director) on the Corporations page"
+echo ""
+echo -e "${BLUE}Scheduled Sync:${NC}"
+echo "  • System cron runs ${FINAL_DIR}/bin/poller.php every 5 minutes (/etc/cron.d/lmeve2)"
+echo "  • Per-process intervals are configured in-app (Settings > Data Sync) and stored per corporation"
+echo "  • Manual \"Run now\" buttons work from the Data Sync page without waiting for cron"
 echo ""
 echo -e "${YELLOW}Important:${NC}"
 echo "  • Database must be set up first (use setup-lmeve-db.sh)"
@@ -571,6 +602,7 @@ else
     echo "  Apache access: /var/log/apache2/${SERVER_NAME}-access.log"
     echo "  Apache error: /var/log/apache2/${SERVER_NAME}-error.log"
 fi
+echo "  ESI poller: ${PARENT_DIR}/server/storage/lmeve-poller.log"
 echo ""
 echo -e "${GREEN}Documentation: ${NC}https://github.com/dstevens79/LmEvE-2/tree/main/scripts"
 echo ""
