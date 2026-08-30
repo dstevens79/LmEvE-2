@@ -9,11 +9,9 @@ $dbCfg = api_get_db_config($payload);
 api_select_db($mysqli, (string)($dbCfg['database'] ?? 'lmeve2'));
 $limit = api_limit($payload, 200, 2000);
 $status = isset($payload['status']) ? strtoupper(preg_replace('/[^A-Z_]/','', (string)$payload['status'])) : '';
-if ($status !== '') {
-    $sql = "SELECT * FROM industry_jobs WHERE status = '$status' ORDER BY end_date DESC LIMIT $limit";
-} else {
-    $sql = "SELECT * FROM industry_jobs ORDER BY end_date DESC LIMIT $limit";
-}
+$where = "corporation_id = $corp";
+if ($status !== '') { $where .= " AND status = '$status'"; }
+$sql = "SELECT * FROM industry_jobs WHERE $where ORDER BY end_date DESC LIMIT $limit";
 $res = @$mysqli->query($sql);
 if ($res === false) { api_fail(200, 'Query failed', ['error' => $mysqli->error]); }
 $rows = [];

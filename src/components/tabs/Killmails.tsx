@@ -59,7 +59,7 @@ export function Killmails() {
             <Info size={28} className="mx-auto text-muted-foreground" />
             <p className="text-sm text-muted-foreground font-medium">No killmail data yet</p>
             <p className="text-xs text-muted-foreground">
-              The Killmails process is browser-run (needs a personal ESI token). Enable it in Settings → Data Sync and run it to record corporation losses.
+              No corp losses recorded yet. Run the Killmails process in Settings → Data Sync — it pulls the recent killmail history server-side (no personal token needed).
             </p>
           </CardContent>
         </Card>

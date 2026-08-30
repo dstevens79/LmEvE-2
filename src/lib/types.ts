@@ -610,8 +610,29 @@ export interface KillmailSummary {
   isCorpKill: boolean;
   zkbUrl?: string;
 }
+// Contract types (ESI /corporations/{id}/contracts)
+export interface Contract {
+  contractId: number;
+  corporationId: number;
+  issuerCharacterId?: number;
+  assigneeCharacterId?: number;
+  acceptorCharacterId?: number;
+  contractType: string;
+  status: 'outstanding' | 'accepted' | 'rejected' | 'cancelled' | 'completed';
+  title: string;
+  forCorporation: boolean;
+  availability?: string;
+  dateIssued?: string;
+  dateExpired?: string;
+  dateAccepted?: string;
+  dateCompleted?: string;
+  price?: number;
+  reward?: number;
+  collateral?: number;
+}
 
 // Wallet transaction types
+
 export interface WalletTransaction {
   id: number;
   transactionId: number;

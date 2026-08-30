@@ -16,7 +16,12 @@ import {
   fetchMarketOrders,
   fetchMiningLedger,
   fetchKillmails,
+  fetchContracts,
+  fetchIncome,
+  fetchMarketPrices,
+  fetchCompletedSales,
 } from './corp-data';
+import type { ContractRow, CompletedSaleView } from './corp-data';
 import type { 
   Member, 
   Asset, 
@@ -76,8 +81,10 @@ interface LMeveDataContextType {
   marketPrices: MarketPrice[];
   killmails: KillmailSummary[];
   incomeRecords: IncomeRecord[];
+  contracts: ContractRow[];
+  completedSales: CompletedSaleView[];
   dashboardStats: DashboardStats | null;
-  
+
   // Data source tracking
   dataSource: {
     members: string;
@@ -99,6 +106,7 @@ interface LMeveDataContextType {
     market: boolean;
     killmails: boolean;
     income: boolean;
+    contracts: boolean;
   };
   
   // Data refresh functions
@@ -113,6 +121,8 @@ interface LMeveDataContextType {
   refreshMarket: () => Promise<void>;
   refreshKillmails: () => Promise<void>;
   refreshIncome: () => Promise<void>;
+  refreshContracts: () => Promise<void>;
+  refreshCompletedSales: () => Promise<void>;
   refreshDashboard: () => Promise<void>;
 }
 
@@ -153,6 +163,8 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
   const [marketPrices, setMarketPrices] = useState<MarketPrice[]>([]);
   const [killmails, setKillmails] = useState<KillmailSummary[]>([]);
   const [incomeRecords, setIncomeRecords] = useState<IncomeRecord[]>([]);
+  const [contracts, setContracts] = useState<ContractRow[]>([]);
+  const [completedSales, setCompletedSales] = useState<CompletedSaleView[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   
   // Data source tracking
@@ -175,7 +187,8 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
     mining: false,
     market: false,
     killmails: false,
-    income: false
+    income: false,
+    contracts: false
   });
 
   // Initialize unified service and database manager
@@ -352,16 +365,45 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshMarket = async () => {
-    // Market prices are populated by the item_pricing process; keep as-is.
-    if (!unifiedService) return;
+    // Market prices are populated by the server 'pricing' segment (/markets/prices).
+    setLoading(prev => ({ ...prev, market: true }));
+    try {
+      const data = await fetchMarketPrices();
+      setMarketPrices(data);
+      setDataSource(prev => ({ ...prev, market: 'database' }));
+      console.log(`📊 Market prices loaded from database: ${data.length} types`);
+    } catch (error) {
+      console.error('Failed to refresh market:', error);
+    } finally {
+      setLoading(prev => ({ ...prev, market: false }));
+    }
+  };
+
+  const refreshContracts = async () => {
+    if (!user?.corporationId) return;
+
+    setLoading(prev => ({ ...prev, contracts: true }));
+    try {
+      const data = await fetchContracts(user.corporationId);
+      setContracts(data);
+      console.log(`📊 Contracts loaded from database: ${data.length} contracts`);
+    } catch (error) {
+      console.error('Failed to refresh contracts:', error);
+    } finally {
+      setLoading(prev => ({ ...prev, contracts: false }));
+    }
+  };
+
+  const refreshCompletedSales = async () => {
+    if (!user?.corporationId) return;
 
     setLoading(prev => ({ ...prev, market: true }));
     try {
-      const result = await unifiedService.getMarketPrices();
-      setMarketPrices(result.data);
-      setDataSource(prev => ({ ...prev, market: result.source }));
+      const data = await fetchCompletedSales(user.corporationId);
+      setCompletedSales(data);
+      console.log(`📊 Completed sales loaded from database: ${data.length} orders`);
     } catch (error) {
-      console.error('Failed to refresh market:', error);
+      console.error('Failed to refresh completed sales:', error);
     } finally {
       setLoading(prev => ({ ...prev, market: false }));
     }
@@ -418,8 +460,10 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
 
     setLoading(prev => ({ ...prev, income: true }));
     try {
-      // Income records are not yet synced server-side; leave empty until then.
-      setIncomeRecords([]);
+      // Derived server-side from completed industry runs x market prices.
+      const data = await fetchIncome(user.corporationId);
+      setIncomeRecords(data);
+      console.log(`📊 Income records derived on server: ${data.length} entries`);
     } catch (error) {
       console.error('Failed to refresh income:', error);
     } finally {
@@ -561,6 +605,8 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
     marketPrices,
     killmails,
     incomeRecords,
+    contracts,
+    completedSales,
     dashboardStats,
     dataSource,
     loading,
@@ -575,6 +621,8 @@ export function LMeveDataProvider({ children }: { children: React.ReactNode }) {
     refreshMarket,
     refreshKillmails,
     refreshIncome,
+    refreshContracts,
+    refreshCompletedSales,
     refreshDashboard
   };
 

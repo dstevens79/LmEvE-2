@@ -70,84 +70,24 @@ interface MarketStats {
 
 export function Market({ onLoginClick, isMobileView }: TabComponentProps) {
   const { user } = useAuth();
-  const { marketOrders, loading, refreshMarketOrders, dataSource } = useLMeveData();
+  const { marketOrders, completedSales, loading, refreshMarketOrders, refreshCompletedSales, dataSource } = useLMeveData();
   const [selectedPeriod, setSelectedPeriod] = useState('30d');
   const [orderFilter, setOrderFilter] = useState<'all' | 'buy' | 'sell'>('all');
   const [stateFilter, setStateFilter] = useState<'all' | 'active' | 'expired' | 'cancelled' | 'fulfilled'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Load market orders on mount
+  // Load market orders + closed order history on mount (both from the server DB;
+  // synced by the Market Orders segment: /orders/ + /orders/history).
   useEffect(() => {
-    if (user && marketOrders.length === 0 && !loading.market) {
-      refreshMarketOrders();
-    }
-  }, [user]);
+    if (!user) return;
+    if (marketOrders.length === 0 && !loading.market) refreshMarketOrders();
+    if (completedSales.length === 0) refreshCompletedSales();
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Completed sales placeholder - will be added to unified service in future
-  const completedSales: CompletedSale[] = [];
-
-  // Use data from unified service (database-first)
+  // Use data from the unified service (database-first). Closed order history has
+  // no cost basis in ESI, so profit/margin read zero until a cost model exists.
   const orders = marketOrders;
-  
-  // Mock completed sales for demonstration - ESI endpoints to use:
-  // GET /v1/corporations/{corporation_id}/orders/history/
-  const mockCompletedSales: CompletedSale[] = [
-
-    {
-      id: 'sale1',
-      date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      typeId: 12058,
-      typeName: 'Hobgoblin I',
-      quantity: 500,
-      unitPrice: 185000,
-      totalValue: 92500000,
-      profit: 22500000,
-      profitMargin: 0.243,
-      locationId: 60011866,
-      locationName: 'Dodixie IX - Moon 20'
-    },
-    {
-      id: 'sale2',
-      date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      typeId: 587,
-      typeName: 'Rifter',
-      quantity: 18,
-      unitPrice: 850000,
-      totalValue: 15300000,
-      profit: 4800000,
-      profitMargin: 0.314,
-      locationId: 60003760,
-      locationName: 'Jita IV - Moon 4'
-    },
-    {
-      id: 'sale3',
-      date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-      typeId: 34,
-      typeName: 'Tritanium',
-      quantity: 2500000,
-      unitPrice: 5.50,
-      totalValue: 13750000,
-      profit: 1250000,
-      profitMargin: 0.091,
-      locationId: 60003760,
-      locationName: 'Jita IV - Moon 4'
-    },
-    {
-      id: 'sale4',
-      date: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
-      typeId: 11535,
-      typeName: 'Compressed Arkonor',
-      quantity: 1500,
-      unitPrice: 2850000,
-      totalValue: 4275000000,
-      profit: 850000000,
-      profitMargin: 0.199,
-      locationId: 60003760,
-      locationName: 'Jita IV - Moon 4'
-    },
-  ];
-
-  const sales = (completedSales && completedSales.length > 0) ? completedSales : mockCompletedSales;
+  const sales: CompletedSale[] = completedSales;
 
   // Filter orders
   const filteredOrders = useMemo(() => {

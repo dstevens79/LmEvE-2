@@ -1,11 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { ArrowClockwise, Info } from '@phosphor-icons/react';
+import { useAuth } from '@/lib/auth-provider';
+import { useLMeveData } from '@/lib/LMeveDataContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TabComponentProps, IncomeRecord, IncomeAnalytics } from '@/lib/types';
+import { TabComponentProps, IncomeAnalytics } from '@/lib/types';
 import { 
   TrendUp,
   TrendDown,
@@ -20,99 +23,24 @@ import {
   Gear,
   FloppyDisk
 } from '@phosphor-icons/react';
-import { useKV } from '@/lib/kv';
 import { toast } from 'sonner';
 import { useIncomeSettings } from '@/lib/persistenceService';
 
 export function Income(_props: TabComponentProps) {
-  const [incomeRecords] = useKV<IncomeRecord[]>('income-records', []);
+  const { user } = useAuth();
+  const { incomeRecords, loading, refreshIncome } = useLMeveData();
   const [incomeSettings, setIncomeSettings] = useIncomeSettings();
   const [selectedPeriod, setSelectedPeriod] = useState('30d');
   const [selectedPilot, setSelectedPilot] = useState('all');
   const [selectedJobType, setSelectedJobType] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Mock data - in a real app this would come from ESI API and industry calculations
-  const mockIncomeRecords: IncomeRecord[] = [
-    {
-      id: '1',
-      pilotId: 91316135,
-      pilotName: 'John Industrialist',
-      jobId: 12345,
-      jobType: 'manufacturing',
-      productTypeId: 587,
-      productTypeName: 'Rifter',
-      completedDate: '2024-01-15T14:30:00Z',
-      runs: 10,
-      productQuantity: 10,
-      materialCost: 25000000,
-      laborCost: 1500000,
-      facilityCost: 500000,
-      totalCost: 27000000,
-      marketValue: 35000000,
-      profit: 8000000,
-      profitMargin: 0.229,
-      efficiency: {
-        material: 10,
-        time: 20
-      },
-      location: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
-      locationId: 60003760
-    },
-    {
-      id: '2',
-      pilotId: 91316136,
-      pilotName: 'Jane Manufacturer',
-      jobId: 12346,
-      jobType: 'manufacturing',
-      productTypeId: 12058,
-      productTypeName: 'Hobgoblin I',
-      completedDate: '2024-01-14T16:45:00Z',
-      runs: 50,
-      productQuantity: 50,
-      materialCost: 8000000,
-      laborCost: 800000,
-      facilityCost: 200000,
-      totalCost: 9000000,
-      marketValue: 12500000,
-      profit: 3500000,
-      profitMargin: 0.28,
-      efficiency: {
-        material: 10,
-        time: 18
-      },
-      location: 'Dodixie IX - Moon 20 - Federation Navy Assembly Plant',
-      locationId: 60011866
-    },
-    {
-      id: '3',
-      pilotId: 91316135,
-      pilotName: 'John Industrialist',
-      jobId: 12347,
-      jobType: 'research',
-      productTypeId: 0,
-      productTypeName: 'Blueprint Research',
-      completedDate: '2024-01-13T09:15:00Z',
-      runs: 1,
-      productQuantity: 1,
-      materialCost: 0,
-      laborCost: 2000000,
-      facilityCost: 300000,
-      totalCost: 2300000,
-      marketValue: 5000000,
-      profit: 2700000,
-      profitMargin: 0.54,
-      efficiency: {
-        material: 0,
-        time: 15
-      },
-      location: 'Amarr VIII (Oris) - Emperor Family Academy',
-      locationId: 60008494
-    }
-  ];
+  // Income is derived server-side from completed industry runs x market prices.
+  useEffect(() => {
+    if (user && incomeRecords.length === 0 && !loading.income) refreshIncome();
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Use mock data if no real data is available
-  const records = (incomeRecords && incomeRecords.length > 0) ? incomeRecords : mockIncomeRecords;
+  const records = incomeRecords;
 
   // Filter records based on selected criteria
   const filteredRecords = useMemo(() => {
@@ -278,14 +206,32 @@ export function Income(_props: TabComponentProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">
-          Income Analytics
-        </h2>
-        <p className="text-muted-foreground">
-          Track corporation income from manufacturing, research, and trading activities.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">
+            Income Analytics
+          </h2>
+          <p className="text-muted-foreground">
+            Derived from completed industry runs and market prices (synced server-side).
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refreshIncome()} disabled={loading.income}>
+          <ArrowClockwise size={16} className={loading.income ? 'animate-spin' : ''} />
+        </Button>
       </div>
+
+      {records.length === 0 && !loading.income && (
+        <Card>
+          <CardContent className="py-8 text-center space-y-2">
+            <Info size={28} className="mx-auto text-muted-foreground" />
+            <p className="text-sm text-muted-foreground font-medium">No completed industry runs yet</p>
+            <p className="text-xs text-muted-foreground max-w-md mx-auto">
+              Income appears once the Industry Jobs segment has captured a job with finished runs.
+              Run it in Settings → Data Sync (server-side; no personal token needed).
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>

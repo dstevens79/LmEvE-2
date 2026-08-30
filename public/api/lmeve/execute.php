@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // public/api/lmeve/execute.php
 // Real SQL executor for DatabaseManager.query(). Server-owned credentials
 // (api_get_db_config ignores the request payload). Authenticated users only.

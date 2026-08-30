@@ -39,10 +39,11 @@ export const DEFAULT_ESI_ROUTES: ESIRouteConfig = {
     scopes: ['esi-industry.read_corporation_jobs.v1']
   },
   mining: {
-    path: '/corporations/{corporation_id}/mining/',
+    // NOTE: singular /corporation/ — the plural path does not exist in ESI.
+    path: '/corporation/{corporation_id}/mining/observers/',
     versions: ['v1'],
     currentVersion: 'v1',
-    description: 'Mining ledger data',
+    description: 'Per-pilot planetary mining extraction rows (observers)',
     scopes: ['esi-industry.read_corporation_mining.v1']
   },
   market: {

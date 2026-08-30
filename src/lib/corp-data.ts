@@ -16,6 +16,9 @@ import type {
   MarketOrder,
   MiningOperation,
   KillmailSummary,
+  Contract,
+  IncomeRecord,
+  MarketPrice,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -225,9 +228,9 @@ export async function fetchAssets(corpId: number): Promise<Asset[]> {  const row
   }));
 }
 
-const JOB_ACTIVITY_NAMES: Record<number, string> = {
-  1: 'Manufacture', 2: 'Copy Blueprint', 3: 'Decrypt Encryption', 4: 'Fabricate Module',
-  5: 'Invention', 6: 'Manufacture Rigs', 7: 'Dismantle Rig', 8: 'Planetary Interaction',
+// EVE industry activity ids (SDE invActivity): 1=Copy, 2=Invention, 3=Manufacture, 4=Decryption, 5=Research.
+export const JOB_ACTIVITY_NAMES: Record<number, string> = {
+  1: 'Copy', 2: 'Invention', 3: 'Manufacturing', 4: 'Decryption', 5: 'Research',
 };
 
 export async function fetchIndustryJobs(corpId: number): Promise<ManufacturingJob[]> {
@@ -265,13 +268,14 @@ export async function fetchIndustryJobs(corpId: number): Promise<ManufacturingJo
 export async function fetchMarketOrders(corpId: number): Promise<MarketOrder[]> {
   const rows = await dbRows('get-market-orders.php', { corporationId: corpId, limit: 2000 });
   const typeNames = await resolveTypeNames(rows.map(r => num(r.type_id)));
+  const regionNames = await resolveUniNames('universe', rows.map(r => num(r.region_id)).filter(v => v > 0));
   return rows.map(r => ({
     id: num(r.id),
     orderId: num(r.order_id),
     typeId: num(r.type_id),
     typeName: typeNames.get(num(r.type_id)) || `Type ${num(r.type_id)}`,
     locationId: r.location_id ? num(r.location_id) : undefined,
-    locationName: str(r.location_name) || (r.region_id ? `Region ${num(r.region_id)}` : ''),
+    locationName: str(r.location_name) || (r.region_id ? regionNames.get(num(r.region_id)) || `Region ${num(r.region_id)}` : ''),
     isBuyOrder: bool(r.is_buy_order),
     price: num(r.price),
     volumeTotal: num(r.volume_total),
@@ -279,7 +283,8 @@ export async function fetchMarketOrders(corpId: number): Promise<MarketOrder[]> 
     minVolume: r.min_volume === null || r.min_volume === undefined ? undefined : num(r.min_volume),
     issued: dtToIso(r.issued) || '',
     duration: num(r.duration),
-    state: (str(r.state).toLowerCase() as any) || 'active',
+    // market_orders.state holds the order range (day/week/month/year); these are open orders.
+    state: 'active',
     corporationId: corpId,
   }));
 }
@@ -300,9 +305,10 @@ export async function fetchWalletTransactions(corpId: number): Promise<WalletTra
     clientName: str(r.client_name) || (r.client_id ? `Character ${num(r.client_id)}` : 'Unknown'),
     locationId: r.location_id ? num(r.location_id) : undefined,
     isBuy: bool(r.is_buy),
-    isPersonal: bool(r.is_personal),
+    // ESI corp wallet transactions carry no personal flag — the whole ledger is corp.
+    isPersonal: false,
     journalRefId: r.journal_ref_id ? num(r.journal_ref_id) : 0,
-    divisionId: r.division_id ? num(r.division_id) : undefined,
+    divisionId: r.division ? num(r.division) : undefined,
   }));
 }
 
@@ -337,6 +343,145 @@ export async function fetchMiningLedger(corpId: number): Promise<MiningOperation
     estimatedValue: 0, // priced client-side via market_prices when available
     refined: false,
   }));
+}
+
+export interface ContractItemView {
+  recordId: number;
+  typeId: number;
+  typeName: string;
+  quantity: number;
+  isSingleton: boolean;
+}
+
+export interface ContractRow extends Contract {
+  items?: ContractItemView[];
+}
+
+export async function fetchContracts(corpId: number): Promise<ContractRow[]> {
+  const resp = await fetch('/api/lmeve/get-contracts.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ corporationId: corpId }),
+  });
+  if (!resp.ok) throw new Error(`get-contracts failed (HTTP ${resp.status})`);
+  const json = await resp.json().catch(() => null);
+  if (!json || json.ok !== true) throw new Error('get-contracts: ' + (json?.error || 'bad response'));
+  const rows = Array.isArray(json.rows) ? (json.rows as DbRow[]) : [];
+  const items = Array.isArray(json.items) ? (json.items as DbRow[]) : [];
+
+  const typeNames = await resolveTypeNames(items.map(r => num(r.type_id)).filter(v => v > 0));
+
+  const itemsByContract = new Map<number, ContractItemView[]>();
+  for (const it of items) {
+    const cid = num(it.contract_id);
+    const view: ContractItemView = {
+      recordId: num(it.record_id),
+      typeId: num(it.type_id),
+      typeName: typeNames.get(num(it.type_id)) || `Type ${num(it.type_id)}`,
+      quantity: num(it.quantity),
+      isSingleton: bool(it.is_singleton),
+    };
+    const list = itemsByContract.get(cid) || [];
+    list.push(view);
+    itemsByContract.set(cid, list);
+  }
+
+  return rows.map(r => {
+    const cid = num(r.contract_id);
+    return {
+      contractId: cid,
+      corporationId: num(r.corporation_id),
+      issuerCharacterId: r.issuer_id ? num(r.issuer_id) : undefined,
+      assigneeCharacterId: r.assignee_id ? num(r.assignee_id) : undefined,
+      acceptorCharacterId: r.acceptor_id ? num(r.acceptor_id) : undefined,
+      contractType: str(r.type),
+      status: (str(r.status).toLowerCase() as any) || 'outstanding',
+      title: str(r.title) || `Contract ${cid}`,
+      forCorporation: bool(r.for_corporation),
+      availability: (str(r.availability) as any) || undefined,
+      dateIssued: dtToIso(r.date_issued) || undefined,
+      dateExpired: dtToIso(r.date_expired) || undefined,
+      dateAccepted: dtToIso(r.date_accepted) || undefined,
+      dateCompleted: dtToIso(r.date_completed) || undefined,
+      price: r.price === null ? undefined : num(r.price),
+      reward: r.reward === null ? undefined : num(r.reward),
+      collateral: r.collateral === null ? undefined : num(r.collateral),
+      items: itemsByContract.get(cid),
+    } as ContractRow;
+  });
+}
+
+export async function fetchIncome(corpId: number): Promise<IncomeRecord[]> {
+  const rows = await dbRows('get-income.php', { corporationId: corpId, limit: 2000 });
+  if (rows.length === 0) return [];
+  // Server derives values at read time; type names come from SDE here.
+  const typeNames = await resolveTypeNames(rows.map(r => num(r.product_type_id)).filter(v => v > 0));
+  return rows.map(r => {
+    const prodId = num(r.product_type_id);
+    return {
+      ...r,
+      pilotName: str(r.pilotName) || `Character ${num(r.pilotId)}`,
+      productTypeName: typeNames.get(prodId) || (str(r.itemTypeName) || `Product ${prodId}`),
+      itemTypeName: typeNames.get(prodId) || (str(r.itemTypeName) || ''),
+    } as IncomeRecord;
+  });
+}
+
+export async function fetchMarketPrices(): Promise<MarketPrice[]> {
+  const rows = await dbRows('get-market-prices.php', {});
+  if (rows.length === 0) return [];
+  const typeNames = await resolveTypeNames(rows.map(r => num(r.type_id)));
+  return rows.map(r => ({
+    typeId: num(r.type_id),
+    typeName: typeNames.get(num(r.type_id)) || `Type ${num(r.type_id)}`,
+    regionId: 0, // /markets/prices is global — no per-region granularity in ESI
+    region: 'Universal',
+    buyPrice: 0, // not exposed by the prices endpoint; adjusted price is the standard reference
+    sellPrice: num(r.adjusted_price),
+    averagePrice: r.average_price === null || r.average_price === undefined ? undefined : num(r.average_price),
+    adjustedPrice: r.adjusted_price === null || r.adjusted_price === undefined ? undefined : num(r.adjusted_price),
+    volume: 0,
+    lastUpdate: dtToIso(r.last_updated) || new Date().toISOString(),
+  }));
+}
+
+export interface CompletedSaleView {
+  id: string;
+  date: string;
+  typeId: number;
+  typeName: string;
+  quantity: number;
+  unitPrice: number;
+  totalValue: number;
+  profit: number;
+  profitMargin: number;
+  locationId: number;
+  locationName: string;
+}
+
+export async function fetchCompletedSales(corpId: number): Promise<CompletedSaleView[]> {
+  const rows = await dbRows('get-market-order-history.php', { corporationId: corpId, limit: 500 });
+  if (rows.length === 0) return [];
+  const typeNames = await resolveTypeNames(rows.map(r => num(r.type_id)).filter(v => v > 0));
+  // ESI's closed-orders history has no completion date or cost basis — orders are
+  // dated by issue and profit is not derivable without cost data.
+  return rows.map(r => {
+    const locationId = r.location_id ? num(r.location_id) : 0;
+    return {
+      id: String(num(r.order_id)),
+      date: dtToIso(r.issued) || '',
+      typeId: num(r.type_id),
+      typeName: typeNames.get(num(r.type_id)) || `Type ${num(r.type_id)}`,
+      quantity: num(r.volume_total),
+      unitPrice: num(r.price),
+      totalValue: Math.round(num(r.price) * num(r.volume_total)),
+      profit: 0,
+      profitMargin: 0,
+      locationId,
+      locationName: r.region_id ? `Region ${num(r.region_id)}` : '',
+    };
+  });
 }
 
 export async function fetchKillmails(corpId: number): Promise<KillmailSummary[]> {
