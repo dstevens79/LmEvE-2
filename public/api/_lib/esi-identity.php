@@ -4,6 +4,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/role-config-lib.php';
+
 /**
  * Minimal HTTP GET helper (JSON body).
  * @return array{0: ?string, 1: int, 2: ?string} [body, httpCode, curlError]
@@ -116,10 +118,12 @@ function esi_higher_role(string $a, string $b): string {
  *   ceo_id: ?int,
  *   member_count: ?int,
  *   eve_roles: string[],
- *   site_role: string
+ *   titles: string[],
+ *   site_role: string,
+ *   db_mapped_role: ?string
  * }
  */
-function esi_enrich_character_identity(int $characterId, string $accessToken, array $grantedScopes = []): array {
+function esi_enrich_character_identity(int $characterId, string $accessToken, array $grantedScopes = [], ?mysqli $db = null): array {
     $out = [
         'corporation_id' => 0,
         'corporation_name' => null,
@@ -129,7 +133,9 @@ function esi_enrich_character_identity(int $characterId, string $accessToken, ar
         'ceo_id' => null,
         'member_count' => null,
         'eve_roles' => [],
+        'titles' => [],
         'site_role' => 'corp_member',
+        'db_mapped_role' => null,
     ];
 
     $ua = ['User-Agent: LMeve-2'];
@@ -206,8 +212,41 @@ function esi_enrich_character_identity(int $characterId, string $accessToken, ar
         }
     }
 
-    // 5) Site role from EVE roles, with CEO-id fallback from public corp data
-    $mapped = esi_map_eve_roles_to_site_role($out['eve_roles']);
+    // 4b) Character corporation titles (free-form, per-corp). Requires the same scope.
+    if ($hasRolesScope || count($grantedScopes) === 0) {
+        $titlesUrl = "https://esi.evetech.net/latest/characters/{$characterId}/titles/?datasource=tranquility";
+        list($tbody, $tcode) = esi_http_get($titlesUrl, $auth);
+        if ($tbody !== null && $tcode >= 200 && $tcode < 300) {
+            $tdoc = json_decode($tbody, true);
+            if (is_array($tdoc)) {
+                foreach ($tdoc as $entry) {
+                    if (is_array($entry) && !empty($entry['title_name'])) {
+                        $out['titles'][] = (string)$entry['title_name'];
+                    }
+                }
+            }
+        }
+    }
+
+    // 5) Site role: prefer DB-driven mapping rules (per-corp eve roles + titles), fall back to the
+    // hardcoded table, with CEO-id fallback from public corp data.
+    $mapped = null;
+    if ($db !== null && $corpId > 0) {
+        try {
+            role_config_ensure_schema($db);
+            $res = role_config_resolve($db, $corpId, $out['eve_roles'], $out['titles']);
+            if (is_array($res)) {
+                $mapped = (string)$res['roleKey'];
+                $out['db_mapped_role'] = $mapped;
+            }
+        } catch (\Throwable $e) {
+            // DB mapping unavailable — fall through to the static table.
+            $mapped = null;
+        }
+    }
+    if ($mapped === null || $mapped === '') {
+        $mapped = esi_map_eve_roles_to_site_role($out['eve_roles']);
+    }
     if (
         $mapped === 'corp_member'
         && !empty($out['ceo_id'])

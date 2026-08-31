@@ -4,6 +4,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/role-config-lib.php';
+
 const LMEVE_SESSION_NAME = 'LMEVESESSID';
 const LMEVE_SESSION_USER_KEY = 'lmeve_user';
 const LMEVE_SESSION_OAUTH_KEY = 'lmeve_oauth';
@@ -87,9 +89,18 @@ function api_normalize_role($role): string {
         'public' => 'guest',
     ];
 
-    return $aliases[$raw] ?? (in_array($raw, [
-        'super_admin', 'corp_admin', 'corp_director', 'corp_manager', 'corp_member', 'guest',
-    ], true) ? $raw : 'corp_member');
+    if (isset($aliases[$raw])) {
+        return $aliases[$raw];
+    }
+
+    // Custom, data-defined role keys (from role_definitions) must pass through verbatim.
+    // Unknown garbage still collapses to corp_member rather than leaking a fake capability set.
+    require_once __DIR__ . '/role-config-lib.php';
+    if (preg_match('/^[a-z0-9_\-]{2,64}$/', $raw)) {
+        return $raw;
+    }
+
+    return 'corp_member';
 }
 
 /**

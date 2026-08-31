@@ -794,7 +794,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `alliance_id` BIGINT,
   `alliance_name` VARCHAR(255),
   `auth_method` ENUM('manual', 'esi') NOT NULL DEFAULT 'manual',
-  `role` ENUM('super_admin', 'corp_admin', 'corp_director', 'corp_manager', 'corp_member', 'guest') NOT NULL DEFAULT 'corp_member',
+  `role` VARCHAR(64) NOT NULL DEFAULT 'corp_member',
   `access_token` TEXT,
   `refresh_token` TEXT,
   `token_expiry` DATETIME,
@@ -1224,6 +1224,33 @@ CREATE TABLE IF NOT EXISTS `name_cache` (
   PRIMARY KEY (`entity_kind`, `entity_id`),
   INDEX `idx_entity_id` (`entity_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Site role definitions (roles as data). corporation_id NULL = global set shared by all corps.
+-- The six built-in roles are seeded at first use by _lib/role-config-lib.php (idempotent);
+-- custom roles and per-corp overrides are managed via /api/lmeve/role-definitions.php.
+CREATE TABLE IF NOT EXISTS `role_definitions` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `corporation_id` BIGINT NULL,
+  `key` VARCHAR(64) NOT NULL,
+  `name` VARCHAR(100) NOT NULL,
+  `permissions_json` JSON NOT NULL,
+  `is_builtin` TINYINT(1) NOT NULL DEFAULT 0,
+  `created_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_corp_key` (`corporation_id`, `key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Permission mappings: EVE corp role or corp title -> site role. corporation_id NULL = global fallback rule.
+CREATE TABLE IF NOT EXISTS `permission_mappings` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `corporation_id` BIGINT NULL,
+  `kind` ENUM('eve_role','title') NOT NULL,
+  `source_name` VARCHAR(150) NOT NULL,
+  `site_role_key` VARCHAR(64) NOT NULL DEFAULT 'corp_member',
+  `priority` INT NOT NULL DEFAULT 0,
+  `updated_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_corp_kind_source` (`corporation_id`, `kind`, `source_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SCHEMA_EOF
 

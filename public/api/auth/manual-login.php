@@ -143,7 +143,10 @@ if (function_exists('api_touch_user_session')) {
 }
 
 // Canonical capability flags (role / is_admin / bootstrap) come from api_session_establish.
-$public = api_session_establish(api_public_user_from_row($row));
+$publicRow = api_public_user_from_row($row);
+$corpIdForPerms = isset($row['corporation_id']) && $row['corporation_id'] !== null ? (int)$row['corporation_id'] : 0;
+role_config_attach_permissions($mysqli, $corpIdForPerms > 0 ? $corpIdForPerms : null, (string)($publicRow['role'] ?? ''), $publicRow);
+$public = api_session_establish($publicRow);
 
 @$mysqli->close();
 api_respond(['ok' => true, 'user' => $public, 'session' => true, 'authSource' => 'database']);

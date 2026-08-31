@@ -1,4 +1,4 @@
-import { UserRole, RolePermissions, LMeveUser } from './types';
+import { UserRole, RoleKey, RolePermissions, LMeveUser } from './types';
 
 /**
  * Role-based access control system for LMeve
@@ -224,13 +224,109 @@ export function getRolePermissions(role: UserRole | string): RolePermissions {
   return ROLE_DEFINITIONS[normalized] || ROLE_DEFINITIONS.guest;
 }
 
+// Server-resolved role data (custom roles, or edited built-in permission sets) — see role_definitions.
+export interface ResolvedRoleData {
+  /** Exact role key as stored in the DB (may be a custom key). */
+  key?: string;
+  /** Display label for the key. */
+  name?: string;
+  permissions: RolePermissions | null | undefined;
+}
+
+const BUILTIN_ROLE_KEYS = new Set<string>(Object.keys(ROLE_DEFINITIONS));
+
+function isServerPermissionSet(perms: unknown): perms is Partial<RolePermissions> {
+  if (!perms || typeof perms !== 'object') return false;
+  const keys = role_permission_keys();
+  for (const k of keys) {
+    if (!(k in (perms as Record<string, unknown>))) return false;
+  }
+  return true;
+}
+
+/** The 17 permission flags — mirrors RolePermissions and the server's canonical list. */
+export function role_permission_keys(): (keyof RolePermissions)[] {
+  return [
+    'canManageSystem', 'canManageMultipleCorps', 'canConfigureESI', 'canManageDatabase',
+    'canManageCorp', 'canManageUsers', 'canViewFinancials',
+    'canManageManufacturing', 'canManageMining', 'canManageAssets',
+    'canManageMarket', 'canViewKillmails', 'canManageIncome',
+    'canViewAllMembers', 'canEditAllData', 'canExportData', 'canDeleteData',
+  ];
+}
+
+// In-memory registry of server-resolved role data for the current session, keyed by exact key.
+// Populated by fetchRoleDefinitions (role-config.ts) so that permission resolution — which runs in
+// pure functions without a DB handle — can honor custom roles and site-edited built-in sets.
+const resolvedRoleRegistry = new Map<string, { name: string; permissions: RolePermissions }>();
+
+/** Register server-fetched role definitions for the current corporation scope (or global when corp is null). */
+export function registerResolvedRoles(roles: Array<{ key: string; name: string; permissions: RolePermissions }>, _corporationId?: number | null): void {
+  if (!Array.isArray(roles)) return;
+  for (const r of roles) {
+    if (!r || typeof r.key !== 'string' || r.key === '' ) continue;
+    resolvedRoleRegistry.set(r.key, { name: String(r.name ?? r.key), permissions: normalizeServerPerms(r.permissions) });
+  }
+}
+
+/** Forget cached role data (e.g. on logout or scope change). */
+export function clearResolvedRoles(): void {
+  resolvedRoleRegistry.clear();
+}
+
+function normalizeServerPerms(perms: RolePermissions | null | undefined): RolePermissions {
+  const out = {} as Record<keyof RolePermissions, boolean>;
+  for (const k of role_permission_keys()) out[k] = !!(perms && (perms as unknown as Record<string, unknown>)?.[k]);
+  return out as RolePermissions;
+}
+
+/** Display label for a role key: server name when known, else built-in label. */
+export function getRoleLabel(role: string): string {
+  const entry = resolvedRoleRegistry.get(String(role));
+  if (entry) return entry.name;
+  switch (role) {
+    case 'super_admin': return 'Super Admin';
+    case 'corp_admin': return 'Corp Admin';
+    case 'corp_director': return 'Director';
+    case 'corp_manager': return 'Manager';
+    case 'corp_member': return 'Member';
+    case 'guest': return 'Guest';
+    default: return String(role);
+  }
+}
+
+/**
+ * Effective permissions for a role key, preferring server-resolved data.
+ * - super_admin is always full (escape hatch).
+ * - A registry entry (custom roles + site-edited built-ins) wins over the static table.
+ * - Otherwise falls back to ROLE_DEFINITIONS by normalized key (built-ins + offline bootstrap,
+ *   where no DB data exists yet).
+ */
+export function resolveRolePermissions(role: UserRole | string): RolePermissions {
+  const rawKey = String(role ?? '').trim();
+  if (rawKey === 'super_admin') {
+    return normalizeServerPerms({ canManageSystem:true,canManageMultipleCorps:true,canConfigureESI:true,canManageDatabase:true,canManageCorp:true,canManageUsers:true,canViewFinancials:true,canManageManufacturing:true,canManageMining:true,canManageAssets:true,canManageMarket:true,canViewKillmails:true,canManageIncome:true,canViewAllMembers:true,canEditAllData:true,canExportData:true,canDeleteData:true });
+  }
+
+  const registered = resolvedRoleRegistry.get(rawKey);
+  if (registered) return registered.permissions;
+
+  // Custom key not yet known to the registry: no capabilities rather than guessing.
+  if (!BUILTIN_ROLE_KEYS.has(rawKey)) {
+    return normalizeServerPerms(null);
+  }
+
+  const normalized = normalizeUserRole(role);
+  return ROLE_DEFINITIONS[normalized] || ROLE_DEFINITIONS.guest;
+}
+
 /**
  * Check if a user has a specific permission
  */
 export function hasPermission(user: LMeveUser | null, permission: keyof RolePermissions): boolean {
   if (!user || user.isActive === false) return false;
   if (isLocalSiteAdmin(user)) return true;
-  const perms = user.permissions || getRolePermissions(user.role);
+  const perms = user.permissions && Object.keys(user.permissions).length > 0 ? user.permissions : resolveRolePermissions(user.role);
   return !!perms[permission];
 }
 
@@ -267,10 +363,16 @@ export function canAccessTab(user: LMeveUser | null, tab: string): boolean {
     case 'market':
       return hasPermission(user, 'canManageMarket');
       
+    case 'killmails':
+      return hasPermission(user, 'canViewKillmails');
+      
     case 'buyback':
       return hasPermission(user, 'canManageMarket') || hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
       
     case 'wallet':
+      return hasPermission(user, 'canManageIncome') || hasPermission(user, 'canViewFinancials');
+      
+    case 'income':
       return hasPermission(user, 'canManageIncome') || hasPermission(user, 'canViewFinancials');
       
     case 'notifications':
@@ -408,7 +510,8 @@ export function createUserWithRole(
   role: UserRole | string
 ): LMeveUser {
   const now = new Date().toISOString();
-  let resolvedRole = normalizeUserRole(role);
+  // Preserve custom (data-defined) role keys verbatim; normalizeUserRole only maps built-ins/aliases.
+  let resolvedRole: RoleKey = BUILTIN_ROLE_KEYS.has(String(role)) ? normalizeUserRole(role) : String(role).trim() || 'corp_member';
 
   // Offline bootstrap / classic local admin always becomes super_admin with full perms
   const provisional: Partial<LMeveUser> = {
@@ -420,8 +523,7 @@ export function createUserWithRole(
     resolvedRole = 'super_admin';
   }
 
-  const permissions = getRolePermissions(resolvedRole);
-  
+  const permissions = resolveRolePermissions(resolvedRole);
   return {
     id: userData.id || `user_${Date.now()}`,
     username: userData.username,
@@ -464,6 +566,7 @@ export function createUserWithRole(
     canManageESI:
       permissions.canConfigureESI ||
       userData.canManageESI === true,
+    roleLabel: (userData as Partial<LMeveUser> & { roleLabel?: string }).roleLabel ?? getRoleLabel(resolvedRole),
     createdDate: userData.createdDate || now,
     createdBy: userData.createdBy,
     updatedDate: now,

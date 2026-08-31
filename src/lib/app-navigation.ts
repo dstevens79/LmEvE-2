@@ -15,6 +15,7 @@ import {
   Database,
   Clock,
   ChartLine,
+  Crosshair,
   Shield,
   Gear,
 } from '@phosphor-icons/react';
@@ -36,8 +37,14 @@ const Manufacturing = lazy(() =>
 const Market = lazy(() =>
   import('@/components/tabs/Market').then((m) => ({ default: m.Market }))
 );
+const Killmails = lazy(() =>
+  import('@/components/tabs/Killmails').then((m) => ({ default: m.Killmails }))
+);
 const Wallet = lazy(() =>
   import('@/components/tabs/Wallet').then((m) => ({ default: m.Wallet }))
+);
+const Income = lazy(() =>
+  import('@/components/tabs/Income').then((m) => ({ default: m.Income }))
 );
 const Notifications = lazy(() =>
   import('@/components/tabs/Notifications').then((m) => ({ default: m.Notifications }))
@@ -79,7 +86,9 @@ export const PRIMARY_NAV_TABS: AppNavTab[] = [
   { id: 'manufacturing', label: 'Manufacturing', icon: Factory, component: Manufacturing, badge: '3' },
   { id: 'planetary', label: 'Planetary Interaction', icon: Planet, component: PlanetaryInteraction, badge: '5' },
   { id: 'market', label: 'Market', icon: TrendUp, component: Market },
+  { id: 'killmails', label: 'Killmails', icon: Crosshair, component: Killmails },
   { id: 'wallet', label: 'Wallet', icon: CurrencyDollar, component: Wallet },
+  { id: 'income', label: 'Income', icon: Receipt, component: Income },
   { id: 'buyback', label: 'Buyback', icon: Receipt, component: Buyback },
   { id: 'notifications', label: 'Notifications', icon: Bell, component: Notifications },
   { id: 'corporations', label: 'ESI', icon: Key, component: Corporations },

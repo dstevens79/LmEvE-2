@@ -5,7 +5,7 @@ export interface TabComponentProps {
 }
 
 // Tab types for navigation
-export type TabType = 'dashboard' | 'members' | 'assets' | 'manufacturing' | 'planetary' | 'market' | 'wallet' | 'buyback' | 'notifications' | 'corporations' | 'theme' | 'settings';
+export type TabType = 'dashboard' | 'members' | 'assets' | 'manufacturing' | 'planetary' | 'market' | 'killmails' | 'wallet' | 'income' | 'buyback' | 'notifications' | 'corporations' | 'theme' | 'settings';
 
 // Member management types
 export interface Member {
@@ -778,6 +778,10 @@ export type UserRole =
   | 'corp_member'           // Basic corporation member, read-only access
   | 'guest';                // Limited guest access
 
+// A role key may be a built-in UserRole or a custom data-defined role created in the DB.
+export type RoleKey = UserRole | (string & {});
+
+
 export interface RolePermissions {
   // System permissions
   canManageSystem: boolean;
@@ -803,6 +807,30 @@ export interface RolePermissions {
   canDeleteData: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Data-driven role config (stored in role_definitions / permission_mappings)
+// ---------------------------------------------------------------------------
+
+/** A site role as data. `corporationId === null` means the global/shared set. */
+export interface RoleDefinition {
+  key: string;
+  name: string;
+  isBuiltin: boolean;
+  /** The corporation this row belongs to; null = global (site-wide) definition. */
+  corporationId: number | null;
+  permissions: RolePermissions;
+}
+
+/** A mapping rule: an EVE corp role or a corp title grants a site role. */
+export interface PermissionMapping {
+  kind: 'eve_role' | 'title';
+  sourceName: string;
+  siteRoleKey: string;
+  priority: number;
+  /** The corporation this row belongs to; null = global fallback rule. */
+  corporationId: number | null;
+}
+
 export interface LMeveUser {
   // Core identity
   id: string;
@@ -818,8 +846,12 @@ export interface LMeveUser {
   
   // Authentication
   authMethod: 'manual' | 'esi';
-  role: UserRole;
+  role: RoleKey;
   permissions: RolePermissions;
+  /** Server-resolved display label for the role (built-in or custom). */
+  roleLabel?: string;
+  /** Display name of a corp title, if one exists on this member. */
+  title?: string;
   
   // ESI data (when applicable)
   accessToken?: string;

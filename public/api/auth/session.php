@@ -90,6 +90,9 @@ try {
         $public['session_expiry'] = gmdate('c', (int)$_SESSION['lmeve_session_expires_at']);
       }
       $public = api_finalize_public_user($public);
+      // Re-attach the resolved permission set so custom (data-defined) roles survive rehydrate.
+      $corpIdForPerms = isset($row['corporation_id']) && $row['corporation_id'] !== null && $row['corporation_id'] !== '' ? (int)$row['corporation_id'] : 0;
+      role_config_attach_permissions($db, $corpIdForPerms > 0 ? $corpIdForPerms : null, (string)($public['role'] ?? ''), $public);
       $_SESSION[LMEVE_SESSION_USER_KEY] = array_merge($sessionUser, $public);
       $fresh = $public;
     }

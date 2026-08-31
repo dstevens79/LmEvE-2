@@ -26,8 +26,8 @@ import {
   Info
 } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/auth-provider';
-import { LMeveUser, UserRole } from '@/lib/types';
-import { hasPermission } from '@/lib/roles';
+import { LMeveUser, UserRole, RoleKey } from '@/lib/types';
+import { getRoleLabel, hasPermission } from '@/lib/roles';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   super_admin: 'Super Admin',
@@ -70,7 +70,7 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
   const [isCreating, setIsCreating] = useState(false);
   
   // Edit user form
-  const [editRole, setEditRole] = useState<UserRole>('corp_member');
+  const [editRole, setEditRole] = useState<RoleKey>('corp_member');
   const [isUpdating, setIsUpdating] = useState(false);
   
   // Delete confirmation
@@ -328,8 +328,8 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
     setIsDeleteDialogOpen(true);
   };
 
-  // Get role badge variant
-  const getRoleBadgeVariant = (role: UserRole) => {
+  // Get role badge variant (tolerates custom data-defined role keys)
+  const getRoleBadgeVariant = (role: RoleKey) => {
     switch (role) {
       case 'super_admin':
         return 'destructive';
@@ -341,6 +341,8 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
         return 'outline';
     }
   };
+
+  const roleDisplay = (role: RoleKey) => getRoleLabel(String(role));
 
   // Format last login
   const formatLastLogin = (dateString: string) => {
@@ -531,7 +533,7 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
                       </div>
                     </div>
                     <Badge variant={getRoleBadgeVariant(user.role)} className="text-xs">
-                      {ROLE_LABELS[user.role]}
+                      {roleDisplay(user.role)}
                     </Badge>
                   </div>
                   
@@ -705,7 +707,7 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
                     
                     <TableCell>
                       <Badge variant={getRoleBadgeVariant(user.role)} className="text-xs">
-                        {ROLE_LABELS[user.role]}
+                        {roleDisplay(user.role)}
                       </Badge>
                     </TableCell>
                     

@@ -3,7 +3,8 @@ import { useKV } from '@/lib/kv';
 import { useGeneralSettings, useDatabaseSettings, requestSettingsReload } from '@/lib/persistenceService';
 import { toast } from 'sonner';
 import { LMeveUser, UserRole, CorporationConfig } from './types';
-import { createUserWithRole, isLocalSiteAdmin, isSessionValid, normalizeUserRole, refreshUserSession } from './roles';
+import { createUserWithRole, getRoleLabel, getRolePermissions, isLocalSiteAdmin, isSessionValid, normalizeUserRole, refreshUserSession, registerResolvedRoles, resolveRolePermissions } from './roles';
+import { assignUserRole } from './role-config';
 import { getESIAuthService, initializeESIAuth } from './esi-auth';
 import { createDefaultCorporationConfig } from './corp-validation';
 import { CorporationTokenManager } from './corp-token-manager';
@@ -36,7 +37,7 @@ interface AuthContextType {
   
   // User management
   createManualUser: (username: string, password: string, role: UserRole, characterInfo?: CharacterInfo) => Promise<LMeveUser>;
-  updateUserRole: (userId: string, newRole: UserRole) => Promise<void>;
+  updateUserRole: (userId: string, newRole: import('./types').RoleKey) => Promise<void>;
   updateUserPermissions: (userId: string, permissions: Partial<import('./types').RolePermissions>) => Promise<void>;
   deleteUser: (userId: string) => Promise<void>;
   getAllUsers: () => LMeveUser[];
@@ -172,9 +173,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
       idLower === 'bootstrap-admin' ||
       (typeof row?.role === 'string' && normalizeUserRole(row.role) === 'super_admin');
 
-    let roleFromServer = normalizeUserRole(row?.role || (serverSaysAdmin ? 'super_admin' : 'corp_member'));
+    // Keep custom (data-defined) role keys verbatim — normalizeUserRole only maps built-ins/aliases.
+    const serverRoleRaw = typeof row?.role === 'string' && row.role !== '' ? row.role.trim() : '';
+    let roleFromServer: import('./types').RoleKey;
     if (serverSaysAdmin) {
       roleFromServer = 'super_admin';
+    } else if (serverRoleRaw !== '') {
+      const knownBuiltins = ['super_admin', 'corp_admin', 'corp_director', 'corp_manager', 'corp_member', 'guest'];
+      roleFromServer = knownBuiltins.includes(serverRoleRaw) ? normalizeUserRole(serverRoleRaw) : serverRoleRaw;
+    } else {
+      roleFromServer = normalizeUserRole(row?.role || 'corp_member');
+    }
+
+    // Register server-resolved role data (custom roles + edited built-in sets) so that
+    // permission resolution honors the DB instead of only the static built-in table.
+    if (row?.role_permissions && typeof row.role_permissions === 'object') {
+      registerResolvedRoles([
+        { key: String(roleFromServer), name: typeof row.role_label === 'string' && row.role_label !== '' ? row.role_label : getRoleLabel(String(roleFromServer)), permissions: row.role_permissions },
+      ]);
+    } else if (row?.role_label && typeof row.role_label === 'string') {
+      registerResolvedRoles([{ key: String(roleFromServer), name: row.role_label, permissions: roleFromServer === 'super_admin' ? getRolePermissions('super_admin') : resolveRolePermissions(String(roleFromServer)) }]);
     }
 
     const userData: Partial<LMeveUser> & { bootstrap?: boolean } = {
@@ -1111,10 +1129,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return user;
   }, [users, currentUser, setUsers]);
 
-  // Update user role
-  const updateUserRole = useCallback(async (userId: string, newRole: UserRole) => {
+  // Update user role. Persists to the server users table when this is a DB-backed (numeric) id;
+  // string/bootstrap ids stay local-only since they are not real DB rows.
+  const updateUserRole = useCallback(async (userId: string, newRole: import('./types').RoleKey) => {
     console.log('🔄 Updating user role:', userId, newRole);
-    
+
+    if (/^\d+$/.test(String(userId))) {
+      try {
+        await assignUserRole(Number(userId), String(newRole));
+      } catch (error) {
+        console.error('Failed to persist user role on server:', error);
+        throw error;
+      }
+    }
+
     setUsers(prev => prev.map(user => {
       if (user.id === userId) {
         const updatedUser = createUserWithRole(user, newRole);

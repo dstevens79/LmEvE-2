@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../_lib/common.php';
 require_once __DIR__ . '/../../_lib/session.php';
 require_once __DIR__ . '/../../_lib/esi-identity.php';
+require_once __DIR__ . '/../../_lib/role-config-lib.php';
 
 // GET: CCP browser redirect. POST: programmatic JSON.
 
@@ -144,7 +145,7 @@ try {
   $scopes = (string)($verify['Scopes'] ?? '');
   $scopeList = esi_parse_scopes($scopes);
 
-  $identity = esi_enrich_character_identity($characterId, $accessToken, $scopeList);
+  $identity = esi_enrich_character_identity($characterId, $accessToken, $scopeList, $db);
   $corpId = (int)($identity['corporation_id'] ?? 0);
   $corpName = $identity['corporation_name'] !== null ? (string)$identity['corporation_name'] : null;
   $allianceId = isset($identity['alliance_id']) && (int)$identity['alliance_id'] > 0
@@ -170,6 +171,7 @@ try {
     $existingSession,
     $existingDbRole
   );
+
 
   $stmt = @$db->prepare(
     'INSERT INTO users (
@@ -246,6 +248,9 @@ try {
   $public = api_public_user_from_row($row);
   $public['auth_method'] = 'esi';
   $public['role'] = $siteRole;
+  // Ship the resolved permission set so custom (data-defined) roles survive client-side
+  // role normalization, which only knows the built-in set.
+  role_config_attach_permissions($db, $corpId > 0 ? $corpId : null, (string)$siteRole, $public);
   if ($corpNameBind !== '') {
     $public['corporation_name'] = $corpNameBind;
   }

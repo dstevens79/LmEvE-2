@@ -51,18 +51,21 @@ if ($expiresIn > 0) {
   }
 }
 
-$identity = esi_enrich_character_identity($characterId, $accessToken, $scopeList);
-$corpId = (int)($identity['corporation_id'] ?? 0);
-$corpName = $identity['corporation_name'] !== null ? (string)$identity['corporation_name'] : '';
-$allianceId = isset($identity['alliance_id']) && (int)$identity['alliance_id'] > 0
-  ? (int)$identity['alliance_id']
-  : 0;
-$allianceName = $identity['alliance_name'] !== null ? (string)$identity['alliance_name'] : '';
+$identity = null;
+$corpId = 0; $corpName = ''; $allianceId = 0; $allianceName = '';
 
 try {
   $db = api_connect($body);
   $dbCfg = api_get_db_config($body);
   api_select_db($db, (string)($dbCfg['database'] ?? 'lmeve2'));
+
+  $identity = esi_enrich_character_identity($characterId, $accessToken, $scopeList, $db);
+  $corpId = (int)($identity['corporation_id'] ?? 0);
+  $corpName = $identity['corporation_name'] !== null ? (string)$identity['corporation_name'] : '';
+  $allianceId = isset($identity['alliance_id']) && (int)$identity['alliance_id'] > 0
+    ? (int)$identity['alliance_id']
+    : 0;
+  $allianceName = $identity['alliance_name'] !== null ? (string)$identity['alliance_name'] : '';
 
   $existingDbRole = null;
   $prev = @$db->prepare('SELECT id, role FROM users WHERE character_id=? LIMIT 1');
@@ -152,6 +155,9 @@ try {
   $public = api_public_user_from_row($row);
   $public['auth_method'] = 'esi';
   $public['role'] = $siteRole;
+  // Ship the resolved permission set so custom (data-defined) roles survive client-side
+  // role normalization, which only knows the built-in set.
+  role_config_attach_permissions($db, $corpId > 0 ? $corpId : null, (string)$siteRole, $public);
   if ($corpName !== '') $public['corporation_name'] = $corpName;
   if ($allianceName !== '') $public['alliance_name'] = $allianceName;
   if ($allianceId > 0) $public['alliance_id'] = $allianceId;

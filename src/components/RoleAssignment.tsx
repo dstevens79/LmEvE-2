@@ -43,8 +43,9 @@ export function RoleAssignment({ user, onRoleChange, className }: RoleAssignment
   const [showPermissionsDialog, setShowPermissionsDialog] = useState(false);
 
   // Get role display info with icons and colors
-  const getRoleDisplay = (role: UserRole) => {
-    const roleMap = {
+  type RoleDisplayInfo = { label: string; variant: 'destructive' | 'default' | 'secondary' | 'outline'; icon: React.ElementType; description: string; color: string };
+  const getRoleDisplay = (role: UserRole | string): RoleDisplayInfo => {
+    const roleMap: Record<string, RoleDisplayInfo> = {
       super_admin: { 
         label: 'Super Administrator', 
         variant: 'destructive', 
