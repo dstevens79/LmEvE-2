@@ -1,35 +1,60 @@
 # LMeve-2 PHP API
 
-These endpoints are deployed alongside the built app and provide server-side database access without a separate daemon.
+Endpoints are deployed alongside the built app and provide server-side database access without a separate daemon.
 
-- Common helper: `public/api/_lib/common.php`
-- Health: `GET /api/health.php` (the only unauthenticated diagnostic endpoint)
+- Common helper: `public/api/_lib/common.php` (also `_lib/session.php`, `_lib/esi-identity.php`, `_lib/bootstrap-auth.php`)
 - Connection test: `POST /api/test-connection.php` (authenticated administrator) → `{ ok, latencyMs, currentUser, hasLmeveDb, canSelectLmeve, hasSdeDb, canSelectSde }`
-- Read-only SQL: `POST /api/query.php` (authenticated administrator) with `{ query }` (SELECT/SHOW/DESCRIBE/EXPLAIN only)
-- LMeve resources:
-  - `POST /api/lmeve/get-corporations.php` `{ limit? }`
-  - `POST /api/lmeve/get-characters.php` `{ corporationId?, limit? }`
-  - `POST /api/lmeve/get-assets.php` `{ ownerId?, limit? }`
-  - `POST /api/lmeve/get-industry-jobs.php` `{ status?, limit? }`
 
-- ESI writes (bulk upsert, authenticated administrators): send `{ records: [...] }` where records are arrays of typed objects.
-  - `POST /api/lmeve/esi/upsert-members.php`
-    - columns: character_id, character_name, corporation_id, corporation_name, alliance_id, alliance_name, roles, titles, last_login, location_id, location_name, ship_type_id, ship_type_name, is_online
-  - `POST /api/lmeve/esi/upsert-assets.php`
-    - columns: item_id, type_id, location_id, location_type, location_flag, quantity, is_singleton, is_blueprint_copy, owner_id, corporation_id
-  - `POST /api/lmeve/esi/upsert-industry-jobs.php`
-    - table: industry_jobs; columns: job_id, corporation_id, installer_id, facility_id, activity_id, blueprint_type_id, product_type_id, runs, status, duration, start_date, end_date, completed_date
-  - `POST /api/lmeve/esi/upsert-market-orders.php`
-    - columns: order_id, corporation_id, type_id, region_id, location_id, volume_total, volume_remain, min_volume, price, is_buy_order, duration, issued, state
+## LMeve data reads (server session required)
 
-- Auth (EVE SSO):
-  - OAuth start/callback/establish endpoints are flow endpoints and establish the same PHP session used by data APIs.
-  - `POST /api/auth/esi/refresh.php` requires the current authenticated session and refreshes its vaulted token.
+All accept a JSON body with optional `limit`:
 
-- SDE helpers:
-  - `POST /api/sde/get-type-names.php` `{ typeIds: number[] }` → `{ ok, rows: [{ typeID, typeName }] }`
+- `POST /api/lmeve/get-corporations.php`
+- `POST /api/lmeve/get-characters.php` `{ corporationId? }`
+- `POST /api/lmeve/get-assets.php` `{ ownerId? }`
+- `POST /api/lmeve/get-industry-jobs.php` `{ status? }`
+- `POST /api/lmeve/get-market-orders.php`
+- `POST /api/lmeve/get-market-order-history.php`
+- `POST /api/lmeve/get-market-prices.php`
+- `POST /api/lmeve/get-wallet-transactions.php`
+- `POST /api/lmeve/get-wallet-divisions.php`
+- `POST /api/lmeve/get-mining-ledger.php`
+- `POST /api/lmeve/get-contracts.php`
+- `POST /api/lmeve/get-income.php`
+- `POST /api/lmeve/get-names.php` (cached name lookup)
+
+## ESI sync (server-side, vaulted corp token)
+
+The system cron poller runs due processes; the UI triggers manual runs. No browser tokens are involved:
+
+- `GET/POST /api/lmeve/esi/sync-settings.php` — per-process schedule/status for a corporation (`sync_process_config`, `corp_sync_log`)
+- `POST /api/lmeve/esi/sync-run.php` `{ processType, corporationId }` — run one segment now (members/assets/industry/market + server-backed processes)
+
+## Role & permission config (site roles as data)
+
+Backed by `role_definitions` / `permission_mappings`, resolved at SSO login:
+
+- `GET/POST /api/lmeve/role-definitions.php` — list/save/delete role definitions (per-corp overrides over global built-ins; super_admin permissions locked server-side)
+- `GET/POST /api/lmeve/permission-mappings.php` — EVE corp role / title → site-role rules with priority
+- `POST /api/lmeve/resolve-role.php` `{ corporationId, eveRoles, titles }` — preview resolution for a character
+- `GET/POST /api/lmeve/users.php` — server-persisted user list; assign roles / enable-disable accounts
+
+## Auth (EVE SSO + local)
+
+The OAuth callback is handled server-side: EVE redirects to `/api/auth/esi/callback.php`, which exchanges the code, enriches identity (corp roles + titles), resolves the site role from the mapping rules, upserts the user row and establishes the `LMEVESESSID` browser session. The SPA then hydrates via `GET /api/auth/session.php`.
+
+- `POST /api/auth/esi/start.php` — begin OAuth with signed state (supports LAN→public host handoff)
+- `GET|POST /api/auth/esi/callback.php` — code exchange + session establishment
+- `POST /api/auth/esi/establish.php` — SPA path: verify a just-obtained access token and bind the session
+- `POST /api/auth/manual-login.php` — local (service-account) login; bootstrap admin works without MySQL
+- `GET /api/auth/session.php` — current browser-session user (role + resolved permissions attached)
+- `POST /api/auth/logout.php`, `GET/POST /api/auth/bootstrap-users.php`
+
+## SDE helpers
+
+- `POST /api/sde/get-type-names.php` `{ typeIds: number[] }` → `{ ok, rows: [{ typeID, typeName }] }` (batched)
+- `GET /api/sde-latest.php`, `GET /api/app-metrics.php` — operational probes
 
 Notes:
-- All endpoints return `{ ok: boolean, ... }` and HTTP 200 for expected errors with an `error` message payload.
-- All non-auth flow APIs require the `LMEVESESSID` server session. Database credentials and database names come only from server-side settings.
-- Inputs are minimally sanitized; avoid passing raw SQL except via `query.php` for diagnostic use.
+- All endpoints return `{ ok: boolean, ... }`; expected errors are HTTP 200 with an `error` message unless a hard failure.
+- All non-auth-flow APIs require the `LMEVESESSID` server session. Database credentials and database names come only from server-side settings — never from client payloads (except connection-test).

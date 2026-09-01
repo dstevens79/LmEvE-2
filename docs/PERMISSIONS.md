@@ -1,118 +1,59 @@
 # Roles and Permissions
 
-This app uses role-based access control (RBAC) to gate features by user capabilities derived from EVE SSO and in-app roles.
+Role-based access control. Site roles are **data** (stored in the DB), not just code constants: built-ins are seeded defaults that a site admin can edit, corporations can override per-role, and new custom roles can be created. EVE corp roles and titles map onto site roles through configurable rules.
 
-- Roles are defined in `src/lib/roles.ts`.
-- Permissions are materialized per-user on login via `createUserWithRole(...)`.
-- CEO detection upgrades effective role to `corp_admin` when the character is the corporation CEO.
-- UI access is enforced with helper guards: `hasPermission`, `canAccessTab`, and `canAccessSettingsTab`.
+## Where things live
 
-## Role matrix
+- Built-in role defaults + static fallback: `src/lib/roles.ts` (`ROLE_DEFINITIONS`). Used offline (bootstrap) and as the seed source of truth mirror on the server.
+- Roles as data + resolution logic (server): `public/api/_lib/role-config-lib.php`.
+- Role / mapping / user endpoints: `public/api/lmeve/role-definitions.php`, `permission-mappings.php`, `resolve-role.php`, `users.php`.
+- SSO role resolution at login: `public/api/_lib/esi-identity.php` (`esi_enrich_character_identity`) → `role_config_resolve`.
+- Client permission gate + custom-role registry: `src/lib/roles.ts` (`hasPermission`, `canAccessTab`, `canAccessSettingsTab`, `registerResolvedRoles`).
 
-Source: `src/lib/roles.ts` (`ROLE_DEFINITIONS`)
+## How a role is resolved at SSO login
 
-- super_admin
-  - System: canManageSystem, canManageMultipleCorps, canConfigureESI, canManageDatabase
-  - Corporation: canManageCorp, canManageUsers, canViewFinancials, canManageManufacturing, canManageMining, canManageAssets, canManageMarket, canViewKillmails, canManageIncome
-  - Data: canViewAllMembers, canEditAllData, canExportData, canDeleteData
-- corp_admin (CEO)
-  - System: canManageSystem, canConfigureESI, canManageDatabase
-  - Corporation: canManageCorp, canManageUsers, canViewFinancials, canManageManufacturing, canManageMining, canManageAssets, canManageMarket, canViewKillmails, canManageIncome
-  - Data: canViewAllMembers, canEditAllData, canExportData
-- corp_director
-  - Corporation: canViewFinancials, canManageManufacturing, canManageMining, canManageAssets, canManageMarket, canViewKillmails, canManageIncome
-  - Data: canViewAllMembers, canEditAllData, canExportData
-- corp_manager
-  - Corporation: canManageManufacturing, canManageMining, canManageMarket, canViewKillmails
-  - Data: canViewAllMembers
-- corp_member
-  - Minimal: canViewKillmails
-- guest
-  - No permissions
+1. Token exchange, then `esi_enrich_character_identity` fetches the character's EVE corp **roles** and corp **titles**.
+2. `role_config_resolve` matches those against `permission_mappings` rules (per-corp rows override global fallbacks for the same source; highest priority wins; no match → `corp_member`). Mappings can never grant `super_admin`.
+3. CEO check: if the character is the corp's `ceo_id`, it resolves to at least `corp_admin`.
+4. The resolved key (built-in or custom) is stored on the `users` row (`role` is `VARCHAR(64)`) and the server attaches the role's permission set + display label onto the public session payload (`role_config_attach_permissions`).
+5. The client registers that data via `registerResolvedRoles`, so permission checks honor the DB-defined set, not just the static built-in table.
 
-Notes:
-- Only `super_admin` and `corp_admin` can access system-level settings. Directors can manage most corp features but not system settings or ESI configuration.
+Local (manual / service-account) logins keep their manually-assigned role; the bootstrap admin is always full access regardless of config.
 
-## CEO and role mapping
+## Built-in role defaults
 
-- File: `src/lib/roles.ts` → `getEVERoleMapping(eveRoles: string[]): UserRole`
-  - Maps EVE roles to app roles. `CEO`/`chief_executive_officer` → `corp_admin`; directors → `corp_director`; various management roles → `corp_manager`.
-- File: `src/lib/esi-auth.ts` (callback flow)
-  - After token exchange and role discovery, calls EVE corporation info to confirm `ceo_id`. If it matches the logging-in character, it force-sets `effectiveRole = 'corp_admin'`.
+Source: seeded from `role_config_builtin_permissions()` (server) and mirrored in `ROLE_DEFINITIONS` (`src/lib/roles.ts`). These are starting points — edit them under Settings → Permissions → Roles.
+
+- **super_admin** — all permissions; its permission set is locked server-side and cannot be reduced or deleted.
+- **corp_admin** — system + full corp management (canManageSystem, canConfigureESI, canManageDatabase, canManageCorp/Users/Financials/Manufacturing/Mining/Assets/Market/Income, canViewKillmails, data view/edit/export; no delete).
+- **corp_director** — financials + manufacturing/mining/assets/market/income management, killmail view, member/data view/edit/export.
+- **corp_manager** — manufacturing/mining/market management, killmail view, member view.
+- **corp_member** — canViewKillmails only.
+- **guest** — no permissions.
+
+## Mapping EVE roles & titles to site roles
+
+`permission_mappings` rows: `kind` (`eve_role` | `title`), `source_name`, `site_role_key`, `priority`, and an optional `corporation_id` (null = global fallback). Example rules:
+- Global: `eve_role ceo → corp_admin`.
+- Corp-specific: `title "Veteran Pilot" → logistics_chief` (a custom role) for a given corporation.
+
+Configure these under Settings → Permissions → Mappings. Resolution prefers the most specific, then highest priority.
 
 ## Guard helpers (UI enforcement)
 
-- `hasPermission(user, permission)`
-  - Source: `src/lib/roles.ts`
-  - Core gate used throughout UI.
+- `hasPermission(user, permission)` — core gate.
+- `canAccessTab(user, tab)` — primary nav gates, e.g. members→canViewAllMembers, assets→canManageAssets, manufacturing→canManageManufacturing, planetary→manufacturing OR mining, market→canManageMarket, wallet/income→income OR financials, settings→canManageCorp OR canManageSystem.
+- `canAccessSettingsTab(user, tab)` — per-section, e.g. database→canManageDatabase, permissions→canManageUsers OR canManageSystem, sync/sync-monitoring→corp/system management.
 
-- `canAccessTab(user, tab)`
-  - Source: `src/lib/roles.ts`
-  - Maps navigation tabs to required permissions, e.g.:
-    - members → canViewAllMembers
-    - assets → canManageAssets
-    - manufacturing → canManageManufacturing
-    - planetary → canManageManufacturing OR canManageMining
-    - market → canManageMarket
-    - buyback → canManageMarket OR canManageCorp OR canManageSystem
-    - wallet → canManageIncome OR canViewFinancials
-    - notifications → canManageCorp OR canManageSystem
-    - corporations → canManageSystem OR canConfigureESI
-    - settings → canManageCorp OR canManageSystem
+## Managing roles from the UI
 
-- `canAccessSettingsTab(user, settingsTab)`
-  - Source: `src/lib/roles.ts`
-  - Per-settings section access, e.g.:
-    - general → canManageCorp OR canManageSystem
-    - database → canManageDatabase
-    - sync → canManageCorp OR canManageSystem
-    - sync-monitoring → canManageCorp OR canManageSystem
-    - permissions → canManageUsers OR canManageSystem
-
-## Notable UI gates (where used)
-
-- Corporation registration button
-  - File: `src/components/Corporations.tsx`
-  - Gate: authenticated ESI user AND (canManageCorp OR canManageSystem)
-  - Action: `loginWithESI('corporation')` to request corp scopes
-
-- Settings → ESI/Database save actions
-  - File: `src/components/tabs/Settings.tsx`
-  - Gate: canManageCorp OR canManageSystem for most ESI sections; `database` tab requires canManageDatabase
-
-- Planetary Interaction tab
-  - File: `src/components/tabs/PlanetaryInteraction.tsx`
-  - Gate: canManageManufacturing OR canManageMining
-
-- App shell routing
-  - File: `src/App.tsx`
-  - Uses `canAccessSettingsTab` to determine visibility and navigation of settings subsections; also applies `canAccessTab` for primary tabs
-
-## Quick checks (troubleshooting)
-
-- Is the CEO mapped to corp_admin?
-  - Confirm `esi-auth.ts` logs "CEO detected via corporation info ceo_id match" after callback.
-  - Inspect `user.role` and `user.permissions` in localStorage/session (or via `/public/tools/storage-tools.html`).
-- Button disabled?
-  - Ensure `esiConfig.clientId` is present (server settings hydrate on first load).
-  - Verify `hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem')` evaluates to true.
+Settings → Permissions has three panels: **Roles** (edit any role's permission flags; create custom roles; corp-scoped overrides vs site-wide), **Mappings** (EVE role/title → site-role rules with priority and scope), and **Users** (assign a site role to an account, enable/disable — persisted to `users`).
 
 ## Scope notes (ESI)
 
-- Corp registration requires corporation scopes; directors/CEOs should authenticate via the "Register Corporation ESI" button.
-- We removed deprecated/invalid scopes and fixed typos. Exact scopes requested are logged during initiation for verification.
+- Corp registration requires corporation scopes.
+- Titles are free-form per-corp strings; EVE role identifiers are the fixed set (ceo, director, factory_manager, hangar_can_take*, etc.).
 
 ## OAuth callback flow
 
-**Important:** The app uses a **pure SPA OAuth flow**—no PHP callback endpoint.
-
-- **Callback URL:** Set your EVE developer app callback to your site root (e.g., `http://24.128.239.249/` or `https://yourdomain.com/`)
-- **Why:** sessionStorage (used to validate the OAuth state) only persists within the same browsing context. Redirecting through a server-side PHP endpoint breaks this context.
-- **Token storage:** Tokens are kept in-memory and sessionStorage only—they never persist to localStorage or the database. When the browser session ends, tokens are gone.
-- **What changed:** Previously the default was `/api/auth/esi/callback.php`, which caused the "sits and spins" issue during corp auth. Now the SPA handles the full OAuth flow client-side.
-
-**To update your EVE developer app:**
-1. Visit https://developers.eveonline.com
-2. Edit your LMeve application
-3. Set "Callback URL" to `http://YOUR_IP/` or `https://YOUR_DOMAIN/` (must match exactly what you access the app from)
-4. Save
+The OAuth callback is handled **server-side**: EVE redirects to `/api/auth/esi/callback.php`, which exchanges the code, enriches identity, resolves the site role from the mapping rules, upserts the user row and establishes the `LMEVESESSID` browser session. The SPA then hydrates via `GET /api/auth/session.php`. Set your EVE developer app callback to `/api/auth/esi/callback.php`.
