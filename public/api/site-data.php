@@ -6,43 +6,19 @@
 require_once __DIR__ . '/_lib/common.php';
 api_require_auth();
 
-// Resolve a writable storage directory with fallbacks (env and system temp)
-$preferredDir = __DIR__ . '/../../server/storage';
-$attemptLog = [];
-$storeDir = null;
-
-$candidates = [];
-$candidates[] = $preferredDir;
-$envDir = getenv('LMEVE_STORAGE_DIR');
-if ($envDir && $envDir !== '') $candidates[] = $envDir;
-$candidates[] = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'lmeve2-storage';
-
-foreach ($candidates as $dir) {
-  $attempt = [ 'dir' => $dir, 'created' => false, 'exists' => false, 'writable' => false, 'error' => null ];
-  if (!is_dir($dir)) {
-    @mkdir($dir, 0775, true);
-    $attempt['created'] = true;
-    clearstatcache();
-  }
-  $attempt['exists'] = is_dir($dir);
-  if ($attempt['exists']) {
-    $attempt['writable'] = @is_writable($dir);
-  } else {
-    $lastErr = error_get_last();
-    $attempt['error'] = $lastErr ? ($lastErr['message'] ?? 'unknown') : 'unknown';
-  }
-  $attemptLog[] = $attempt;
-  if ($attempt['exists'] && $attempt['writable']) {
-    $storeDir = $dir;
-    break;
-  }
-}
-
+// Resolve a writable storage directory (server/storage → LMEVE_STORAGE_DIR → system temp).
+$storeDir = api_storage_dir();
 if ($storeDir === null) {
-  api_fail(500, 'Failed to resolve writable site-data storage directory', [ 'attempts' => $attemptLog ]);
+  api_fail(500, 'Failed to resolve writable site-data storage directory', [
+    'candidates' => array_values(array_filter([
+      __DIR__ . '/../../server/storage',
+      getenv('LMEVE_STORAGE_DIR') ?: null,
+      rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'lmeve2-storage',
+    ]))
+  ]);
 }
 
-$storeFile = rtrim($storeDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'site-data.json';
+$storeFile = $storeDir . DIRECTORY_SEPARATOR . 'site-data.json';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if ($method === 'POST') {
