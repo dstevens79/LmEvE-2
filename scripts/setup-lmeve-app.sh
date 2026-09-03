@@ -7,64 +7,19 @@
 
 set -e
 
-# Color output
+# Color output (bright variants — dim blue was unreadable on dark terminals)
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
+BLUE='\033[1;36m'
 NC='\033[0m' # No Color
 
-# (Header removed to make room for left pre-flight checks beside right panel)
-
-# Utility: terminal width
-term_cols() {
-    if [ -n "$COLUMNS" ]; then echo "$COLUMNS"; return; fi
-    if command -v tput >/dev/null 2>&1; then tput cols 2>/dev/null || echo 120; else echo 120; fi
-}
-
-# Right-side banner art (drawn with cursor positioning)
-draw_right_panel() {
-    # Define art block
-    local art=(
-"┌────────────────────────────────────────────────────┐"
-"│                                                    │"
-"│   L      M   M  EEEEE  V   V  EEEEE        --      │"
-"│   L      MM MM  E      V   V  E          /   |     │"
-"│   L      M M M  EEEE    V V   EEEE   ==     /      │" 
-"│   L      M   M  E        V    E           /        │"
-"│   LLLLL  M   M  EEEEE    V    EEEEE      /____     │"
-"│                                                    │"
-"│                                                    │" 
-"│          LmEvE v2 • Application Installer          │"
-"│                                                    │"
-"│  ⛭  1–7 edit fields   ↵  Enter to start  Q  quit   │"
-"│                                                    │"
-"└────────────────────────────────────────────────────┘"
-    )
-
-    # Compute placement
-    local cols=$(term_cols)
-    local art_width=52
-    local margin=2
-    local start_col=$(( cols - art_width - margin ))
-    if [ "$start_col" -lt 56 ]; then start_col=56; fi
-    local start_row=1
-
-    # Draw using tput if available
-    if command -v tput >/dev/null 2>&1; then
-        local i=0
-        for line in "${art[@]}"; do
-            tput cup $((start_row + i)) "$start_col" 2>/dev/null || true
-            echo -e "${BLUE}${line}${NC}"
-            i=$((i+1))
-        done
-    else
-        # Fallback: just echo after some spaces
-        local pad=""
-        local n=$start_col
-        while [ $n -gt 0 ]; do pad+=" "; n=$((n-1)); done
-        for line in "${art[@]}"; do echo -e "${pad}${BLUE}${line}${NC}"; done
-    fi
+# Top banner (plain lines — no cursor positioning, so nothing can overlap)
+draw_banner() {
+    echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║      L m E v E   •   Application Installer  ║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
+    echo ""
 }
 
 # Check for root
@@ -178,10 +133,8 @@ first_ip() { hostname -I 2>/dev/null | awk '{print $1}' | sed 's/\s.*//' ; }
 
 draw_menu() {
     clear 2>/dev/null || tput clear 2>/dev/null || true
-    # Draw large right-side moniker
-    draw_right_panel
-    # Show pre-flight dependency checks above the menu (read-only)
-    if command -v tput >/dev/null 2>&1; then tput cup 0 0 2>/dev/null || true; fi
+    # Top banner + pre-flight dependency checks (read-only)
+    draw_banner
     draw_preflight
     echo ""
     echo -e "${BLUE}Installer Options (press 1-7 to edit, Enter=Start, Q=Quit)${NC}"
@@ -586,7 +539,10 @@ echo "  • Per-process intervals are configured in-app (Settings > Data Sync) a
 echo "  • Manual \"Run now\" buttons work from the Data Sync page without waiting for cron"
 echo ""
 echo -e "${YELLOW}Important:${NC}"
-echo "  • Database must be set up first (use setup-lmeve-db.sh)"
+echo "  • A database is NOT required on this machine. Configure it later in the app:"
+echo "      Settings > Database (any host — local, remote server, or managed DB)"
+echo "  • If you want a MySQL/MariaDB box set up from scratch, run scripts/setup-lmeve-db.sh"
+echo "    ON THE DATABASE MACHINE, then point this install at it via Settings > Database."
 echo "  • Create ESI app at: https://developers.eveonline.com"
 if [ "$HTTP_PORT" == "80" ]; then
     echo "  • Callback URL: http://${SERVER_NAME}/api/auth/esi/callback.php"

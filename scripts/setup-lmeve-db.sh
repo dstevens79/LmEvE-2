@@ -1,8 +1,12 @@
 #!/bin/bash
 #
-# LMeve Complete Database Server Setup Script
-# All-in-one installer for fresh Ubuntu/Debian systems
-# 
+# LMeve Database Server Setup Script (OPTIONAL)
+# All-in-one installer for a dedicated DB box on fresh Ubuntu/Debian systems.
+#
+# The web app does NOT need MySQL/MariaDB on the same machine — it can point at
+# any reachable database server (Settings > Database). Run this script only if
+# you want to provision a new DB server from scratch, and run it ON THAT MACHINE.
+#
 # Usage: sudo bash setup-lmeve-db.sh
 #
 # This script will:
@@ -14,15 +18,14 @@
 # - Create user with proper permissions
 # - Download and import EVE SDE data
 # - Verify everything works
-#
 
 set -euo pipefail
 
-# Colors for output
+# Colors for output (bright variants — dim blue was unreadable on dark terminals)
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
+BLUE='\033[1;36m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
@@ -32,54 +35,15 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# Utility: terminal width
-term_cols() {
-    # Use ${COLUMNS:-} to avoid set -u abort when COLUMNS is unset
-    if [ -n "${COLUMNS:-}" ]; then echo "${COLUMNS}"; return; fi
-    if command -v tput >/dev/null 2>&1; then tput cols 2>/dev/null || echo 120; else echo 120; fi
-}
-
-# Right-side banner art (drawn with cursor positioning)
-draw_right_panel() {
-    local art=(
-"┌────────────────────────────────────────────────────┐"
-"│                                                    │"
-"│   L      M   M  EEEEE  V   V  EEEEE        --      │"
-"│   L      MM MM  E      V   V  E          /   |     │"
-"│   L      M M M  EEEE    V V   EEEE   ==     /      │" 
-"│   L      M   M  E        V    E           /        │"
-"│   LLLLL  M   M  EEEEE    V    EEEEE      /____     │"
-"│                                                    │"
-"│        LmEvE v2 • Database Installer               │"
-"│                                                    │"
-"│  ⛭  1–6 edit fields   ↵  Enter to start   Q  quit  │"
-"│                                                    │" 
-"└────────────────────────────────────────────────────┘"
-    ) 
-
-    local cols=$(term_cols)
-    local art_width=52
-    local margin=6
-    local start_col=$(( cols - art_width - margin ))
-    if [ "$start_col" -lt 68 ]; then start_col=68; fi
-    local start_row=1
-    # expose geometry for other draw routines
-    RIGHT_PANEL_COL=$start_col
-    RIGHT_PANEL_ROW=$start_row
-
-    if command -v tput >/dev/null 2>&1; then
-        local i=0
-        for line in "${art[@]}"; do
-            tput cup $((start_row + i)) "$start_col" 2>/dev/null || true
-            echo -e "${BLUE}${line}${NC}"
-            i=$((i+1))
-        done
-        RIGHT_PANEL_HEIGHT=$i
-    else
-        local pad=""; local n=$start_col; while [ $n -gt 0 ]; do pad+=" "; n=$((n-1)); done
-        for line in "${art[@]}"; do echo -e "${pad}${BLUE}${line}${NC}"; done
-        RIGHT_PANEL_HEIGHT=${#art[@]}
-    fi
+# Top banner (plain lines — no cursor positioning, so nothing can overlap)
+draw_banner() {
+    echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║        L m E v E   •   Database Installer   ║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo "  This provisions a NEW database server on THIS machine."
+    echo "  The web app can instead use any existing DB — see Settings > Database."
+    echo ""
 }
 
 # Function to print step headers
@@ -260,48 +224,26 @@ draw_preflight() {
         "${SDE_DB}" "$([ "${SDE_DB_PRESENT_SNAPSHOT}" = Y ] && echo Yes || echo No)"
 }
 
-# Draw the Database setup (new) block under the right-side art
-draw_setup_block_right() {
-    # Fallback if no positioning available
-    if ! command -v tput >/dev/null 2>&1 || [ -z "${RIGHT_PANEL_COL:-}" ] || [ -z "${RIGHT_PANEL_ROW:-}" ]; then
-        echo ""
-        echo -e "${BLUE}Database setup (new)${NC}"
-        printf "  7) DB host                : %s\n" "$DB_HOST"
-        printf "  8) LMeve DB name          : %s\n" "$LMEVE_DB"
-        printf "  9) SDE DB name            : %s\n" "$SDE_DB"
-        printf " 10) App DB username        : %s\n" "$LMEVE_USER"
-        local pass_disp="[not set]"; [ -n "$LMEVE_PASS" ] && pass_disp="[set]"
-        printf " 11) App DB password        : %s\n" "$pass_disp"
-        # Superadmin display: if not fresh, we don't know the current value -> mask
-        local sadmin_line="[default]"
-        if [ "${DB_SERVER_PRESENT_SNAPSHOT}" = "Y" ] && [ "$REMOVE_EXISTING" != "Y" ]; then
-            sadmin_line="********"
-        elif [ -n "$SUPERADMIN_PASS" ]; then
-            sadmin_line="[custom]"
-        fi
-        printf " 12) Superadmin password    : %s\n" "$sadmin_line"
-        return
-    fi
-    # Position block directly under art
-    local col=$RIGHT_PANEL_COL
-    local row=$(( RIGHT_PANEL_ROW + RIGHT_PANEL_HEIGHT + 1 ))
-    local i=0
-    tput cup $((row + i)) $col 2>/dev/null || true; echo -e "${BLUE}Database setup (new)${NC}"; i=$((i+1))
-    tput cup $((row + i)) $col 2>/dev/null || true; printf "  7) DB host                : %s" "$DB_HOST"; i=$((i+1))
-    tput cup $((row + i)) $col 2>/dev/null || true; printf "  8) LMeve DB name          : %s" "$LMEVE_DB"; i=$((i+1))
-    tput cup $((row + i)) $col 2>/dev/null || true; printf "  9) SDE DB name            : %s" "$SDE_DB"; i=$((i+1))
-    tput cup $((row + i)) $col 2>/dev/null || true; printf " 10) App DB username        : %s" "$LMEVE_USER"; i=$((i+1))
+# Draw the Database setup (new) block — plain sequential lines, top-aligned
+draw_setup_block() {
+    echo ""
+    echo -e "${BLUE}Database setup (new)${NC}"
+    printf "  7) DB host                : %s\n" "$DB_HOST"
+    printf "  8) LMeve DB name          : %s\n" "$LMEVE_DB"
+    printf "  9) SDE DB name            : %s\n" "$SDE_DB"
+    printf " 10) App DB username        : %s\n" "$LMEVE_USER"
     local pass_disp="[not set]"; [ -n "$LMEVE_PASS" ] && pass_disp="[set]"
-    tput cup $((row + i)) $col 2>/dev/null || true; printf " 11) App DB password        : %s" "$pass_disp"; i=$((i+1))
+    printf " 11) App DB password        : %s\n" "$pass_disp"
+    # Superadmin display: if not fresh, we don't know the current value -> mask
     local sadmin_line="[default]"
     if [ "${DB_SERVER_PRESENT_SNAPSHOT}" = "Y" ] && [ "$REMOVE_EXISTING" != "Y" ]; then
         sadmin_line="********"
     elif [ -n "$SUPERADMIN_PASS" ]; then
         sadmin_line="[custom]"
     fi
-    tput cup $((row + i)) $col 2>/dev/null || true; printf " 12) Superadmin password    : %s" "$sadmin_line"; i=$((i+1))
+    printf " 12) Superadmin password    : %s\n" "$sadmin_line"
     local root_disp="[not set]"; [ -n "$MYSQL_ROOT_PASS" ] && root_disp="[set]"
-    tput cup $((row + i)) $col 2>/dev/null || true; printf " 13) MySQL root password    : %s" "$root_disp"; i=$((i+1))
+    printf " 13) MySQL root password    : %s\n" "$root_disp"
 }
 
 # -----------------------------------------------------
@@ -341,10 +283,8 @@ need_setup_fields() {
 
 draw_menu() {
     clear 2>/dev/null || tput clear 2>/dev/null || true
-    # Right-side panel first
-    draw_right_panel
-    # Move cursor back to top-left then draw pre-flight
-    if command -v tput >/dev/null 2>&1; then tput cup 0 0 2>/dev/null || true; fi
+    # Top banner, then pre-flight system snapshot (read-only)
+    draw_banner
     draw_preflight
     echo ""
     echo ""
@@ -364,8 +304,7 @@ draw_menu() {
     MENU_MAX=6
     if need_setup_fields; then
         MENU_MAX=13
-        # draw this block under the right panel for a balanced layout
-        draw_setup_block_right
+        draw_setup_block
     fi
     echo ""
     # expose MENU_MAX to main loop
