@@ -1,19 +1,41 @@
+# Scripts
+
+## App server - REQUIRED
+**LmEvE Application Server** setup-lmeve-app.sh - run **on the web/app host**. Does NOT install MySQL/MariaDB. The database can be local, remote, or managed; you point the app at it later in **Settings -> Database**.
+
+One-command:
+```bash
+wget https://raw.githubusercontent.com/dstevens79/LmEvE-2/main/scripts/setup-lmeve-app.sh && chmod +x setup-lmeve-app.sh && sudo ./setup-lmeve-app.sh
+```
+
+## Database server - OPTIONAL
+**LmEvE Database Server** setup-lmeve-db.sh - run **only on the database host** if you need to provision a fresh MySQL/MariaDB. If you already have a reachable database, skip this and just configure the app.
+
+One-command (on DB host):
+```bash
+wget https://raw.githubusercontent.com/dstevens79/LmEvE-2/main/scripts/setup-lmeve-db.sh && chmod +x setup-lmeve-db.sh && sudo ./setup-lmeve-db.sh
+```
+
+See also: QUICK-START.md (DB quick start), ../INSTALLSTEPS.md (full two-machine install).
+
+---
+
 # LMeve Database Server Setup Script
 
 **Complete all-in-one installer** for setting up an LMeve database server on a fresh Ubuntu/Debian installation.
 
 ## Features
 
-✅ **Complete System Setup** - Works on fresh OS installations  
-✅ **System Requirements** - Installs all needed packages (wget, bzip2, curl, git)  
-✅ **Firewall Configuration** - UFW setup with proper ports  
-✅ **Database Choice** - MySQL or MariaDB (your preference)  
-✅ **Webmin Optional** - Web-based management GUI  
-✅ **Fully Interactive** - Prompts for all configuration  
-✅ **Database Creation** - Creates lmeve and EveStaticData databases  
-✅ **User Management** - Creates dedicated user with proper permissions  
-✅ **SDE Import** - Downloads and imports EVE static data  
-✅ **Verification** - Tests everything works
+âœ… **Complete System Setup** - Works on fresh OS installations  
+âœ… **System Requirements** - Installs all needed packages (wget, bzip2, curl, git)  
+âœ… **Firewall Configuration** - UFW setup with proper ports  
+âœ… **Database Choice** - MySQL or MariaDB (your preference)  
+âœ… **Webmin Optional** - Web-based management GUI  
+âœ… **Fully Interactive** - Prompts for all configuration  
+âœ… **Database Creation** - Creates lmeve and EveStaticData databases  
+âœ… **User Management** - Creates dedicated user with proper permissions  
+âœ… **SDE Import** - Downloads and imports EVE static data  
+âœ… **Verification** - Tests everything works
 
 ## What It Installs
 
@@ -115,65 +137,65 @@ Prompts for configuration:
 ## Example Run
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║                                                            ║
-║    LMeve Complete Database Server - All-in-One Installer  ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘                                                            â•‘
+â•‘    LMeve Complete Database Server - All-in-One Installer  â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 This script will set up a complete LMeve database server
 on a fresh Ubuntu/Debian installation.
 
-▶ Detecting Operating System
-────────────────────────────────────────────────────────────────
-✅ Detected: Ubuntu 20.04.6 LTS
+â–¶ Detecting Operating System
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+âœ… Detected: Ubuntu 20.04.6 LTS
 
-▶ System Update
-────────────────────────────────────────────────────────────────
+â–¶ System Update
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Update system packages?
 Run apt update && apt upgrade? [Y/n]: Y
 Updating package lists...
 Upgrading installed packages...
-✅ System updated
+âœ… System updated
 
-▶ Installing Required Packages
-────────────────────────────────────────────────────────────────
+â–¶ Installing Required Packages
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Installing essential packages: wget, bzip2, curl, git...
-✅ Required packages installed
+âœ… Required packages installed
 
-▶ Firewall Configuration (UFW)
-────────────────────────────────────────────────────────────────
+â–¶ Firewall Configuration (UFW)
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Configure firewall settings?
   1) Disable UFW (not recommended)
   2) Configure UFW for database server (MySQL/MariaDB port)
   3) Skip firewall configuration
 Choice [2]: 2
 Configuring UFW...
-✅ Firewall configured
+âœ… Firewall configured
 Allowed: SSH (22), MySQL/MariaDB (3306)
 
-▶ Database Server Selection
-────────────────────────────────────────────────────────────────
+â–¶ Database Server Selection
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Choose your database server:
   1) MySQL (Oracle's MySQL Server)
   2) MariaDB (Community fork, fully compatible)
 Choice [2]: 2
 Installing MariaDB Server...
-✅ MariaDB Server installed and started
+âœ… MariaDB Server installed and started
 Securing MariaDB installation...
-✅ MariaDB secured
+âœ… MariaDB secured
 
-▶ Webmin Installation (Optional)
-────────────────────────────────────────────────────────────────
+â–¶ Webmin Installation (Optional)
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Install Webmin for web-based server management?
 Webmin provides a GUI for managing MySQL/MariaDB, users, and system settings
 Install Webmin? [y/N]: y
 Installing Webmin...
-✅ Webmin installed
+âœ… Webmin installed
 Access Webmin at: https://192.168.1.100:10000
 
-▶ LMeve Database Configuration
-────────────────────────────────────────────────────────────────
+â–¶ LMeve Database Configuration
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Now let's configure your LMeve databases
 
 Database Host [localhost]: 
@@ -188,61 +210,61 @@ Confirm LMeve Password: ********
 EVE Static Data Export (SDE):
 Download and import SDE? [Y/n]: Y
 
-═══════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 Configuration Summary:
-═══════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   OS: Ubuntu 20.04.6 LTS
   Database: MariaDB
   Database Host: localhost:3306
   LMeve Username: lmeve
   LMeve Password: [hidden]
   Download SDE: Y
-═══════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 Proceed with installation? [Y/n]: Y
 
-▶ Testing MySQL Connection
-────────────────────────────────────────────────────────────────
-✅ MySQL connection successful
+â–¶ Testing MySQL Connection
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+âœ… MySQL connection successful
 
-▶ Creating Databases
-────────────────────────────────────────────────────────────────
-✅ Databases created: lmeve, EveStaticData
+â–¶ Creating Databases
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+âœ… Databases created: lmeve, EveStaticData
 
-▶ Creating MySQL User
-────────────────────────────────────────────────────────────────
-✅ User 'lmeve' created with full permissions
+â–¶ Creating MySQL User
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+âœ… User 'lmeve' created with full permissions
 
-▶ Testing User Connection
-────────────────────────────────────────────────────────────────
-✅ User connection successful
+â–¶ Testing User Connection
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+âœ… User connection successful
 
-▶ Downloading EVE Static Data
-────────────────────────────────────────────────────────────────
+â–¶ Downloading EVE Static Data
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Downloading from: https://www.fuzzwork.co.uk/dump/latest/eve.db.bz2
-✅ SDE download completed
+âœ… SDE download completed
 
-▶ Extracting SDE Data
-────────────────────────────────────────────────────────────────
-✅ Extraction completed
+â–¶ Extracting SDE Data
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+âœ… Extraction completed
 
-▶ Importing EVE Static Data
-────────────────────────────────────────────────────────────────
-✅ SDE data imported successfully
+â–¶ Importing EVE Static Data
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+âœ… SDE data imported successfully
 
-▶ Verifying Installation
-────────────────────────────────────────────────────────────────
-✅ Database verification successful
+â–¶ Verifying Installation
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+âœ… Database verification successful
 
-╔════════════════════════════════════════════════════════════╗
-║                                                            ║
-║   🎉 LMeve Database Server Setup Complete! 🎉             ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘                                                            â•‘
+â•‘   ðŸŽ‰ LMeve Database Server Setup Complete! ðŸŽ‰             â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-═══════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 Installation Summary:
-═══════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   OS: Ubuntu 20.04.6 LTS
   Database: MariaDB
   Host: localhost:3306
@@ -251,7 +273,7 @@ Installation Summary:
   LMeve DB: lmeve (0 tables)
   SDE DB: EveStaticData (243 tables)
   Webmin: https://192.168.1.100:10000
-═══════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 Next Steps:
   1. Use these database settings in your LMeve web application
@@ -335,18 +357,18 @@ sudo apt install -f  # Fix dependencies
 Both are fully compatible with LMeve. Here's the difference:
 
 ### MySQL
-- ✅ Oracle's official version
-- ✅ Widely documented
-- ✅ Traditional choice
-- ⚠️  Corporate backing (Oracle)
+- âœ… Oracle's official version
+- âœ… Widely documented
+- âœ… Traditional choice
+- âš ï¸  Corporate backing (Oracle)
 
 ### MariaDB (Recommended)
-- ✅ Community-driven fork of MySQL
-- ✅ Fully compatible drop-in replacement
-- ✅ Often faster performance
-- ✅ More open development
-- ✅ Default choice in many Linux distributions
-- ✅ No corporate control concerns
+- âœ… Community-driven fork of MySQL
+- âœ… Fully compatible drop-in replacement
+- âœ… Often faster performance
+- âœ… More open development
+- âœ… Default choice in many Linux distributions
+- âœ… No corporate control concerns
 
 **Either works perfectly with LMeve!** Choose based on your preference.
 
@@ -392,10 +414,10 @@ After installation, access Webmin at `https://your-server-ip:10000`
 - Accept the self-signed SSL certificate
 
 ### Useful Webmin Modules
-- **Servers → MySQL Database Server** - Manage databases, users, tables
-- **System → Users and Groups** - System user management  
-- **Networking → Firewall** - UFW configuration
-- **System → Software Package Updates** - System updates
+- **Servers â†’ MySQL Database Server** - Manage databases, users, tables
+- **System â†’ Users and Groups** - System user management  
+- **Networking â†’ Firewall** - UFW configuration
+- **System â†’ Software Package Updates** - System updates
 
 ## Security Best Practices
 
@@ -418,7 +440,7 @@ After installation, access Webmin at `https://your-server-ip:10000`
 
 ## Comparison: Old vs New Setup
 
-### Old GetMe Package System ❌
+### Old GetMe Package System âŒ
 - Complex hosting infrastructure
 - Backend API required
 - Multi-step transfer procedures  
@@ -427,7 +449,7 @@ After installation, access Webmin at `https://your-server-ip:10000`
 - 3-machine complexity
 - Difficult to troubleshoot
 
-### New All-in-One Script ✅
+### New All-in-One Script âœ…
 - **One file, one command**
 - No hosting needed
 - No SSH required

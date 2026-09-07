@@ -1,211 +1,37 @@
-2. Configure Application and App Secret at Eve Developer site
+# LmEvE 2 - Installation
 
-3. System Pre Prep 
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y curl wget git ufw build-essential
+Two separate machines are supported. Run the right script **on the right host**.
 
-  --sudo apt update && sudo apt upgrade -y
-   
-  --sudo apt install -y curl wget git ufw build-essential
+## 1) App server (required) - where LmEvE runs
 
-Enable basic firewall access: (or disable it)
-  sudo ufw allow OpenSSH
-  sudo ufw allow 80/tcp
-  sudo ufw allow 443/tcp
-  sudo ufw enable
+Run **on the app/web host** (Ubuntu/Debian, root required). This does NOT install MySQL - the database can live anywhere and is configured later in the app (Settings -> Database).
 
-    sudo ufw allow OpenSSH
-    
-    sudo ufw allow 80/tcp
-    
-    sudo ufw allow 443/tcp
-  
-    sudo ufw enable
+```bash
+wget https://raw.githubusercontent.com/dstevens79/LmEvE-2/main/scripts/setup-lmeve-app.sh
+chmod +x setup-lmeve-app.sh
+sudo ./setup-lmeve-app.sh
+```
 
-Install Apache, MySQL, and PHP
-  sudo apt install -y apache2 mysql-server php libapache2-mod-php php-mysql php-curl php-xml php-zip php-gd php-mbstring php-json php-cli unzip
-  
-    sudo apt install -y apache2 mysql-server php libapache2-mod-php php-mysql php-curl php-xml php-zip php-gd php-mbstring php-json php-cli unzip
+What it does: apt update, installs Apache + PHP (with php-mysql client only, no server), Node.js 20, clones/builds/deploys the SPA, configures the Apache vhost and optional SSL/cron. No mysql-server/mariadb-server.
 
-Enable Apache rewrite & restart:
-  sudo a2enmod rewrite
-  sudo systemctl restart apache2
-    
-    sudo a2enmod rewrite
-    sudo systemctl restart apache2
+After: open http://<app-host>/ -> sign in as offline admin admin / 12345 -> Settings -> Database to point at any reachable MySQL/MariaDB (local, remote, or managed) -> Settings -> General / ESI to set your CCP application callback.
 
-Check that Apache works:
-  sudo systemctl status apache2
-    
-    sudo systemctl status apache2
+## 2) Database server (optional) - only if you need a new DB
 
-→ Visit http://<your-server-ip>/ — you should see the Apache default page.
+If you already have a reachable MySQL/MariaDB, skip this. Otherwise run **on the database host** to provision one from scratch:
 
-IF THE TARGET DATABASE COMPUTER IS NOT A LOCAL LMEVE INSTANCE
-{
-Configure SSH on both machines:
-To install SSH, run:
-    
-sudo apt install -y openssh-server
+```bash
+wget https://raw.githubusercontent.com/dstevens79/LmEvE-2/main/scripts/setup-lmeve-db.sh
+chmod +x setup-lmeve-db.sh
+sudo ./setup-lmeve-db.sh
+```
 
-Then enable and start it:
-    
-sudo systemctl enable ssh
-sudo systemctl start ssh
+What it does: installs MySQL or MariaDB (your choice), creates lmeve2 + EveStaticData, creates the lmeve user (%% + localhost), optionally imports the SDE and Webmin. Note the connection summary, then use those values in the app's Settings -> Database on the app host.
 
-Check that it’s running:
-    
-sudo systemctl status ssh
-Firewall access (if using UFW and not disabled):
-    
-sudo ufw allow OpenSSH
-sudo ufw reload
-}
-Then....
-Run the secure MY_SQL setup on the TARGET DATABASE MACHINE:
-{
-  sudo mysql_secure_installation
-  Set root password
-  Remove anonymous users
-  Disallow remote root login
-  Remove test DB
-    
-    sudo mysql_secure_installation
-    Set root password
-    Remove anonymous users
-    Disallow remote root login
-    Remove test DB
-Then:
-sudo mysql -u root -p
+## Manual install (no scripts)
 
-Now your Inside MySQL:
-  CREATE DATABASE lmeve CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-  CREATE USER 'lmeveuser'@'localhost' IDENTIFIED BY 'StrongPasswordHere';
-  GRANT ALL PRIVILEGES ON lmeve.* TO 'lmeveuser'@'localhost';
-  FLUSH PRIVILEGES;
-  EXIT;
-  
-    CREATE DATABASE lmeve CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-    CREATE USER 'lmeveuser'@'localhost' IDENTIFIED BY 'StrongPasswordHere';
-    GRANT ALL PRIVILEGES ON lmeve.* TO 'lmeveuser'@'localhost';
-    FLUSH PRIVILEGES;
-    EXIT;
-}
+Equivalent manual steps mirror the scripts - do NOT install mysql-server on the app host unless the DB really lives there.
 
-Now all the rest is normal and done on the LMEVE machine or instance : 
+App host: sudo apt install -y apache2 php libapache2-mod-php php-mysql php-curl php-xml php-zip php-gd php-mbstring php-cli unzip curl wget git ufw -> Node 20 via NodeSource -> clone/build -> Apache vhost.
 
-Install Node.js + npm (latest stable)
-Ubuntu 20.04 has older npm — pull Node v20.x (includes npm 10+):
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-  sudo apt install -y nodejs
-  node -v
-  npm -v
-  
-  Ubuntu 20.04 has older npm — pull Node v20.x (includes npm 10+):
-  
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-  
-    sudo apt install -y nodejs
-    node -v
-    npm -v
-
-Clone and Build LMeve-2 Frontend
-  cd /var/www/
-  sudo git clone https://github.com/dstevens79/LmEvE-2.git 
-  cd LmEvE-2
-  sudo npm install
-  sudo npm run build
-    
-    cd /var/www/
-    sudo git clone https://github.com/dstevens79/LmEvE-2 
-    cd LmEvE-2
-    sudo npm install
-    sudo npm run build
-
-
-This creates:
-  /var/www/eve-online-api-moder/dist/
-      
-      /var/www/eve-online-api-moder/dist/
-
-You should now have /var/www/eve-online-api-moder/dist/index.html with hashed /assets files.
-
-Now : Configure Apache Virtual Host
-Create a new site file:
-  sudo nano /etc/apache2/sites-available/lmeve.conf
-
-Paste or type in:
-
-  <VirtualHost *:80>
-    ServerName localhost
-    DocumentRoot /var/www/eve-online-api-moder/dist
-    sudo nano /etc/apache2/sites-available/lmeve.conf
-
-    <Directory /var/www/eve-online-api-moder/dist>
-        Options Indexes FollowSymLinks
-        AllowOverride All
-        Require all granted
-    </Directory>
-Paste or type in:
-
-    ErrorLog ${APACHE_LOG_DIR}/lmeve_error.log
-    CustomLog ${APACHE_LOG_DIR}/lmeve_access.log combined
-  </VirtualHost>
-    <VirtualHost *:80>
-      ServerName localhost
-      DocumentRoot /var/www/eve-online-api-moder/dist
-  
-      <Directory /var/www/eve-online-api-moder/dist>
-          Options Indexes FollowSymLinks
-          AllowOverride All
-          Require all granted
-      </Directory>
-  
-      ErrorLog ${APACHE_LOG_DIR}/lmeve_error.log
-      CustomLog ${APACHE_LOG_DIR}/lmeve_access.log combined
-    </VirtualHost>
-
-Enable and restart:
-
-  sudo a2ensite lmeve.conf
-  sudo systemctl reload apache2
-    sudo a2ensite lmeve.conf
-    sudo systemctl reload apache2
-
-
-Visit:
-
-http://<your-server-ip>/
-  
-    http://<your-server-ip>/
-
-
-If blank → check browser console for missing files; they should load from /assets/....
-
-Finally : Set Permissions
-  sudo chown -R www-data:www-data /var/www/eve-online-api-moder
-  sudo chmod -R 755 /var/www/eve-online-api-moder
-  
-    sudo chown -R www-data:www-data /var/www/eve-online-api-moder
-    sudo chmod -R 755 /var/www/eve-online-api-moder
-
-Ensure Apache allows .htaccess overrides:
-  sudo nano /etc/apache2/apache2.conf
-    
-    sudo nano /etc/apache2/apache2.conf
-Find and modify:
-  <Directory /var/www/>
-    AllowOverride All
-  </Directory>
-    
-    <Directory /var/www/>
-      AllowOverride All
-    </Directory>
-
-Then reload:
-  sudo systemctl reload apache2
-  
-    sudo systemctl reload apache2
-
-Test
-Open your browser:
+DB host (if new): on that host only -> sudo apt install -y mysql-server (or mariadb-server) -> sudo mysql_secure_installation -> CREATE DATABASE lmeve2 / EveStaticData + CREATE USER 'lmeve'@'%%' + GRANT -> enable remote bind-address = 0.0.0.0 if needed.
