@@ -4,8 +4,8 @@
 // The browser never touches raw corp tokens: this endpoint resolves the
 // vaulted corp token from the users table, refreshes it when expired, fetches
 // the requested ESI segment, and upserts rows into the app database. All of
-// that logic lives in sync-core.php so the system cron poller (public/bin/
-// poller.php) can run the same code without a session.
+// that logic lives in sync-core.php. Requests are first coalesced through the
+// durable queue, so pages cannot flood ESI with duplicate corp+segment calls.
 //
 // POST { "processType": "members|assets|industry|market", "corporationId": 123 }
 //       (SPA process ids like corporation_members / industry_jobs are accepted too)
@@ -51,12 +51,27 @@ $mysqli = api_connect($payload);
 $dbCfg = api_get_db_config($payload);
 api_select_db($mysqli, (string)($dbCfg['database'] ?? 'lmeve2'));
 
-$result = sync_core_run_segment($mysqli, $corpId, $segment, $sessionCharId);
+$enqueued = sync_queue_enqueue($mysqli, $corpId, $segment, 'manual', 100, $sessionCharId);
+$job = $enqueued['job'];
+
+// A manual request is allowed to drain its own queued job immediately. This
+// keeps the existing UI responsive while still deduplicating concurrent page
+// requests; scheduled work is drained by the poller.
+if (($job['status'] ?? '') === SYNC_QUEUE_STATUS_QUEUED) {
+  $claimed = sync_queue_process_job($mysqli, (int)$job['id']);
+  if ($claimed) {
+    $job = $claimed;
+  }
+}
+$result = json_decode((string)($job['result_json'] ?? ''), true);
+$jobStatus = (string)($job['status'] ?? SYNC_QUEUE_STATUS_QUEUED);
 $mysqli->close();
 
-if ($result['ok']) {
+if ($jobStatus === SYNC_QUEUE_STATUS_SUCCEEDED && is_array($result) && !empty($result['ok'])) {
   api_respond([
     'ok' => true,
+    'jobId' => (int)$job['id'],
+    'jobStatus' => $jobStatus,
     'processType' => $result['processType'],
     'corporationId' => $result['corporationId'],
     'corporationName' => $result['corporationName'],
@@ -70,8 +85,22 @@ if ($result['ok']) {
   ]);
 }
 
-api_fail((int)$result['httpCode'], 'Corp sync failed for ' . $segment . ': ' . ($result['error'] ?? 'unknown error'), [
+if ($jobStatus === SYNC_QUEUE_STATUS_FAILED && is_array($result)) {
+  api_fail((int)$result['httpCode'], 'Corp sync failed for ' . $segment . ': ' . ($result['error'] ?? 'unknown error'), [
+    'jobId' => (int)$job['id'],
+    'jobStatus' => $jobStatus,
+    'processType' => $segment,
+    'corporationId' => $corpId,
+    'tookMs' => $result['tookMs'],
+  ]);
+}
+
+api_respond([
+  'ok' => true,
+  'queued' => true,
+  'deduplicated' => !$enqueued['created'],
+  'jobId' => (int)$job['id'],
+  'jobStatus' => $jobStatus,
   'processType' => $segment,
   'corporationId' => $corpId,
-  'tookMs' => $result['tookMs'],
-]);
+], 202);

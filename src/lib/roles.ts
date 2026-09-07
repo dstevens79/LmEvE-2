@@ -191,7 +191,7 @@ export function normalizeUserRole(role: unknown): UserRole {
 
 /**
  * Offline bootstrap / local maintenance admin (e.g. admin/12345).
- * These accounts must always have a full free pass — including before DB/ESI exist.
+ * These accounts must always have a full free pass â€” including before DB/ESI exist.
  */
 export function isLocalSiteAdmin(user: LMeveUser | null | undefined): boolean {
   if (!user) return false;
@@ -201,7 +201,7 @@ export function isLocalSiteAdmin(user: LMeveUser | null | undefined): boolean {
   if (user.isAdmin === true) return true;
 
   const id = String(user.id || '').toLowerCase();
-  // Built-in offline admin only — other bootstrap-* accounts keep assigned roles.
+  // Built-in offline admin only â€” other bootstrap-* accounts keep assigned roles.
   if (id === 'bootstrap-admin') {
     return true;
   }
@@ -224,7 +224,7 @@ export function getRolePermissions(role: UserRole | string): RolePermissions {
   return ROLE_DEFINITIONS[normalized] || ROLE_DEFINITIONS.guest;
 }
 
-// Server-resolved role data (custom roles, or edited built-in permission sets) — see role_definitions.
+// Server-resolved role data (custom roles, or edited built-in permission sets) â€” see role_definitions.
 export interface ResolvedRoleData {
   /** Exact role key as stored in the DB (may be a custom key). */
   key?: string;
@@ -244,7 +244,7 @@ function isServerPermissionSet(perms: unknown): perms is Partial<RolePermissions
   return true;
 }
 
-/** The 17 permission flags — mirrors RolePermissions and the server's canonical list. */
+/** The 17 permission flags â€” mirrors RolePermissions and the server's canonical list. */
 export function role_permission_keys(): (keyof RolePermissions)[] {
   return [
     'canManageSystem', 'canManageMultipleCorps', 'canConfigureESI', 'canManageDatabase',
@@ -256,8 +256,8 @@ export function role_permission_keys(): (keyof RolePermissions)[] {
 }
 
 // In-memory registry of server-resolved role data for the current session, keyed by exact key.
-// Populated by fetchRoleDefinitions (role-config.ts) so that permission resolution — which runs in
-// pure functions without a DB handle — can honor custom roles and site-edited built-in sets.
+// Populated by fetchRoleDefinitions (role-config.ts) so that permission resolution â€” which runs in
+// pure functions without a DB handle â€” can honor custom roles and site-edited built-in sets.
 const resolvedRoleRegistry = new Map<string, { name: string; permissions: RolePermissions }>();
 
 /** Register server-fetched role definitions for the current corporation scope (or global when corp is null). */
@@ -407,10 +407,13 @@ export function canAccessSettingsTab(user: LMeveUser | null, settingsTab: string
     case 'general':
       return hasPermission(user, 'canManageCorp') || hasPermission(user, 'canManageSystem');
       
-    case 'database':
-      return hasPermission(user, 'canManageDatabase');
+    case 'connectivity':
+      return hasPermission(user, 'canManageDatabase') || hasPermission(user, 'canConfigureESI') || hasPermission(user, 'canManageSystem');
 
-    // Legacy 'esi' settings tab removed — credentials are under General.
+    case 'database':
+      return hasPermission(user, 'canManageDatabase') || hasPermission(user, 'canConfigureESI') || hasPermission(user, 'canManageSystem');
+
+    // Legacy 'esi' settings tab removed â€” credentials are under General.
     case 'esi':
     case 'eve':
       return hasPermission(user, 'canConfigureESI')

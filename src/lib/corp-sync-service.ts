@@ -44,6 +44,25 @@ export interface CorpSyncBatchResult {
   failed: { segment: CorpSyncSegment; error: string }[];
 }
 
+const JOB_POLL_INTERVAL_MS = 1500;
+
+async function waitForCorpSyncJob(jobId: number, timeoutMs: number): Promise<any> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+    const response = await fetch(`/api/lmeve/esi/sync-jobs.php?jobId=${encodeURIComponent(String(jobId))}`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    const json = await response.json().catch(() => null);
+    if (!response.ok || !json?.ok || !json?.job) {
+      throw new Error(json?.error || `Unable to read sync job (HTTP ${response.status})`);
+    }
+    if (json.job.status === 'succeeded' || json.job.status === 'failed') return json;
+  }
+  throw new Error('Sync job timed out while waiting for the server worker');
+}
+
 export type CorpSyncProgress = (segment: CorpSyncSegment, index: number, total: number) => void;
 
 function isSegment(value: string): value is CorpSyncSegment {
@@ -85,18 +104,33 @@ export async function runCorpSyncSegment(
       };
     }
 
+    let finalJson = json;
+    if (json.queued && json.jobId) {
+      const queued = await waitForCorpSyncJob(Number(json.jobId), timeoutMs);
+      if (queued.job.status === 'failed' || !queued.result?.ok) {
+        return {
+          ok: false,
+          status: queued.result?.httpCode || 500,
+          error: queued.job.error || queued.result?.error || 'Queued sync failed',
+          processType: segment,
+          corporationId,
+        };
+      }
+      finalJson = queued.result;
+    }
+
     return {
       ok: true,
       status: resp.status,
-      processType: json.processType,
-      corporationId: json.corporationId,
-      corporationName: json.corporationName,
-      fetched: json.fetched,
-      inserted: json.inserted,
-      updated: json.updated,
-      failed: json.failed,
-      tookMs: json.tookMs,
-      tokenRefreshed: json.tokenRefreshed,
+      processType: finalJson.processType,
+      corporationId: finalJson.corporationId,
+      corporationName: finalJson.corporationName,
+      fetched: finalJson.fetched,
+      inserted: finalJson.inserted,
+      updated: finalJson.updated,
+      failed: finalJson.failed,
+      tookMs: finalJson.tookMs,
+      tokenRefreshed: finalJson.tokenRefreshed,
     };
   } catch (error: any) {
     if (error?.name === 'AbortError') {

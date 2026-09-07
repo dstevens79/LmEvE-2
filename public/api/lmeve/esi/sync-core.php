@@ -11,6 +11,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../_lib/common.php';
+require_once __DIR__ . '/sync-queue.php';
 
 define('SYNC_CORE_ESI_BASE', 'https://esi.evetech.net/latest');
 define('SYNC_CORE_DS', '?datasource=tranquility');
@@ -276,6 +277,7 @@ function sync_core_ensure_schema(mysqli $db): void {
   }
 
   $done = true;
+  sync_queue_ensure_schema($db);
 }
 
 /**
@@ -315,10 +317,19 @@ function sync_core_get_one(string $url, string $accessToken): array {
     array_unshift($headers, 'Authorization: Bearer ' . $accessToken);
   }
   curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+  // PHP's cURL extension has no curl_getheader() API. Capture the pagination
+  // Link header while cURL receives it instead, so every segment can share
+  // this transport safely.
+  $link = '';
+  curl_setopt($ch, CURLOPT_HEADERFUNCTION, static function ($curl, string $header) use (&$link): int {
+    if (stripos($header, 'Link:') === 0) {
+      $link = trim(substr($header, 5));
+    }
+    return strlen($header);
+  });
   $body = curl_exec($ch);
   $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
   $err = curl_error($ch);
-  $link = curl_getheader($ch, 'Link');
   curl_close($ch);
 
   $next = null;
@@ -1485,7 +1496,7 @@ function sync_core_run_segment(
       'tokenCharacterId' => $tokenState['characterId'],
       'tokenRefreshed' => $tokenState['refreshed'] ? 1 : 0,
     ], $result, ['tookMs' => $tookMs]);
-  } catch (Exception $e) {
+  } catch (Throwable $e) {
     $tookMs = (int)(microtime(true) * 1000) - $startMs;
     $code = $e->getCode();
     if (!is_int($code) || $code < 400 || $code > 599) $code = 502;

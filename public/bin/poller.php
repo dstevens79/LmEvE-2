@@ -8,8 +8,9 @@
 // Per-process schedules live in sync_process_config (minutes per corp);
 // last-run state lives in corp_sync_log. The poller runs every 5 minutes via
 // /etc/cron.d/lmeve2 and only executes processes whose interval has elapsed.
-// Manual "Run now" from the UI goes through api/lmeve/esi/sync-run.php, which
-// shares this same sync-core code.
+// Manual "Run now" and scheduled work both enqueue into the same durable
+// queue. This worker drains it serially, preventing concurrent page requests
+// and cron from flooding ESI with duplicate corporation calls.
 //
 // Usage:   php bin/poller.php            (run everything due)
 //          php bin/poller.php --check    (print what would run; no writes)
@@ -104,7 +105,7 @@ if (!$corps) {
 }
 
 // ---------------------------------------------------------------------------
-// Due detection + execution
+// Due detection + enqueue
 // ---------------------------------------------------------------------------
 
 $ran = 0; $skippedDue = 0; $errors = 0;
@@ -160,27 +161,41 @@ foreach ($corps as $corp) {
 
   foreach ($dueProcesses as $p) {
     if ($checkOnly) {
-      poller_log('INFO', "[check-only] would run {$p['process']} (segment={$p['segment']}) for corp {$corpId}");
+      poller_log('INFO', "[check-only] would enqueue {$p['process']} (segment={$p['segment']}) for corp {$corpId}");
       continue;
     }
     try {
-      $result = sync_core_run_segment($mysqli, $corpId, $p['segment'], 0);
-      if ($result['ok']) {
+      $queued = sync_queue_enqueue($mysqli, $corpId, $p['segment'], 'scheduled', 10, 0);
+      poller_log('INFO', ($queued['created'] ? 'QUEUED' : 'DEDUPED') . " corp {$corpId} {$p['process']} job={$queued['job']['id']}");
+    } catch (Throwable $e) {
+      $errors++;
+      poller_log('ERROR', "QUEUE corp {$corpId} {$p['process']}: " . $e->getMessage());
+    }
+  }
+}
+
+// One worker, one job at a time. Jobs created by an interactive page are
+// higher priority than scheduled jobs but share the same token/ESI budget.
+if (!$checkOnly) {
+  $maxJobs = 50;
+  for ($i = 0; $i < $maxJobs; $i++) {
+    try {
+      $job = sync_queue_process_one($mysqli);
+      if ($job === null) break;
+      $result = json_decode((string)($job['result_json'] ?? ''), true);
+      if (($job['status'] ?? '') === SYNC_QUEUE_STATUS_SUCCEEDED && is_array($result)) {
         $ran++;
-        poller_log(
-          'INFO',
-          "OK corp {$corpId} {$p['process']}: fetched={$result['fetched']} inserted={$result['inserted']} updated={$result['updated']} failed={$result['failed']} tookMs={$result['tookMs']} refreshed=" . ($result['tokenRefreshed'] ? 1 : 0)
-        );
+        poller_log('INFO', "OK job {$job['id']} corp {$job['corporation_id']} {$job['segment']}: fetched={$result['fetched']} inserted={$result['inserted']} updated={$result['updated']} failed={$result['failed']} tookMs={$result['tookMs']}");
       } else {
         $errors++;
-        poller_log('ERROR', "FAIL corp {$corpId} {$p['process']} (http {$result['httpCode']}): {$result['error']}");
+        poller_log('ERROR', "FAIL job {$job['id']} corp {$job['corporation_id']} {$job['segment']}: " . ($job['error_message'] ?? 'unknown error'));
       }
+      usleep(500000); // small gap between ESI jobs
     } catch (Throwable $e) {
-      // sync_core_run_segment should not throw, but never let one segment kill the run.
       $errors++;
-      poller_log('ERROR', "EXCEPTION corp {$corpId} {$p['process']}: " . $e->getMessage());
+      poller_log('ERROR', 'QUEUE WORKER EXCEPTION: ' . $e->getMessage());
+      break;
     }
-    usleep(500000); // small gap between segments (ESI etiquette)
   }
 }
 

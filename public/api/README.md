@@ -28,7 +28,13 @@ All accept a JSON body with optional `limit`:
 The system cron poller runs due processes; the UI triggers manual runs. No browser tokens are involved:
 
 - `GET/POST /api/lmeve/esi/sync-settings.php` — per-process schedule/status for a corporation (`sync_process_config`, `corp_sync_log`)
-- `POST /api/lmeve/esi/sync-run.php` `{ processType, corporationId }` — run one segment now (members/assets/industry/market + server-backed processes)
+- `POST /api/lmeve/esi/sync-run.php` `{ processType, corporationId }` — enqueue/dedupe a high-priority segment sync; the request may drain its own job when the worker is free
+- `GET /api/lmeve/esi/sync-jobs.php?jobId=N` — read an authorized sync job's queued/running/completed status and sanitized result
+
+Corporation ESI work is persisted in `esi_sync_jobs`. At most one active job per
+corporation + segment exists, and a database worker lease serializes ESI calls
+from the UI and cron poller. `public/bin/poller.php` enqueues due work then
+drains the queue in priority order.
 
 ## Role & permission config (site roles as data)
 

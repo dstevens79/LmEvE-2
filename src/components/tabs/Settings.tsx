@@ -88,7 +88,7 @@ import { DataSyncSettings } from '@/components/settings/DataSyncSettings';
 import { PermissionsTab } from '@/components/settings/PermissionsTab';
 import { SyncMonitoring } from '@/components/tabs/SyncMonitoring';
 // Database tab containerized
-import DatabaseTabContainer from '@/components/settings/DatabaseTab/DatabaseTabContainer';
+import ConnectivityTab from '@/components/settings/ConnectivityTab';
 import { DatabaseConfigPanel } from '@/components/settings/DatabaseTab/DatabaseConfigPanel';
 import { ESICredentialsPanel } from '@/components/settings/ESITab/ESICredentialsPanel';
 import { ESIScopesPanel } from '@/components/settings/ESITab/ESIScopesPanel';
@@ -349,7 +349,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
         body: JSON.stringify({ key, value })
       });
       if (resp.ok) return;
-      // Not OK – attempt to read diagnostics and warn once
+      // Not OK â€“ attempt to read diagnostics and warn once
       try {
         const diag = await resp.json();
         if (!warnedSiteDataFailureRef.current) {
@@ -602,7 +602,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
 
   // Initialize ESI settings with proper state management
   useEffect(() => {
-    console.log('🔄 ESI Config sync check:', {
+    console.log('ðŸ”„ ESI Config sync check:', {
       realClientId: esiConfig.clientId,
       realSecret: !!esiConfig.clientSecret,
       localClientId: esiSettings.clientId,
@@ -611,7 +611,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
     
     // Initialize local state with values from auth provider if they exist and local state is empty
     if (esiConfig.clientId && !esiSettings.clientId) {
-      console.log('📥 Initializing ESI settings from auth provider');
+      console.log('ðŸ“¥ Initializing ESI settings from auth provider');
       setESISettings(prev => ({
         ...prev,
         clientId: esiConfig.clientId || '',
@@ -738,20 +738,20 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
         toast.success(`ESI route ${processName} (${version || 'current'}) is valid`);
         setRouteUpdateResults(prev => ({
           ...prev,
-          [processName]: `✓ Valid (${result.status})`
+          [processName]: `âœ“ Valid (${result.status})`
         }));
       } else {
         toast.error(`ESI route ${processName} validation failed: ${result.error}`);
         setRouteUpdateResults(prev => ({
           ...prev,
-          [processName]: `✗ Failed (${result.error})`
+          [processName]: `âœ— Failed (${result.error})`
         }));
       }
     } catch (error) {
       toast.error('Route validation failed');
       setRouteUpdateResults(prev => ({
         ...prev,
-        [processName]: `✗ Error`
+        [processName]: `âœ— Error`
       }));
     } finally {
       setValidatingRoutes(false);
@@ -773,7 +773,7 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
         
         setRouteUpdateResults(prev => ({
           ...prev,
-          [processName]: validation.isValid ? '✓ Valid' : `✗ Failed: ${validation.error}`
+          [processName]: validation.isValid ? 'âœ“ Valid' : `âœ— Failed: ${validation.error}`
         }));
       }
       
@@ -834,225 +834,10 @@ export function Settings({ activeTab, onTabChange, isMobileView }: SettingsProps
           </TabsList>
         </div>
 
-        <TabsContent value="general" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Globe size={20} />
-                General Settings
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Session Settings */}
-              <div className="space-y-4">
-                <h4 className="font-medium">Session Settings</h4>
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Session Timeout</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Automatically log out users after period of inactivity
-                    </p>
-                  </div>
-                  <Switch 
-                    checked={generalSettings.sessionTimeout}
-                    onCheckedChange={(checked) => updateGeneralSetting('sessionTimeout', checked)}
-                  />
-                </div>
-
-                {generalSettings.sessionTimeout && (
-                  <div className="space-y-2">
-                    <Label htmlFor="sessionTimeoutMinutes">Session Timeout (minutes)</Label>
-                    <Input
-                      id="sessionTimeoutMinutes"
-                      type="number"
-                      value={generalSettings.sessionTimeoutMinutes?.toString() || '30'}
-                      onChange={(e) => updateGeneralSetting('sessionTimeoutMinutes', parseInt(e.target.value) || 30)}
-                      min="5"
-                      max="480"
-                      placeholder="30"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Range: 5-480 minutes (8 hours max)
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Cache Management */}
-              <div className="space-y-4 border-t border-border pt-4">
-                <h4 className="font-medium">Cache Management</h4>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Enable Local Cache</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Use machine-local cache for faster loads. This is not browser storage.
-                    </p>
-                  </div>
-                  <Switch 
-                    checked={!!generalSettings.cacheEnabled}
-                    onCheckedChange={(checked) => updateGeneralSetting('cacheEnabled', checked)}
-                  />
-                </div>
-                {generalSettings.cacheEnabled && (
-                  <div className="space-y-2">
-                    <Label htmlFor="cacheMaxSize">Cache Size (MB)</Label>
-                    <Input
-                      id="cacheMaxSize"
-                      type="number"
-                      value={(generalSettings.cacheMaxSizeMB ?? 256).toString()}
-                      onChange={(e) => updateGeneralSetting('cacheMaxSizeMB', Math.max(16, parseInt(e.target.value) || 256))}
-                      min="16"
-                      max="32768"
-                      placeholder="256"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Range: 16 MB – 32768 MB (32 GB). Actual implementation depends on server configuration.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Site Configuration */}
-              <div className="space-y-4 border-t border-border pt-4">
-                <h4 className="font-medium">Site Configuration</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Deployment Protocol</Label>
-                    <Select
-                      value={generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http')}
-                      onValueChange={(v) => updateGeneralSetting('deploymentProtocol', v as 'http'|'https')}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select protocol" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="http">HTTP</SelectItem>
-                        <SelectItem value="https">HTTPS</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      If HTTPS is selected, ensure certificates and reverse proxy are configured.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Authentication Flow</Label>
-                    <Select
-                      value={generalSettings.authFlow || 'server'}
-                      onValueChange={(v) => updateGeneralSetting('authFlow', v as 'spa'|'server')}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select auth flow" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="server">PHP (Server Callback)</SelectItem>
-                        <SelectItem value="spa">SPA (Client Callback)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      Server callback is recommended for HTTP deployments. SPA callback requires HTTPS for PKCE.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* ESI Application Credentials */}
-              <div className="space-y-4 border-t border-border pt-4">
-                <ESICredentialsPanel
-                  userName={user?.characterName}
-                  userCorp={user?.corporationName}
-                  esiSettings={esiSettings}
-                  esiConfig={{ clientId: esiConfig.clientId, clientSecret: esiConfig.clientSecret }}
-                  generalSettings={generalSettings}
-                  onUpdateESISetting={(k, v) => updateESISetting(k as any, v)}
-                  onSaveESIConfig={(clientId, clientSecret) => {
-                    if (!clientId) {
-                      toast.error('Client ID is required');
-                      return;
-                    }
-                    updateESIConfig(clientId, clientSecret || '');
-                    setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
-                    toast.success('ESI configuration updated');
-                  }}
-                  onClearESIForm={() => {
-                    setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
-                    toast.info('Form cleared');
-                  }}
-                  onTestESIConfig={async () => {
-                    try {
-                                        const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
-                                        const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
-                                        if (!clientId) {
-                                          toast.error('Client ID is required to test ESI configuration');
-                                          return;
-                                        }
-                                        // Prefer server OAuth start so redirect_uri is the saved public callback.
-                                        if ((generalSettings.authFlow || 'server') !== 'spa') {
-                                          await startEsiLogin(loginWithESI, {
-                                            scopeType: 'basic',
-                                            clientId,
-                                            role: user?.role,
-                                            announce: true,
-                                          });
-                                          return;
-                                        }
-                                        const callbackUrl = (esiSettings.callbackUrl && esiSettings.callbackUrl.trim())
-                                          ? esiSettings.callbackUrl.trim()
-                                          : `${window.location.origin}/`;
-                      const corps = getRegisteredCorporations();
-                      initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
-                      const svc = getESIAuthService();
-                      const url = await svc.initiateLogin('basic');
-                      toast.info('Redirecting to EVE SSO for basic test...');
-                      window.location.href = url;
-                    } catch (err) {
-                      console.error('ESI config test failed:', err);
-                      const message = err instanceof Error ? err.message : 'Failed to initialize ESI login';
-                      toast.error(message);
-                    }
-                  }}
-                />
-              </div>
-
-              {/* Save Actions */}
-              <div className="flex justify-end gap-2 pt-4 border-t border-border">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    // Reset to current saved values
-                    window.location.reload();
-                  }}
-                >
-                  Reset Changes
-                </Button>
-                <Button
-                  onClick={saveGeneralSettings}
-                  className="bg-accent hover:bg-accent/90 text-accent-foreground"
-                >
-                  <CheckCircle size={16} className="mr-2" />
-                  Save General Settings
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                <TabsContent value="connectivity" className="space-y-6">
+          <ConnectivityTab />
         </TabsContent>
 
-        <TabsContent value="database" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Database size={20} />
-                  Database Configuration
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <DatabaseTabContainer />
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         <TabsContent value="sync" className="space-y-6">
           <DataSyncSettings isMobileView={isMobileView} />

@@ -1,7 +1,10 @@
 <?php
-// Minimal EVE SSO callback relay
-// Receives code/state from CCP and immediately redirects to the SPA root
-// preserving parameters, so the frontend can complete the flow reliably.
+// Compatibility callback for older EVE developer-app registrations.
+//
+// OAuth now completes on the server at auth/esi/callback.php. Forwarding a
+// server-issued state token to the SPA sends it into the retired PKCE path,
+// where that state cannot be validated. Keep this endpoint for existing
+// installations, but relay CCP directly to the canonical server callback.
 
 // Allow error pass-through as well
 $code = isset($_GET['code']) ? $_GET['code'] : null;
@@ -9,8 +12,9 @@ $state = isset($_GET['state']) ? $_GET['state'] : null;
 $error = isset($_GET['error']) ? $_GET['error'] : null;
 $error_description = isset($_GET['error_description']) ? $_GET['error_description'] : null;
 
-// Build destination
-$dest = '/';
+// Successful callbacks must reach the endpoint that owns the server-side
+// state, token exchange, user upsert, and session handoff.
+$dest = '/api/auth/esi/callback.php';
 $params = [];
 if ($error) {
   $params['error'] = $error;
@@ -41,6 +45,6 @@ try {
 header('Cache-Control: no-store, max-age=0');
 header('Pragma: no-cache');
 
-// Redirect to SPA with params so it can finish the flow
+// Redirect to the canonical server callback so it can finish the flow.
 header('Location: ' . $dest . ($qs ? ('?' . $qs) : ''));
 exit;

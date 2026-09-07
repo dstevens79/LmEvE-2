@@ -12,7 +12,7 @@ import {
   Planet,
   Receipt,
   Globe,
-  Database,
+  Network,
   Clock,
   ChartLine,
   Crosshair,
@@ -96,9 +96,7 @@ export const PRIMARY_NAV_TABS: AppNavTab[] = [
 ];
 
 export const SETTINGS_NAV_TABS: AppSettingsTab[] = [
-  { id: 'general', label: 'General', icon: Globe },
-  { id: 'database', label: 'Database', icon: Database },
-  // ESI/SSO credentials live under General — no duplicate settings page.
+  { id: 'connectivity', label: 'Connectivity', icon: Network },
   { id: 'sync', label: 'Data Sync', icon: Clock },
   { id: 'sync-monitoring', label: 'Sync Monitoring', icon: ChartLine },
   { id: 'permissions', label: 'Permissions', icon: Shield },

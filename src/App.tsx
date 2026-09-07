@@ -38,7 +38,7 @@ const Settings = React.lazy(() =>
 
 function AppContent() {
   // Settings hooks load from the server with credentials and re-pull after login.
-  // No full-page reload / nuclear localStorage wipe — those erased setup state per-origin.
+  // No full-page reload / nuclear localStorage wipe â€” those erased setup state per-origin.
   React.useEffect(() => {
     try { localStorage.removeItem('lmeve-setup-status'); } catch {}
     try { localStorage.removeItem('lmeve-reset-v3'); } catch {}
@@ -46,9 +46,10 @@ function AppContent() {
   }, []);
   const [activeTab, setActiveTab] = useLocalKV<TabType>('active-tab', 'dashboard');
   const [activeSettingsTab, setActiveSettingsTab] = useLocalKV<string>('active-settings-tab', 'general');
-    // Removed Settings → ESI/SSO tab; credentials live under General.
+    // Removed Settings â†’ ESI/SSO tab; credentials live under General.
     React.useEffect(() => {
-      if (activeSettingsTab === 'esi' || activeSettingsTab === 'eve' || activeSettingsTab === 'sso') {
+      if (activeSettingsTab === 'database' || activeSettingsTab === 'general' || activeSettingsTab === 'esi' || activeSettingsTab === 'eve' || activeSettingsTab === 'sso') {
+        setActiveSettingsTab('connectivity');
         setActiveSettingsTab('general');
       }
     }, [activeSettingsTab, setActiveSettingsTab]);
@@ -197,7 +198,7 @@ function AppContent() {
     return () => window.clearInterval(interval);
   }, []);
   // Database setup completion: server-owned credentials (password may be masked as ***).
-    // Defaults ship with host/username placeholders — only a stored password / configured flag counts.
+    // Defaults ship with host/username placeholders â€” only a stored password / configured flag counts.
   const needsDBSetup = React.useMemo(() => {
       if (dbConnected) return false;
 
@@ -226,7 +227,7 @@ function AppContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Auth provider already nulls `user` until session is real — use it directly.
+  // Auth provider already nulls `user` until session is real â€” use it directly.
   // (Do not double-gate; that previously left nav dead after a successful login.)
   const currentUser = user;
   const currentAuth = isAuthenticated && !!user;
@@ -240,7 +241,7 @@ function AppContent() {
     return 'configured';
   };
 
-  // Debug ESI config (never assume clientId is a string — bad saves used to store an object)
+  // Debug ESI config (never assume clientId is a string â€” bad saves used to store an object)
   React.useEffect(() => {
       const rawId = esiConfig?.clientId;
       const idStr = typeof rawId === 'string' ? rawId : (rawId == null ? '' : String(rawId));
@@ -257,7 +258,7 @@ function AppContent() {
 
   // Force re-render when user changes to ensure UI updates
   React.useEffect(() => {
-    console.log('🔄 User state changed:', {
+    console.log('ðŸ”„ User state changed:', {
       hasUser: !!currentUser,
       characterName: currentUser?.characterName,
       corporationName: currentUser?.corporationName,
@@ -267,8 +268,8 @@ function AppContent() {
     });
     
     if (currentUser) {
-      console.log('✅ User object exists - should show main app');
-      console.log('👤 User details:', {
+      console.log('âœ… User object exists - should show main app');
+      console.log('ðŸ‘¤ User details:', {
         id: currentUser.characterId,
         name: currentUser.characterName,
         corp: currentUser.corporationName,
@@ -286,12 +287,12 @@ function AppContent() {
       setLoginPassword('');
       setIsLoggingIn(false);
     } else {
-      console.log('❌ No user object - should show login');
+      console.log('âŒ No user object - should show login');
     }
   }, [currentUser]);
 
   React.useEffect(() => {
-    console.log('🔄 Auth trigger changed:', authTrigger);
+    console.log('ðŸ”„ Auth trigger changed:', authTrigger);
     
     // Force component re-render when auth state changes
     if (authTrigger > 0) {
@@ -301,7 +302,7 @@ function AppContent() {
 
   // Simple, clear auth state logging
   React.useEffect(() => {
-    console.log('🏠 App render state:', { 
+    console.log('ðŸ  App render state:', { 
       hasUser: !!currentUser,
       characterName: currentUser?.characterName, 
       corporationName: currentUser?.corporationName,
@@ -315,7 +316,7 @@ function AppContent() {
     // Unauthenticated always stays on dashboard. Never auto-open Settings/Database.
     if (!currentAuth || !currentUser) {
       if (activeTab !== 'dashboard' || settingsExpanded) {
-        console.log('🔄 Not authenticated - forcing dashboard (no setup UI)');
+        console.log('ðŸ”„ Not authenticated - forcing dashboard (no setup UI)');
         setActiveTab('dashboard');
         setSettingsExpanded(false);
       }
@@ -336,11 +337,22 @@ function AppContent() {
     // Let the ESICallback + auth service handle state validation and fallbacks.
     // This prevents silently dropping a valid callback when storage is slow or lost.
     if (code && state) {
-      console.log('🔗 Detected ESI callback parameters - delegating to ESICallback');
+      // Server OAuth state is a signed "payload.signature" token. This also
+      // supports legacy EVE registrations that still return to the SPA root:
+      // send the response to the endpoint that issued the state and can
+      // establish the replacement ESI session.
+      if (state.includes('.')) {
+        const serverCallback = new URL('/api/auth/esi/callback.php', window.location.origin);
+        serverCallback.searchParams.set('code', code);
+        serverCallback.searchParams.set('state', state);
+        window.location.replace(serverCallback.toString());
+        return;
+      }
+      console.log('ðŸ”— Detected ESI callback parameters - delegating to ESICallback');
       setIsESICallback(true);
     } else if (code || state) {
       // Clear any stray ESI parameters that aren't valid
-      console.log('⚠️ Clearing invalid ESI callback parameters');
+      console.log('âš ï¸ Clearing invalid ESI callback parameters');
       window.history.replaceState({}, document.title, window.location.pathname);
       sessionStorage.removeItem('esi-login-attempt');
     } else if (auth === 'ok') {
@@ -348,7 +360,7 @@ function AppContent() {
       const setup = urlParams.get('setup');
       const handoff = urlParams.get('handoff');
         (async () => {
-          console.log('🔗 Detected server auth completion (?auth=ok) - hydrating session', { setup, handoff });
+          console.log('ðŸ”— Detected server auth completion (?auth=ok) - hydrating session', { setup, handoff });
           await hydrateSessionFromServer();
           // Corp was just consented/registered server-side: populate data now.
           setPendingInitialSync(true);
@@ -373,7 +385,7 @@ function AppContent() {
       })();
     } else if (auth === 'error') {
       const reason = urlParams.get('reason') || 'unknown';
-      console.error('❌ ESI server callback failed:', reason);
+      console.error('âŒ ESI server callback failed:', reason);
       window.history.replaceState({}, document.title, window.location.pathname);
       try { toast.error(`EVE SSO failed (${reason})`); } catch {}
     }
@@ -400,7 +412,7 @@ function AppContent() {
         }
       } catch {}
     }).catch(() => {
-      try { toast.error('Corp data sync failed — retry from Settings → Data Sync'); } catch {}
+      try { toast.error('Corp data sync failed â€” retry from Settings â†’ Data Sync'); } catch {}
     });
   }, [pendingInitialSync, getRegisteredCorporations]);
 
@@ -419,7 +431,7 @@ function AppContent() {
 
   // Handle successful authentication
   const handleLoginSuccess = () => {
-    console.log('🎉 Login success - clearing ESI callback state');
+    console.log('ðŸŽ‰ Login success - clearing ESI callback state');
     setIsESICallback(false);
     setActiveTab('dashboard');
     setSettingsExpanded(false);
@@ -447,20 +459,20 @@ function AppContent() {
     setIsLoggingIn(true);
     
     try {
-      console.log('🔐 Quick login attempt:', loginUsername);
+      console.log('ðŸ” Quick login attempt:', loginUsername);
       await loginWithCredentials(loginUsername.trim(), loginPassword.trim());
-      console.log('✅ Quick login successful');
+      console.log('âœ… Quick login successful');
 
       // Always land on dashboard after login. Setup is available under Settings when admin.
       setActiveTab('dashboard');
       setSettingsExpanded(false);
       if (needsDBSetup) {
-        toast.success('Signed in — open Settings → Database to finish setup');
+        toast.success('Signed in â€” open Settings â†’ Database to finish setup');
       } else {
         toast.success('Login successful!');
       }
     } catch (error) {
-      console.error('❌ Quick login failed:', error);
+      console.error('âŒ Quick login failed:', error);
       const msg = error instanceof Error ? error.message : 'Please check your credentials.';
       toast.error(`Login failed: ${msg}`);
     } finally {
@@ -479,7 +491,7 @@ function AppContent() {
 
   // Handle failed authentication
   const handleLoginError = () => {
-    console.log('❌ Login error - clearing ESI callback state');
+    console.log('âŒ Login error - clearing ESI callback state');
     setIsESICallback(false);
     
     // Clean up ESI-related session storage
@@ -632,7 +644,7 @@ function AppContent() {
                 {currentUser ? (
                   // Authenticated user section
                   <>
-                    {/* Identity chip — ESI portrait or local/bootstrap admin label */}
+                    {/* Identity chip â€” ESI portrait or local/bootstrap admin label */}
                     <div className="flex items-center gap-2">
                       {currentUser.authMethod === 'esi' && currentUser.characterId && (
                         <img
@@ -665,9 +677,9 @@ function AppContent() {
                           onClick={async () => {
                             try {
                               await loginWithCredentials('admin', '12345');
-                              console.log('🧪 Direct login test completed');
+                              console.log('ðŸ§ª Direct login test completed');
                             } catch (error) {
-                              console.error('🧪 Direct login test failed:', error);
+                              console.error('ðŸ§ª Direct login test failed:', error);
                             }
                           }}
                           title="Development: Test Admin Login"
@@ -727,9 +739,9 @@ function AppContent() {
                         onClick={async () => {
                           try {
                             await loginWithCredentials('admin', '12345');
-                            console.log('🧪 Direct login test completed');
+                            console.log('ðŸ§ª Direct login test completed');
                           } catch (error) {
-                            console.error('🧪 Direct login test failed:', error);
+                            console.error('ðŸ§ª Direct login test failed:', error);
                           }
                         }}
                         title="Development: Test Admin Login"
@@ -879,7 +891,7 @@ function AppContent() {
                         <span>Settings</span>
                         {activeSettingsTab && (
                           <>
-                            <span className="text-muted-foreground">•</span>
+                            <span className="text-muted-foreground">â€¢</span>
                             <span className="capitalize">{activeSettingsTab}</span>
                           </>
                         )}
@@ -962,7 +974,7 @@ function AppContent() {
                         </div>
                         {needsDBSetup && (
                           <p className="text-xs text-muted-foreground">
-                            Default offline admin: <strong>admin</strong> / <strong>12345</strong> — change this password after first login.
+                            Default offline admin: <strong>admin</strong> / <strong>12345</strong> â€” change this password after first login.
                           </p>
                         )}
                       </div>
@@ -970,7 +982,7 @@ function AppContent() {
                   ) : activeTab === 'settings' ? (
                                       <Suspense
                                         fallback={
-                                          <div className="py-16 text-center text-muted-foreground">Loading settings…</div>
+                                          <div className="py-16 text-center text-muted-foreground">Loading settingsâ€¦</div>
                                         }
                                       >
                                         <Settings
@@ -982,7 +994,7 @@ function AppContent() {
                                     ) : (
                                       <Suspense
                                         fallback={
-                                          <div className="py-16 text-center text-muted-foreground">Loading…</div>
+                                          <div className="py-16 text-center text-muted-foreground">Loadingâ€¦</div>
                                         }
                                       >
                                         <Tabs value={activeTab} onValueChange={handleTabChange}>
