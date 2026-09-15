@@ -90,16 +90,17 @@ $status['esi']['status'] = $esi ? 'online' : 'offline';
 
 // Load server settings to assess corp ESI and SDE
 $settings = api_load_server_settings();
+$configuredEsi = false;
 if (is_array($settings)) {
   $root = api_resolve_settings_root($settings);
+  $esiRoot = isset($root['esi']) && is_array($root['esi']) ? $root['esi'] : [];
+  $configuredEsi = !empty($esiRoot['clientId']);
+
   // corp ESI: look for configured corporations arrays
   $corps = [];
   if (isset($root['corporations']) && is_array($root['corporations'])) $corps = $root['corporations'];
-  if (isset($root['esi']) && is_array($root['esi'])) {
-    $esiRoot = $root['esi'];
-    if (isset($esiRoot['registeredCorps']) && is_array($esiRoot['registeredCorps'])) $corps = $esiRoot['registeredCorps'];
-    if (isset($esiRoot['corporations']) && is_array($esiRoot['corporations'])) $corps = $esiRoot['corporations'];
-  }
+  if (isset($esiRoot['registeredCorps']) && is_array($esiRoot['registeredCorps'])) $corps = $esiRoot['registeredCorps'];
+  if (isset($esiRoot['corporations']) && is_array($esiRoot['corporations'])) $corps = $esiRoot['corporations'];
   $corpCount = 0;
   foreach ($corps as $c) {
     if (is_array($c)) {
@@ -149,6 +150,20 @@ try {
     }
   }
   $status['activeUsers'] = $active;
+
+  // Also count active corporations from the database if the table exists
+  $dbCorpCount = null;
+  if (@$db->query("SHOW TABLES LIKE 'corporations'") && ($t = @$db->query("SHOW TABLES LIKE 'corporations'")) && $t->num_rows > 0) {
+    $t->close();
+    $q = @$db->query("SELECT COUNT(*) AS c FROM corporations WHERE is_active = 1");
+    if ($q && ($r = $q->fetch_assoc())) { $dbCorpCount = (int)$r['c']; }
+    if ($q) $q->close();
+  }
+  if ($dbCorpCount !== null) {
+    $status['corpEsi']['corpCount'] = $dbCorpCount;
+    $status['corpEsi']['status'] = $dbCorpCount > 0 ? 'online' : 'offline';
+  }
+
   @$db->close();
 } catch (Throwable $e) {
   // leave database.connected=false and activeUsers=0
@@ -161,7 +176,7 @@ if (is_array($hostInfo) && isset($hostInfo['server'])) {
   $status['server']['publicIp'] = $hostInfo['server']['publicIp'] ?? null;
 }
 
-$out = json_encode([ 'ok' => true, 'status' => $status ], JSON_UNESCAPED_SLASHES);
+$out = json_encode([ 'ok' => true, 'status' => $status, 'esiConfigured' => $configuredEsi ], JSON_UNESCAPED_SLASHES);
 if ($cacheFile) { @file_put_contents($cacheFile, $out); }
 
 echo $out;

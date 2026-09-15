@@ -82,6 +82,29 @@ export const ConnectivityTab: React.FC = () => {
                 const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
                 const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
                 if (!clientId) { toast.error('Client ID is required to test ESI configuration'); return; }
+
+                // First, try the lightweight server-side credential validation
+                const testResp = await fetch('/api/auth/esi/test.php', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    clientId,
+                    clientSecret: clientSecret || '',
+                  }),
+                });
+                const testJson = await testResp.json().catch(() => null);
+
+                if (testResp.ok && testJson?.ok) {
+                  toast.success('ESI credentials validated — ready for SSO login');
+                  return;
+                }
+
+                // If validation failed (e.g. 401 on client auth), still allow proceeding
+                // to the actual OAuth login for the user to complete the flow.
+                const msg = testJson?.message || `Credential check: HTTP ${testResp.status}`;
+                toast(`Credential pre-check: ${msg}. Proceeding to SSO login...`);
+
                 if ((generalSettings.authFlow || 'server') !== 'spa') {
                   await startEsiLogin(loginWithESI, { scopeType: 'basic', clientId, role: user?.role, announce: true });
                   return;
@@ -91,10 +114,10 @@ export const ConnectivityTab: React.FC = () => {
                 initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
                 const svc = getESIAuthService();
                 const url = await svc.initiateLogin('basic');
-                toast.info('Redirecting to EVE SSO for basic test...');
+                toast.info('Redirecting to EVE SSO...');
                 window.location.href = url;
               } catch (err) {
-                const message = err instanceof Error ? err.message : 'Failed to initialize ESI login';
+                const message = err instanceof Error ? err.message : 'Failed to test ESI configuration';
                 toast.error(message);
               }
             }}

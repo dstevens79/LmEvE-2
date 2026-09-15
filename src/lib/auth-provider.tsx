@@ -111,7 +111,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [currentUser, setCurrentUser] = useKV<LMeveUser | null>('lmeve-current-user', null);
   const [users, setUsers] = useKV<LMeveUser[]>('lmeve-users', []);
   // Remove browser-stored credentials; use DB-backed auth only
-  const [esiConfiguration, setESIConfiguration] = useKV<{ clientId?: string; clientSecret?: string }>('lmeve-esi-config', {});
+  const [esiConfiguration, setESIConfiguration] = useKV<{ clientId?: string; clientSecret?: string; callbackUrl?: string }>('lmeve-esi-config', {});
   const [registeredCorporations, setRegisteredCorporations] = useKV<CorporationConfig[]>('lmeve-registered-corps', []);
   // Keep an editable admin username reference locally without any password
   const [adminConfig, setAdminConfig] = useKV<{ username: string; password: string }>('admin-config', { username: '', password: '' });
@@ -890,6 +890,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
         sessionStorage.removeItem('esi-login-attempt');
         sessionStorage.removeItem('esi-corp-consent');
       } catch {}
+
+      // Hydrate ESI config from server settings (fixes "ESI not configured" showing
+      // even when the admin saved credentials — esiConfig was localStorage-only
+      // and never loaded from the server-persisted settings.json).
+      try {
+        const settingsResp = await fetch('/api/settings.php', {
+          method: 'GET',
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        });
+        if (settingsResp.ok) {
+          const settingsData = await settingsResp.json().catch(() => null);
+          const root = settingsData?.settings ?? settingsData;
+          if (root && typeof root.esi === 'object' && root.esi !== null) {
+            const esiFromService = root.esi;
+            applyIfCurrent(() => {
+              setESIConfiguration({
+                clientId: typeof esiFromService.clientId === 'string' ? esiFromService.clientId : '',
+                clientSecret: esiFromService.clientSecret === '***' ? '' : (esiFromService.clientSecret || ''),
+                callbackUrl: typeof esiFromService.callbackUrl === 'string' ? esiFromService.callbackUrl : undefined,
+              });
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to hydrate ESI config from server settings:', e);
+      }
+
       applyIfCurrent(() => {
         setServerSessionChecked(true);
         setSessionReady(true);
@@ -902,7 +931,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setSessionReady(true);
       });
     }
-  }, [setUsers, setCurrentUser, setRegisteredCorporations, triggerAuthChange, mapServerUser, setAndPersistSessionTokens]);
+  }, [setUsers, setCurrentUser, setRegisteredCorporations, setESIConfiguration, triggerAuthChange, mapServerUser, setAndPersistSessionTokens]);
   // On app boot, trust the server session cookie over localStorage leftovers.
   useEffect(() => {
     let cancelled = false;
@@ -1332,7 +1361,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
       throw new Error('Corporation not found');
     }
     
-    // Remove corporation
+    // Persist deletion to server (DB-backed corporations table)
+    try {
+      const resp = await fetch('/api/lmeve/delete-corporation.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ corporationId }),
+      });
+      const json = await resp.json().catch(() => null);
+      if (!resp.ok || json?.ok === false) {
+        console.warn('Server corporation delete failed:', json?.error || resp.status);
+        throw new Error(json?.error || `Server delete failed (HTTP ${resp.status})`);
+      }
+    } catch (e) {
+      console.error('Failed to delete corporation on server:', e);
+      throw e;
+    }
+    
+    // Remove corporation from local state only after server confirms
     const updatedCorps = registeredCorporations.filter(corp => corp.corporationId !== corporationId);
     setRegisteredCorporations(updatedCorps);
     
@@ -1371,7 +1418,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [registeredCorporations]);
 
   // Update ESI configuration
-  const updateESIConfig = useCallback((clientId: string, clientSecret?: string) => {
+  const updateESIConfig = useCallback(async (clientId: string, clientSecret?: string) => {
     console.log('Updating ESI configuration');
 
     const normalized = normalizeEsiCredentials(clientId, clientSecret);
@@ -1384,6 +1431,47 @@ export function AuthProvider({ children }: AuthProviderProps) {
       clientSecret: normalized.clientSecret,
     };
     setESIConfiguration(newConfig);
+
+    // Persist to server settings.json (fixes: esiConfig was localStorage-only,
+    // so a page reload lost the config and showed "ESI not configured").
+    try {
+      const esiSettingsFromService = await fetch('/api/settings.php', {
+        method: 'GET',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      }).then(r => r.ok ? r.json().catch(() => null) : null);
+      const root = esiSettingsFromService?.settings ?? esiSettingsFromService;
+      const callbackUrl = (root?.esi?.callbackUrl) || (newConfig as any).callbackUrl || '';
+      await fetch('/api/settings.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          esi: {
+            clientId: normalized.clientId,
+            clientSecret: normalized.clientSecret || '',
+            callbackUrl: callbackUrl || '',
+            userAgent: 'LMeve-2',
+            scopes: [
+              'esi-corporations.read_corporation_membership.v1',
+              'esi-industry.read_corporation_jobs.v1',
+              'esi-assets.read_corporation_assets.v1',
+              'esi-wallet.read_corporation_wallets.v1',
+              'esi-killmails.read_corporation_killmails.v1',
+              'esi-markets.read_corporation_orders.v1',
+              'esi-universe.read_structures.v1',
+            ],
+            rateLimitBuffer: 50,
+            maxRetries: 3,
+            requestTimeout: 10000,
+          },
+        }),
+      });
+      console.log('ESI config persisted to server');
+    } catch (e) {
+      console.warn('Failed to persist ESI config to server:', e);
+    }
 
     // Initialize ESI service with new config (server owns real callback URL)
     try {
