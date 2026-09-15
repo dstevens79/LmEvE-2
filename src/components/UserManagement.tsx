@@ -135,8 +135,17 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
         console.log('🔍 Character search results:', data);
         
         if (data.character && data.character.length > 0) {
-          // Get character details
-          const characterDetails = await Promise.all(
+          // Type the result array explicitly to avoid 'never' narrowing
+          interface CharacterDetail {
+            characterId: number;
+            characterName: string;
+            corporationId: number | null;
+            corporationName: string;
+            allianceId: number | null;
+            allianceName: string | null;
+            securityStatus: number;
+          }
+          const characterDetails: (CharacterDetail | null)[] = await Promise.all(
             data.character.slice(0, 10).map(async (id: number) => {
               try {
                 console.log('📋 Fetching details for character ID:', id);
@@ -151,7 +160,14 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
                   const charData = await charResponse.json();
                   
                   // Get corporation details
-                  let corporationData = null;
+                  interface CorporationInfo {
+                    name: string;
+                    alliance_id: number | null;
+                    alliance_name?: string;
+                    ticker?: string;
+                    member_count?: number;
+                  }
+                  let corporationData: CorporationInfo | null = null;
                   if (charData.corporation_id) {
                     try {
                       const corpResponse = await fetch(`https://esi.evetech.net/v5/corporations/${charData.corporation_id}/`, {
@@ -160,7 +176,7 @@ export function UserManagement({ isMobileView }: { isMobileView?: boolean }) {
                         }
                       });
                       if (corpResponse.ok) {
-                        corporationData = await corpResponse.json();
+                        corporationData = (await corpResponse.json()) as CorporationInfo;
                       }
                     } catch (error) {
                       console.warn('⚠️ Failed to fetch corporation data:', error);

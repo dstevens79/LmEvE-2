@@ -153,7 +153,7 @@ export interface ManufacturingTask {
   // Assignment details - simplified
   assignedTo?: string | null;
   assignedToName?: string;
-  status: 'assigned' | 'in_progress' | 'completed' | 'unassigned';
+  status: 'assigned' | 'in_progress' | 'completed' | 'unassigned' | 'pending' | 'cancelled';
   
   // Station/Location details
   stationId?: number;
@@ -287,9 +287,12 @@ export interface IncomeAnalytics {
     averageProfit: number;
   }>;
   topProducts?: Array<{
-    productTypeId: number;
-    productTypeName: string;
-    quantity: number;
+    typeId: number;
+    typeName: string;
+    unitsProduced: number;
+    productTypeId?: number;
+    productTypeName?: string;
+    quantity?: number;
     totalProfit: number;
     averageProfit: number;
   }>;
@@ -378,7 +381,7 @@ export interface CorpSettings {
   corpId?: number;
   timezone: string;
   language: string;
-  sessionTimeout: boolean;
+  sessionTimeout: number;
   notifications: NotificationSettings;
   eveOnlineSync: {
     enabled: boolean;
@@ -884,6 +887,8 @@ export interface LMeveUser {
   updatedBy?: string;
 }
 
+export type User = LMeveUser;
+
 export interface ESIAuthState {
   state: string;
   verifier: string;
@@ -927,6 +932,7 @@ export interface CorporationConfig {
   registeredScopes: string[];
   isActive: boolean;
   registrationDate: string;
+  memberCount?: number;
   lastTokenRefresh?: string;
   /** Browser-held corp token (SPA consent mode only; never persisted to localStorage). */
   accessToken?: string;

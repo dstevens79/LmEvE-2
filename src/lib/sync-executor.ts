@@ -22,9 +22,10 @@ export type SyncProcessType =
   | 'container_logs'
   | 'contracts'
   | 'item_costs'
-  | 'item_pricing'
-  | 'planetary'
-  | 'personal_esi';
+  | 'item_pricing';
+
+// Note: 'planetary' and 'personal_esi' processes run server-side via sync-core.php
+// and are not available in this browser executor.
 
 export interface SyncResult {
   success: boolean;
@@ -52,18 +53,15 @@ export class SyncExecutor {
     try {
       await this.stateManager.startSync(processId);
       
-      // Only browser-only processes reach the in-browser executor now. Every corp
-      // segment is served by sync-core.php (vaulted corp token); DataSyncSettings
-      // routes them to runCorpSyncSegment and never dispatches here. The rest of
-      // this switch was removed when those processes moved server-side.
-      switch (processType) {
-        case 'planetary':
-          return await this.syncPlanetary(context);
-        case 'personal_esi':
-          return await this.syncPersonalESI(context);
-        default:
-          throw new Error(`Unknown sync process type: ${processType}`);
-      }
+      // All sync processes that reach this executor run server-side via sync-core.php
+      // The DataSyncSettings component routes them to runCorpSyncSegment on the server
+      console.warn(`⚠️ Sync process '${processType}' was routed to browser executor but should run server-side.`);
+      await this.stateManager.failSync(processId, `Process '${processType}' must run server-side via sync-core.php`);
+      return {
+        success: false,
+        itemsProcessed: 0,
+        errorMessage: `Sync process '${processType}' must run server-side via sync-core.php`
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`❌ Sync process ${processType} failed:`, errorMessage);
@@ -111,114 +109,5 @@ export class SyncExecutor {
     }
     
     return 'unknown';
-  }
-
-// Corp-segment executor methods (members/assets/industry/market/wallet/
-// mining/container logs/contracts/item pricing) were removed: all of those
-// processes run server-side via sync-core.php; only planetary + personal_esi
-// remain browser-only.
-
-  private async syncPlanetary(context: SyncExecutionContext): Promise<SyncResult> {
-    const { processId, corporationId, accessToken, storageService, fetchService } = context;
-    
-    await this.stateManager.updateSyncProgress(processId, 10, 'Fetching planetary colonies from ESI...');
-    
-    const members = await fetchService.fetchCorporationMembers(corporationId, accessToken);
-    
-    if (!members || members.length === 0) {
-      console.warn(`⚠️ No members to fetch planetary data for`);
-      await this.stateManager.completeSync(processId, 0);
-      return { success: true, itemsProcessed: 0 };
-    }
-    
-    let totalColonies = 0;
-    const membersWithPlanets: number[] = [];
-    
-    for (let i = 0; i < members.length; i++) {
-      const member = members[i];
-      const progress = 10 + ((i / members.length) * 70);
-      
-      try {
-        const planets = await fetchService.fetchCharacterPlanets(member.character_id, accessToken);
-        
-        if (planets && planets.length > 0) {
-          await storageService.storePlanetaryColonies(member.character_id, planets);
-          totalColonies += planets.length;
-          membersWithPlanets.push(member.character_id);
-        }
-      } catch (error) {
-        console.warn(`⚠️ Failed to fetch planets for character ${member.character_id}:`, error);
-      }
-      
-      if (i % 10 === 0) {
-        await this.stateManager.updateSyncProgress(
-          processId, 
-          progress, 
-          `Checking planetary colonies (${i}/${members.length})...`,
-          i,
-          members.length
-        );
-      }
-    }
-    
-    await this.stateManager.updateSyncProgress(processId, 90, 'Finalizing...');
-    await this.stateManager.completeSync(processId, totalColonies);
-    
-    console.log(`✅ Planetary sync complete: ${totalColonies} colonies from ${membersWithPlanets.length} members`);
-    
-    return {
-      success: true,
-      itemsProcessed: totalColonies
-    };
-  }
-
-  private async syncPersonalESI(context: SyncExecutionContext): Promise<SyncResult> {
-    const { processId, corporationId, accessToken, storageService, fetchService } = context;
-    
-    await this.stateManager.updateSyncProgress(processId, 10, 'Fetching personal ESI data for authenticated pilots...');
-    
-    const authenticatedPilots = await storageService.getAuthenticatedPilots(corporationId);
-    
-    if (!authenticatedPilots || authenticatedPilots.length === 0) {
-      console.warn(`⚠️ No pilots with ESI access configured`);
-      await this.stateManager.completeSync(processId, 0);
-      return { success: true, itemsProcessed: 0 };
-    }
-    
-    let syncedPilots = 0;
-    
-    for (let i = 0; i < authenticatedPilots.length; i++) {
-      const pilot = authenticatedPilots[i];
-      const progress = 10 + ((i / authenticatedPilots.length) * 70);
-      
-      try {
-        await this.stateManager.updateSyncProgress(
-          processId,
-          progress,
-          `Syncing data for ${pilot.characterName}...`,
-          i,
-          authenticatedPilots.length
-        );
-        
-        const personalData = await fetchService.fetchCharacterData(pilot.characterId, pilot.accessToken);
-        
-        if (personalData) {
-          await storageService.storePersonalData(pilot.characterId, personalData);
-          syncedPilots++;
-        }
-      } catch (error) {
-        console.warn(`⚠️ Failed to sync personal data for ${pilot.characterName}:`, error);
-      }
-    }
-    
-    await this.stateManager.updateSyncProgress(processId, 90, 'Finalizing...');
-    await this.stateManager.completeSync(processId, syncedPilots);
-    
-    console.log(`✅ Personal ESI sync complete: ${syncedPilots} pilots synced`);
-    
-    return {
-      success: true,
-      itemsProcessed: syncedPilots
-    };
   }
 }

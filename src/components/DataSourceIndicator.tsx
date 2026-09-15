@@ -64,7 +64,7 @@ export function DataSourceIndicator({
   };
 
   const getDetailedStatus = () => {
-    const sources = [];
+    const sources: string[] = [];
     if (source.esi) sources.push('ESI API');
     if (source.database) sources.push('Database');
     if (source.cache) sources.push('Cache');

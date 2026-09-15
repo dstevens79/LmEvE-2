@@ -142,7 +142,7 @@ export interface GeneralSettings {
   corpId: number;
   corpName: string;
   corpTicker: string;
-  sessionTimeout: number;
+  sessionTimeout: boolean;
   sessionTimeoutMinutes: number;
   maxLogRetentionDays: number;
   theme: 'dark' | 'light' | 'system';
@@ -434,7 +434,7 @@ export const defaultGeneralSettings: GeneralSettings = {
   corpId: 0,
   corpName: '',
   corpTicker: '',
-  sessionTimeout: 120,
+  sessionTimeout: true,
   sessionTimeoutMinutes: 60,
   maxLogRetentionDays: 30,
   theme: 'dark',

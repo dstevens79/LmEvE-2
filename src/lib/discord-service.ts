@@ -151,6 +151,53 @@ export class DiscordNotificationService {
       embeds: [embed],
     });
   }
+
+  // Missing method used by NotificationManager
+  async sendNotification(
+    eventType: string,
+    eventData: Record<string, any>,
+    settings: any
+  ): Promise<boolean> {
+    const content = eventData.pilot_name ? `@${eventData.pilot_name} updated ${eventData.item_name}` : undefined;
+    const embed: DiscordEmbed = {
+      title: `LMeve Notification: ${eventType}`,
+      description: JSON.stringify(eventData, null, 2),
+      color: 0x0099ff,
+      timestamp: new Date().toISOString(),
+    };
+
+    return this.sendMessage({
+      content,
+      embeds: [embed],
+    });
+  }
+
+  async testWebhook(webhookUrl?: string, botName?: string): Promise<boolean> {
+    if (!webhookUrl) return false;
+
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: `Webhook test from ${botName || 'LMEve'}${botName ? ` (${botName})` : ''}`,
+          username: botName || 'LMEve',
+        }),
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Webhook test failed:', error);
+      return false;
+    }
+  }
+
+  getNotificationStats(): { [key: string]: { lastSent: number | null; nextAllowed: number | null } } {
+    return {
+      default: { lastSent: null, nextAllowed: null },
+    };
+  }
 }
 
 export const discordService = DiscordNotificationService.getInstance();

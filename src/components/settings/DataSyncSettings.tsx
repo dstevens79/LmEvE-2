@@ -66,21 +66,35 @@ interface ProcessMeta {
   browserProcessType?: SyncProcessType;
   // esi-routes key when a versioned ESI route exists for this process.
   routeKey?: string;
+  // Server segment name when backed by the vaulted-corps cron
+  serverSegment?: string;
 }
 
 const PROCESS_META: Record<string, ProcessMeta> = {
-  corporation_members:   { name: 'Corporation Members',    description: 'Member list, roles and titles. Fastest to change — keep the interval low.', icon: Users, routeKey: 'members' },
-  industry_jobs:         { name: 'Industry Jobs',          description: 'Active + completed manufacturing/mining/other jobs.',                          icon: Factory, routeKey: 'manufacturing' },
-  market_orders:         { name: 'Market Orders',          description: 'The corp\'s own open buy/sell orders + closed order history.',               icon: TrendUp, routeKey: 'market' },
-  corporation_assets:    { name: 'Corporation Assets',     description: 'Hangar/facility item locations and quantities.',                             icon: Package, routeKey: 'assets' },
-  killmails:             { name: 'Killmails',              description: 'Corp losses via ESI killmail history (server segment; no personal token).',     icon: Crosshair, routeKey: 'killmails' },
-  corporation_wallets:   { name: 'Corporation Wallets',    description: 'Division balances + wallet transactions for the last 30 days.',                 icon: CurrencyDollar, routeKey: 'income' },
-  mining_ledger:         { name: 'Mining Ledger',          description: 'Per-pilot planetary extraction rows from ESI mining observers.',               icon: HardHat, routeKey: 'mining' },
-  corporation_contracts: { name: 'Corporation Contracts',  description: 'Contracts and their item lists (server segment).',                            icon: FileText, routeKey: 'contracts' },
-  item_pricing:          { name: 'Market Item Costs',      description: 'Global /markets/prices reference prices (public ESI, no token; server segment).', icon: Receipt },
-  structures:            { name: 'Structures & Containers',description: 'Structure list and container logs where accessible (server segment).',        icon: Building, routeKey: 'containerLogs' },
-  planetary_interaction: { name: 'Planetary Interaction',  description: 'Colonies and extraction data (browser-run with a personal token).',          icon: Planet, browserProcessType: 'planetary' },
-  personal_esi:          { name: 'Personal ESI Data',      description: 'Per-pilot character data (personal token only; never run by the server cron).', icon: User, browserProcessType: 'personal_esi' },
+  corporation_members:   { name: 'Corporation Members',    description: 'Member list, roles and titles. Fastest to change — keep the interval low.', 
+                           icon: Users, routeKey: 'members', serverSegment: 'corporationMembers' },
+  industry_jobs:           { name: 'Industry Jobs',          description: 'Active + completed manufacturing/mining/other jobs.', 
+                           icon: Factory, routeKey: 'manufacturing', serverSegment: 'industryJobs' },
+  market_orders:           { name: 'Market Orders',          description: 'The corp\'s own open buy/sell orders + closed order history.', 
+                           icon: TrendUp, routeKey: 'market', serverSegment: 'marketOrders' },
+  corporation_assets:      { name: 'Corporation Assets',     description: 'Hangar/facility item locations and quantities.', 
+                           icon: Package, routeKey: 'assets', serverSegment: 'assets' },
+  killmails:               { name: 'Killmails',              description: 'Corp losses via ESI killmail history (server segment; no personal token).', 
+                           icon: Crosshair, routeKey: 'killmails', serverSegment: 'killmails' },
+  corporation_wallets:     { name: 'Corporation Wallets',    description: 'Division balances + wallet transactions for the last 30 days.', 
+                           icon: CurrencyDollar, routeKey: 'income', serverSegment: 'wallet' },
+  mining_ledger:           { name: 'Mining Ledger',          description: 'Per-pilot planetary extraction rows from ESI mining observers.', 
+                           icon: HardHat, routeKey: 'mining', serverSegment: 'miningLedger' },
+  corporation_contracts:   { name: 'Corporation Contracts',  description: 'Contracts and their item lists (server segment).', 
+                           icon: FileText, routeKey: 'contracts', serverSegment: 'contracts' },
+  item_pricing:            { name: 'Market Item Costs',      description: 'Global /markets/prices reference prices (public ESI, no token; server segment).', 
+                           icon: Receipt, serverSegment: 'itemPricing' },
+  structures:              { name: 'Structures & Containers',description: 'Structure list and container logs where accessible (server segment).', 
+                           icon: Building, routeKey: 'containerLogs', serverSegment: 'structures' },
+  planetary_interaction:   { name: 'Planetary Interaction',  description: 'Colonies and extraction data (server segment via sync-core.php).', 
+                           icon: Planet, serverSegment: 'planetary' },
+  personal_esi:            { name: 'Personal ESI Data',      description: 'Per-pilot character data (server segment via sync-core.php).', 
+                           icon: User, serverSegment: 'personalEsi' },
 };
 
 const PROCESS_ORDER = [
@@ -219,42 +233,9 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
       return;
     }
 
-    // Browser-only process (no server segment yet): needs a personal token.
-    if (!user?.accessToken) {
-      toast.error(`${meta.name} requires a personal ESI token. Log in with EVE SSO, then re-run.`);
-      return;
-    }
-    if (!meta.browserProcessType) {
-      toast.warning('This process is not implemented yet.');
-      return;
-    }
-    if (runningIds.has(processId)) return;
-
-    startRunning(processId);
-    try {
-      const storageService = getDatabaseService();
-      const fetchService = new ESIDataFetchService();
-      const executor = new SyncExecutor();
-      const result = await executor.executeSyncProcess(meta.browserProcessType, {
-        processId,
-        corporationId: user.corporationId ?? activeCorpId,
-        accessToken: user.accessToken,
-        storageService,
-        fetchService,
-      });
-      if (result.success) {
-        toast.success(`${meta.name} sync completed — ${result.itemsProcessed} items processed`);
-        void fetchConfig();
-      } else {
-        toast.error(`${meta.name} sync failed: ${result.errorMessage || 'unknown error'}`);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      toast.error(`${meta.name} sync failed: ${errorMessage}`);
-    } finally {
-      stopRunning(processId);
-    }
-  }, [activeCorpId, serverProcesses, runningIds, user?.accessToken, user?.corporationId, fetchConfig]);
+    // No server segment and no browser executor available
+    toast.warning(`${meta.name} requires server-side execution via sync-core.php. Contact your system administrator.`);
+  }, [activeCorpId, serverProcesses, runningIds, fetchConfig]);
 
   // Run every enabled server-backed process in order.
   const runAllServerSegments = useCallback(async () => {
@@ -334,7 +315,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
     if (diffMin < 1) return 'Just now';
     if (diffMin < 60) return `${diffMin}m ago`;
     const hours = Math.floor(diffMin / 60);
-    if (hours < 24) return `${hours}h ago`;
+    if (hours < 24) return `${Math.floor(hours / 24)}d ago`;
     return `${Math.floor(hours / 24)}d ago`;
   };
 
@@ -433,7 +414,8 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
               Sync Processes
             </CardTitle>
             <Button variant="ghost" size="sm" onClick={() => void fetchConfig()} disabled={loadingConfig}>
-              <ArrowClockwise size={14} /> Refresh status
+              <ArrowClockwise size={14} className={validatingRoutes ? 'mr-2 animate-spin' : 'mr-2'} />
+              Refresh status
             </Button>
           </div>
         </CardHeader>
@@ -447,7 +429,9 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
               const intervalMinutes = sp?.intervalMinutes ?? 60;
               const isRunning = runningIds.has(processId);
               const status: 'idle' | 'running' | 'success' | 'error' =
-                isRunning ? 'running' : (sp?.lastStatus === 'error' ? 'error' : sp?.lastRunAt ? (sp.lastStatus ?? 'success') : 'idle');
+                isRunning ? 'running' : 
+                (sp?.lastStatus === 'error' ? 'error' : 
+                sp?.lastRunAt ? (sp.lastStatus ?? 'success') : 'idle');
 
               return (
                 <div key={processId} className="border border-border rounded-lg p-3 space-y-2 hover:bg-muted/20 transition-colors">
@@ -456,6 +440,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                     <div className={`w-3 h-3 rounded-full shrink-0 ${
                       isRunning ? 'bg-blue-400 animate-pulse'
                         : status === 'error' ? 'bg-red-400'
+                        : status === 'not-available' ? 'bg-gray-400'
                         : sp?.lastRunAt && sp.lastStatus === 'success' ? 'bg-green-400'
                         : enabled ? 'bg-muted-foreground/30'
                         : 'bg-muted-foreground/20 border border-muted-foreground/40'
@@ -466,11 +451,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                     <div className="flex-1 min-w-[160px]">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium">{meta.name}</span>
-                        {sp?.serverSegment ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">server</Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-dashed">browser-only</Badge>
-                        )}
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">server</Badge>
                         {!enabled && <Badge variant="secondary" className="text-xs">Disabled</Badge>}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">{meta.description}</p>
@@ -516,7 +497,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                       variant="ghost"
                       size="sm"
                       className="h-8 shrink-0"
-                      onClick={() => void runSyncProcess(processId)}
+                      onClick={() => runSyncProcess(processId)}
                       disabled={isRunning || loadingConfig}
                     >
                       {isRunning ? (
@@ -596,7 +577,7 @@ export function DataSyncSettings({ isMobileView = false }: DataSyncSettingsProps
                   </Select>
 
                   {esiRouteValidation[processId] && (
-                    <div className={`text-xs ${esiRouteValidation[processId].startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>
+                    <div className={`text-xs ${esiRouteValidation[processId]!.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>
                       {esiRouteValidation[processId]}
                     </div>
                   )}

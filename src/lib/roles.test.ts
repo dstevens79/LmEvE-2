@@ -15,10 +15,8 @@ function user(partial: Partial<LMeveUser> & Pick<LMeveUser, 'characterName' | 'r
     characterName: partial.characterName,
     corporationId: partial.corporationId ?? 0,
     corporationName: partial.corporationName ?? '',
-    role: partial.role,
     permissions: partial.permissions as LMeveUser['permissions'],
     authMethod: partial.authMethod ?? 'manual',
-    is_admin: partial.is_admin,
     ...partial,
   } as LMeveUser;
 }
@@ -27,7 +25,7 @@ describe('normalizeUserRole', () => {
   it('maps common aliases', () => {
     expect(normalizeUserRole('super_admin')).toBe('super_admin');
     expect(normalizeUserRole('admin')).toBe('super_admin');
-        expect(normalizeUserRole('corp_admin')).toBe('corp_admin');
+    expect(normalizeUserRole('corp_admin')).toBe('corp_admin');
     expect(normalizeUserRole('member')).toBe('corp_member');
   });
 });
@@ -53,10 +51,10 @@ describe('permissions and tabs', () => {
       characterName: 'admin',
       role: 'super_admin',
       authMethod: 'manual',
-      is_admin: true,
+      isAdmin: true,
     });
     expect(canAccessSettingsTab(admin, 'database')).toBe(true);
-        expect(canAccessSettingsTab(admin, 'general')).toBe(true);
+    expect(canAccessSettingsTab(admin, 'general')).toBe(true);
     expect(canAccessTab(admin, 'settings')).toBe(true);
   });
 
