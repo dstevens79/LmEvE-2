@@ -894,30 +894,43 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // Hydrate ESI config from server settings (fixes "ESI not configured" showing
       // even when the admin saved credentials — esiConfig was localStorage-only
       // and never loaded from the server-persisted settings.json).
-      try {
-        const settingsResp = await fetch('/api/settings.php', {
-          method: 'GET',
-          credentials: 'include',
-          headers: { Accept: 'application/json' },
-          cache: 'no-store',
-        });
-        if (settingsResp.ok) {
-          const settingsData = await settingsResp.json().catch(() => null);
-          const root = settingsData?.settings ?? settingsData;
-          if (root && typeof root.esi === 'object' && root.esi !== null) {
-            const esiFromService = root.esi;
-            applyIfCurrent(() => {
-              setESIConfiguration({
-                clientId: typeof esiFromService.clientId === 'string' ? esiFromService.clientId : '',
-                clientSecret: esiFromService.clientSecret === '***' ? '' : (esiFromService.clientSecret || ''),
-                callbackUrl: typeof esiFromService.callbackUrl === 'string' ? esiFromService.callbackUrl : undefined,
+      // Only overwrite local values when the server has a real (non-masked) value.
+            try {
+              const settingsResp = await fetch('/api/settings.php', {
+                method: 'GET',
+                credentials: 'include',
+                headers: { Accept: 'application/json' },
+                cache: 'no-store',
               });
-            });
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to hydrate ESI config from server settings:', e);
-      }
+              if (settingsResp.ok) {
+                const settingsData = await settingsResp.json().catch(() => null);
+                const root = settingsData?.settings ?? settingsData;
+                if (root && typeof root.esi === 'object' && root.esi !== null) {
+                  const esiFromService = root.esi;
+                  const serverClientId = typeof esiFromService.clientId === 'string' ? esiFromService.clientId.trim() : '';
+                  // Server masks clientSecret as '***' — never overwrite a real local
+                  // secret with the masked value.
+                  const serverSecret = (esiFromService.clientSecret === '***')
+                    ? (esiConfiguration.clientSecret || '')
+                    : (typeof esiFromService.clientSecret === 'string' ? esiFromService.clientSecret : (esiConfiguration.clientSecret || ''));
+                  // Only hydrate if the server actually has config (don't clobber local
+                  // when server settings file doesn't exist yet)
+                  if (serverClientId !== '') {
+                    applyIfCurrent(() => {
+                      setESIConfiguration({
+                        clientId: serverClientId,
+                        clientSecret: serverSecret || undefined,
+                        callbackUrl: typeof esiFromService.callbackUrl === 'string' && esiFromService.callbackUrl !== '***'
+                          ? esiFromService.callbackUrl
+                          : undefined,
+                      });
+                    });
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn('Failed to hydrate ESI config from server settings:', e);
+            }
 
       applyIfCurrent(() => {
         setServerSessionChecked(true);
@@ -1429,6 +1442,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const newConfig = {
       clientId: normalized.clientId,
       clientSecret: normalized.clientSecret,
+      callbackUrl: (esiConfiguration as any)?.callbackUrl,
     };
     setESIConfiguration(newConfig);
 

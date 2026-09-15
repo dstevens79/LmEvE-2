@@ -70,11 +70,16 @@ export const ConnectivityTab: React.FC = () => {
             esiConfig={{ clientId: esiConfig.clientId, clientSecret: esiConfig.clientSecret }}
             generalSettings={generalSettings}
             onUpdateESISetting={(k, v) => updateESISetting(k as any, v)}
-            onSaveESIConfig={(clientId, clientSecret) => {
+            onSaveESIConfig={async (clientId, clientSecret) => {
               if (!clientId) { toast.error('Client ID is required'); return; }
-              updateESIConfig(clientId, clientSecret || '');
-              setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
-              toast.success('ESI configuration updated');
+              try {
+                await updateESIConfig(clientId, clientSecret || '');
+                setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
+                toast.success('ESI configuration updated');
+              } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to save ESI configuration';
+                toast.error(message);
+              }
             }}
             onClearESIForm={() => { setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' })); toast.info('Form cleared'); }}
             onTestESIConfig={async () => {

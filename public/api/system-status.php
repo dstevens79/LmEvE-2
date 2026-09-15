@@ -153,7 +153,8 @@ try {
 
   // Also count active corporations from the database if the table exists
   $dbCorpCount = null;
-  if (@$db->query("SHOW TABLES LIKE 'corporations'") && ($t = @$db->query("SHOW TABLES LIKE 'corporations'")) && $t->num_rows > 0) {
+  $t = @$db->query("SHOW TABLES LIKE 'corporations'");
+  if ($t && $t->num_rows > 0) {
     $t->close();
     $q = @$db->query("SELECT COUNT(*) AS c FROM corporations WHERE is_active = 1");
     if ($q && ($r = $q->fetch_assoc())) { $dbCorpCount = (int)$r['c']; }
