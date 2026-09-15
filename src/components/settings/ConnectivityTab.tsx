@@ -29,6 +29,20 @@ export const ConnectivityTab: React.FC = () => {
   const updateGeneralSetting = <K extends keyof typeof generalSettings>(k: K, v: typeof generalSettings[K]) => setGeneralSettings(prev => ({ ...prev, [k]: v }));
   const updateESISetting = <K extends keyof typeof esiSettings>(k: K, v: typeof esiSettings[K]) => setESISettings(prev => ({ ...prev, [k]: v }));
 
+  // Sync: when esiConfig (from useAuth/localStorage) has a clientId but our
+  // local esiSettings form state doesn't, copy it over so the Test button
+  // can read it. This handles the case where config was saved in a different
+  // tab/session and the form fields were cleared.
+  React.useEffect(() => {
+    if (esiConfig?.clientId && !esiSettings.clientId) {
+      setESISettings(prev => ({
+        ...prev,
+        clientId: esiConfig.clientId || '',
+        clientSecret: esiConfig.clientSecret || '',
+      }));
+    }
+  }, [esiConfig?.clientId, esiConfig?.clientSecret, esiSettings.clientId, esiSettings.clientSecret, setESISettings]);
+
   const handleSaveSiteCompact = () => toast.success('Connectivity site settings saved');
 
   return (
