@@ -456,11 +456,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [setUsers, setCurrentUser, triggerAuthChange, mapServerUser, setAndPersistSessionTokens, isLoading]);
 
-  // ESI SSO login
-  const loginWithESI = useCallback(async (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic', scopesOverride?: string[]) => {
+  // ESI SSO login — accepts optional clientId override for cases where
+  // esiConfiguration may be stale (e.g. caller has the value but state
+  // hasn't synced). Falls back to esiConfiguration when not provided.
+  const loginWithESI = useCallback(async (scopeType: 'basic' | 'enhanced' | 'corporation' = 'basic', scopesOverride?: string[], clientIdOverride?: string) => {
     console.log('🚀 Starting ESI login with scope type:', scopeType);
-    
-    if (!esiConfiguration.clientId) {
+    const effectiveClientId = clientIdOverride || esiConfiguration.clientId;
+    if (!effectiveClientId) {
       throw new Error('ESI is not configured');
     }
     
@@ -499,7 +501,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
         const serverCallback = (json.redirectUri as string) || '';
         if (serverCallback) {
-          initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, serverCallback);
+          initializeESIAuth(effectiveClientId, esiConfiguration.clientSecret, registeredCorporations, serverCallback);
         }
         console.log('✅ Server ESI OAuth start ready', {
           redirectUri: serverCallback,
@@ -511,7 +513,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // SPA mode still needs an explicit callback; prefer saved ESI settings when present
       const spaCallback = `${window.location.origin}/`;
-      initializeESIAuth(esiConfiguration.clientId, esiConfiguration.clientSecret, registeredCorporations, spaCallback);
+      initializeESIAuth(effectiveClientId, esiConfiguration.clientSecret, registeredCorporations, spaCallback);
       const esiService = getESIAuthService();
       const url = scopesOverride && scopesOverride.length > 0
         ? await esiService.initiateLoginWithScopes(scopesOverride)

@@ -5,7 +5,8 @@ export type EsiScopeType = 'basic' | 'enhanced' | 'corporation';
 
 export type LoginWithEsiFn = (
   scopeType?: EsiScopeType,
-  scopesOverride?: string[]
+  scopesOverride?: string[],
+  clientIdOverride?: string
 ) => Promise<string>;
 
 /**
@@ -37,7 +38,11 @@ export async function startEsiLogin(
     (role === 'super_admin' || role === 'corp_admin' ? 'corporation' : 'basic');
 
   try {
-    const authUrl = await loginWithESI(resolvedScope, options.scopesOverride);
+    // Pass clientId from options as override — loginWithESI checks
+    // esiConfiguration (useKV/localStorage) internally, but if the caller
+    // has a valid clientId from server settings (useESISettings), use that
+    // as a fallback to avoid stale-state "ESI is not configured" errors.
+    const authUrl = await loginWithESI(resolvedScope, options.scopesOverride, clientId);
     if (!authUrl) {
       throw new Error('No authorize URL returned');
     }

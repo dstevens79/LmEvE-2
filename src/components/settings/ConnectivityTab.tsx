@@ -74,6 +74,8 @@ export const ConnectivityTab: React.FC = () => {
               if (!clientId) { toast.error('Client ID is required'); return; }
               try {
                 await updateESIConfig(clientId, clientSecret || '');
+                // Force useESISettings to re-fetch from server so it's in sync
+                window.dispatchEvent(new CustomEvent('lmeve-settings-reload'));
                 setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
                 toast.success('ESI configuration updated');
               } catch (err) {
