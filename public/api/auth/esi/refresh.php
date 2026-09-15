@@ -75,7 +75,7 @@ try {
   $basic = base64_encode($clientId . ':' . $clientSecret);
 
   $tokenUrl = 'https://login.eveonline.com/v2/oauth/token';
-  list($resp, $status, $err) = http_post_form($tokenUrl, ["Authorization: Basic $basic"], [
+  list($resp, $status, $err) = http_post_form($tokenUrl, ["Authorization: Basic " . $basic], [
     'grant_type' => 'refresh_token',
     'refresh_token' => $refreshToken,
   ]);

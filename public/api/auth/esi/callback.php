@@ -111,7 +111,7 @@ try {
   if ($redirectUri !== '') {
     $tokenBody['redirect_uri'] = $redirectUri;
   }
-  list($resp, $status, $err) = http_post_form($tokenUrl, ["Authorization: Basic $basic"], $tokenBody);
+  list($resp, $status, $err) = http_post_form($tokenUrl, ["Authorization: Basic " . $basic], $tokenBody);
   if ($resp === null || $status < 200 || $status >= 300) {
     if ($method === 'GET') callback_fail_redirect('token_exchange_failed');
     api_fail(200, 'Token exchange failed', ['status' => $status, 'error' => $err, 'body' => $resp]);
