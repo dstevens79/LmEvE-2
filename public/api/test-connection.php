@@ -104,10 +104,14 @@ if (@$mysqli->select_db($db)) {
                         $matchesDefault = hash_equals($stored, '12345');
                     }
                 }
-                $adminPasswordInfo = [
+                 $adminPasswordInfo = [
                     'set' => $stored !== '',
                     'type' => $type,
                     'matchesDefault' => (bool)$matchesDefault,
+                    'isDefault' => (bool)$matchesDefault,
+                    'note' => $matchesDefault
+                        ? 'Admin login password is still the default (12345). Change it for security.'
+                        : 'Admin login password has been changed from the default.',
                 ];
             }
             $res->close();

@@ -1,10 +1,24 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { DatabaseConfigPanel } from './DatabaseConfigPanel';
 import { ConnectionLogsPanel } from './ConnectionLogsPanel';
-import { CaretDown, CaretRight, ArrowClockwise } from '@phosphor-icons/react';
+import { CaretDown, CaretRight, ArrowClockwise, Trash, Download, Database } from '@phosphor-icons/react';
 import { DatabaseManager } from '@/lib/database';
+import { useAuth } from '@/lib/auth-provider';
+import { isLocalSiteAdmin } from '@/lib/roles';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { 
   useDatabaseSettings,
   useLocalKV,
@@ -49,6 +63,9 @@ async function saveSiteData(key: string, value: any) {
 
 const DatabaseTabContainer: React.FC = () => {
   const [databaseSettings, setDatabaseSettings] = useDatabaseSettings();
+  const { user: currentUser } = useAuth();
+
+  // Track real unmasked passwords entered by user (persisted in sessionStorage for this session)
   
   // Track real unmasked passwords entered by user (persisted in sessionStorage for this session)
   // Initialize from sessionStorage if available, otherwise null
@@ -109,6 +126,11 @@ const DatabaseTabContainer: React.FC = () => {
   const [adminExists, setAdminExists] = React.useState<boolean | null>(null);
   const [showDatabaseTables, setShowDatabaseTables] = useLocalKV<boolean>('database-tables-expanded', false);
   const [lastSuccessfulTest, setLastSuccessfulTest] = React.useState<number | null>(null);
+
+  // DB admin action state
+  const [isRunningDbAction, setIsRunningDbAction] = React.useState(false);
+  const [pendingDbAction, setPendingDbAction] = React.useState<'clear' | 'schema' | 'sde' | null>(null);
+  const [sudoPasswordInput, setSudoPasswordInput] = React.useState('');
 
   const addConnectionLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -245,10 +267,10 @@ const DatabaseTabContainer: React.FC = () => {
         if (j?.adminPasswordInfo && typeof j.adminPasswordInfo === 'object') {
           const info = j.adminPasswordInfo;
           addConnectionLog(`Admin password type: ${info.type || 'unknown'}`);
-          addConnectionLog(
+           addConnectionLog(
             info.matchesDefault
-              ? 'Admin password matches default (12345)'
-              : 'Admin password is not default'
+              ? 'Admin login password is default (admin/12345) — consider changing it'
+              : 'Admin login password has been changed from default'
           );
         }
 
@@ -357,6 +379,75 @@ const DatabaseTabContainer: React.FC = () => {
     } catch {}
     toast.info('Disconnected from database');
     setAdminExists(null);
+  };
+
+  // --- DB Admin Actions ---
+  const isSiteAdmin = !!(currentUser && isLocalSiteAdmin(currentUser));
+
+  const handleDbAdminActionClick = (action: 'clear' | 'schema' | 'sde') => {
+    if (!dbStatus.connected) {
+      toast.error('Connect to database first');
+      return;
+    }
+    if (!isSiteAdmin) {
+      toast.error('Admin privileges required');
+      return;
+    }
+    setSudoPasswordInput('');
+    setPendingDbAction(action);
+  };
+
+  const confirmDbAdminAction = async () => {
+    if (!pendingDbAction) return;
+
+    setIsRunningDbAction(true);
+    const action = pendingDbAction;
+    setPendingDbAction(null);
+
+    const dbName = databaseSettings.database || 'lmeve2';
+    addConnectionLog(`→ ${action} action requested on "${dbName}"`);
+
+    try {
+      const resp = await fetch('/api/db-admin-actions.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, sudoPassword: sudoPasswordInput }),
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok || data.ok === false) {
+        const err = data.error || `HTTP ${resp.status}`;
+        const mysqlErr = data.mysqlError ? ` (${data.mysqlError})` : '';
+        addConnectionLog(`❌ ${action} failed: ${err}${mysqlErr}`);
+        toast.error(`${action} failed: ${err}`);
+      } else {
+        if (data.started) {
+          addConnectionLog(`✅ ${action} started (background). Log: ${data.logFile || 'sde-import.log'}`);
+          toast.success(`${action} started — check logs for progress`);
+        } else {
+          let detail = '';
+          if (data.tablesCreated) detail = `${data.tablesCreated} tables`;
+          else if (data.droppedTables) detail = `${data.droppedTables} tables dropped`;
+          addConnectionLog(`✅ ${action} succeeded${detail ? ` — ${detail}` : ''}`);
+          toast.success(`${action} succeeded${detail ? ` (${detail})` : ''}`);
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addConnectionLog(`❌ ${action} error: ${msg}`);
+      toast.error(`${action} error: ${msg}`);
+    } finally {
+      setIsRunningDbAction(false);
+      setSudoPasswordInput('');
+    }
+  };
+
+  const dbActionLabels: Record<'clear' | 'schema' | 'sde', string> = {
+    clear: 'clear all LMeve data (drops all tables)',
+    schema: 'initialize fresh schema (creates tables)',
+    sde: 'download and import EVE static data',
   };
 
   // Removed seed-admin functionality for security concerns; admin should be provisioned via setup script only.
@@ -526,6 +617,93 @@ const DatabaseTabContainer: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* DB Admin Maintenance — visible only for site admins when connected */}
+      {dbStatus.connected && isSiteAdmin && (
+        <div className="border-t border-border pt-6 space-y-4">
+          <Card className="border-destructive/30">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Database size={20} />
+                Database Maintenance
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-sm text-muted-foreground">
+                Administrative actions on the <code className="bg-muted px-1 rounded">{databaseSettings.database || 'lmeve2'}</code> database.
+                Requires sudo/root password confirmation. Destructive — back up first.
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={isRunningDbAction}
+                  onClick={() => handleDbAdminActionClick('clear')}
+                >
+                  <Trash size={16} className="mr-2" />
+                  Clear All Data
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isRunningDbAction}
+                  onClick={() => handleDbAdminActionClick('schema')}
+                >
+                  <Database size={16} className="mr-2" />
+                  Initialize Schema
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isRunningDbAction}
+                  onClick={() => handleDbAdminActionClick('sde')}
+                >
+                  <Download size={16} className="mr-2" />
+                  Update SDE Data
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Sudo password confirmation dialog */}
+      <AlertDialog
+        open={pendingDbAction !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDbAction(null);
+            setSudoPasswordInput('');
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm sudo password</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enter the root/sudo database password to proceed with the
+              <strong> {pendingDbAction && dbActionLabels[pendingDbAction]}</strong>.
+              This operation cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            type="password"
+            placeholder="Sudo password"
+            value={sudoPasswordInput}
+            onChange={(e) => setSudoPasswordInput(e.target.value)}
+            disabled={isRunningDbAction}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRunningDbAction}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRunningDbAction || !sudoPasswordInput}
+              onClick={confirmDbAdminAction}
+            >
+              {isRunningDbAction ? 'Running...' : 'Confirm'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
