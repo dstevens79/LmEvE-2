@@ -15,6 +15,7 @@ import {
   DeviceMobile,
   Monitor,
   List,
+  ArrowClockwise,
 } from '@phosphor-icons/react';
 import { useLocalKV, bootstrapSettingsFromServerIfEmpty, useGeneralSettings, useDatabaseSettings } from '@/lib/persistenceService';
 import { useSDEManager } from '@/lib/sdeService';
@@ -86,6 +87,7 @@ function AppContent() {
   // One-shot: run initial corp data sync after a server-side SSO completion
   // (corp consent) so every page gets real data without a manual step.
   const [pendingInitialSync, setPendingInitialSync] = React.useState(false);
+  const [isSsoCompleting, setIsSsoCompleting] = React.useState(false);
   const [evePlayersOnline, setEvePlayersOnline] = React.useState<number>(0);
   const [registeredPilots, setRegisteredPilots] = React.useState<number>(0);
   const [registeredCorpsCount, setRegisteredCorpsCount] = React.useState<number>(0);
@@ -356,12 +358,17 @@ function AppContent() {
       window.history.replaceState({}, document.title, window.location.pathname);
       sessionStorage.removeItem('esi-login-attempt');
     } else if (auth === 'ok') {
-      // Server-side callback completed; hydrate session from server
       const setup = urlParams.get('setup');
       const handoff = urlParams.get('handoff');
+        setIsSsoCompleting(true);
         (async () => {
-          console.log('ðŸ”— Detected server auth completion (?auth=ok) - hydrating session', { setup, handoff });
-          await hydrateSessionFromServer();
+          try {
+            console.log('🔗 Detected server auth completion (?auth=ok) - hydrating session', { setup, handoff });
+            await hydrateSessionFromServer();
+            await new Promise(r => setTimeout(r, 300));
+          } finally {
+            setIsSsoCompleting(false);
+          }
           // Corp was just consented/registered server-side: populate data now.
           setPendingInitialSync(true);
           // Clean URL params before optional navigation
@@ -944,6 +951,23 @@ function AppContent() {
               <div className="h-full overflow-y-auto">
                 <div className={`${isMobileView ? 'px-4 py-4' : 'container mx-auto px-6 py-6'}`}>
                   {!currentUser ? (
+                    isSsoCompleting ? (
+                      <div className="flex items-center justify-center h-full">
+                        <div className="text-center space-y-4 max-w-md">
+                          <ArrowClockwise size={48} className="mx-auto text-accent animate-spin" />
+                          <h2 className="text-2xl font-bold">Completing sign-in…</h2>
+                          <p className="text-muted-foreground">
+                            Finalizing your EVE SSO session and loading corporation data.
+                            This may take up to a minute on first login.
+                          </p>
+                          <div className="w-full max-w-xs mx-auto">
+                            <div className="h-1 bg-muted rounded-full overflow-hidden">
+                              <div className="h-full bg-accent rounded-full animate-pulse w-3/4" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
                     // Never expose Settings/DB/ESI setup without an authenticated admin session.
                     <div className="flex items-center justify-center h-full">
                       <div className="text-center space-y-4 max-w-md">
@@ -974,11 +998,12 @@ function AppContent() {
                         </div>
                         {needsDBSetup && (
                           <p className="text-xs text-muted-foreground">
-                            Default offline admin: <strong>admin</strong> / <strong>12345</strong> â€” change this password after first login.
+                            Default offline admin: <strong>admin</strong> / <strong>12345</strong> — change this password after first login.
                           </p>
                         )}
                       </div>
                     </div>
+                    )
                   ) : activeTab === 'settings' ? (
                                       <Suspense
                                         fallback={

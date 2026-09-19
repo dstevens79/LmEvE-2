@@ -781,12 +781,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return true;
     };
 
-    try {
-      const resp = await fetch('/api/auth/session.php', {
-        method: 'GET',
-        credentials: 'include',
-        headers: { 'Accept': 'application/json' },
-      });
+     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      let resp: Response;
+      try {
+        resp = await fetch('/api/auth/session.php', {
+          method: 'GET',
+          credentials: 'include',
+          headers: { 'Accept': 'application/json' },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       if (!resp.ok) {
         // No usable server session (401/5xx/missing API) => anonymous. Never keep a
         // localStorage ghost user that can open admin setup without a real login.
@@ -835,12 +843,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // Pull server-seeded corporations so admin handoff / CEO login shows the corp immediately.
       try {
-        const corpResp = await fetch('/api/lmeve/get-corporations.php', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({ limit: 200 }),
-        });
+        const corpController = new AbortController();
+        const corpTimeout = setTimeout(() => corpController.abort(), 15000);
+        let corpResp: Response;
+        try {
+          corpResp = await fetch('/api/lmeve/get-corporations.php', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ limit: 200 }),
+            signal: corpController.signal,
+          });
+        } finally {
+          clearTimeout(corpTimeout);
+        }
         const corpJson = await corpResp.json().catch(() => null);
         if (corpResp.ok && corpJson?.ok && Array.isArray(corpJson.rows)) {
           const fromServer: CorporationConfig[] = corpJson.rows

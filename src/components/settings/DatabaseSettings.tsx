@@ -4,10 +4,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Database } from '@phosphor-icons/react';
+import { Database, Trash, Download } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useDatabaseSettings, useLocalKV } from '@/lib/persistenceService';
 import { DatabaseManager } from '@/lib/database';
+import { useAuth } from '@/lib/auth-provider';
+import { isLocalSiteAdmin } from '@/lib/roles';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 // Removed SDE controls and network info per request
 
 interface DatabaseSettingsProps {
@@ -73,7 +85,14 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
   const [connectionLogs, setConnectionLogs] = useState<string[]>([]);
   const [testingConnection, setTestingConnection] = useState(false);
   // Removed legacy setup progress/status state
-  
+
+  const { user: currentUser } = useAuth();
+
+  // DB admin action state
+  const [isRunningDbAction, setIsRunningDbAction] = useState(false);
+  const [pendingDbAction, setPendingDbAction] = useState<'clear' | 'schema' | 'sde' | null>(null);
+  const [sudoPasswordInput, setSudoPasswordInput] = useState('');
+
   // Ref for auto-scrolling logs
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -273,6 +292,66 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
     }
   };
 
+  const handleDbAdminAction = (action: 'clear' | 'schema' | 'sde') => {
+    const isAdmin = !!(currentUser && isLocalSiteAdmin(currentUser));
+    if (!isAdmin) {
+      toast.error('Admin privileges required');
+      return;
+    }
+    setSudoPasswordInput('');
+    setPendingDbAction(action);
+  };
+
+  const confirmDbAdminAction = async () => {
+    if (!pendingDbAction) return;
+
+    setIsRunningDbAction(true);
+    const action = pendingDbAction;
+    setPendingDbAction(null);
+
+    addConnectionLog(`Requesting ${action} action on database "${dbForm.database || 'lmeve2'}"...`);
+
+    try {
+      const resp = await fetch('/api/db-admin-actions.php', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, sudoPassword: sudoPasswordInput }),
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok || data.ok === false) {
+        const err = data.error || `HTTP ${resp.status}`;
+        const mysqlErr = data.mysqlError ? ` (${data.mysqlError})` : '';
+        addConnectionLog(`❌ ${action} failed: ${err}${mysqlErr}`);
+        toast.error(`${action} failed: ${err}`);
+      } else {
+        if (data.started) {
+          addConnectionLog(`✅ ${action} started in background. Log: ${data.logFile ?? 'sde-import.log'}`);
+          toast.success(`${action} started — check logs for progress.`);
+        } else {
+          const detail = data.tablesCreated ? `${data.tablesCreated} tables` : (data.droppedTables ? `${data.droppedTables} tables dropped` : '');
+          addConnectionLog(`✅ ${action} succeeded${detail ? ` — ${detail}` : ''}`);
+          toast.success(`${action} succeeded${detail ? ` (${detail})` : ''}`);
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addConnectionLog(`❌ ${action} error: ${msg}`);
+      toast.error(`${action} error: ${msg}`);
+    } finally {
+      setIsRunningDbAction(false);
+      setSudoPasswordInput('');
+    }
+  };
+
+  const actionLabels: Record<'clear' | 'schema' | 'sde', string> = {
+    clear: 'clear all data (drop all LMeve tables)',
+    schema: 'initialize fresh schema (create tables)',
+    sde: 'update SDE data import',
+  };
+
   // Removed SDE status and indicators
 
   return (
@@ -434,6 +513,91 @@ export function DatabaseSettings({ isMobileView = false }: DatabaseSettingsProps
         </div>
       </div>
       {/* Removed legacy system status, EVE stats, network info, and help sections */}
+
+      {/* Database Maintenance — admin-only, gated behind verified DB connection */}
+      {isConnected && !!(currentUser && isLocalSiteAdmin(currentUser)) && (
+        <Card className="border-destructive/30">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Database size={20} />
+              Database Maintenance
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="text-sm text-muted-foreground">
+              Administrative actions on the <code className="bg-muted px-1 rounded">{dbForm.database || 'lmeve2'}</code> database.
+              Requires sudo/root password confirmation. These operations are destructive.
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={isRunningDbAction}
+                onClick={() => handleDbAdminAction('clear')}
+              >
+                <Trash size={16} className="mr-2" />
+                Clear All Data
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isRunningDbAction}
+                onClick={() => handleDbAdminAction('schema')}
+              >
+                <Database size={16} className="mr-2" />
+                Initialize Schema
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isRunningDbAction}
+                onClick={() => handleDbAdminAction('sde')}
+              >
+                <Download size={16} className="mr-2" />
+                Update SDE Data
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Sudo password confirmation dialog for DB admin actions */}
+      <AlertDialog
+        open={pendingDbAction !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDbAction(null);
+            setSudoPasswordInput('');
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm sudo password</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enter the root/sudo database password to proceed with the
+              <strong> {pendingDbAction && actionLabels[pendingDbAction]}</strong>.
+              This operation cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            type="password"
+            placeholder="Sudo password"
+            value={sudoPasswordInput}
+            onChange={(e) => setSudoPasswordInput(e.target.value)}
+            disabled={isRunningDbAction}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRunningDbAction}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRunningDbAction || !sudoPasswordInput}
+              onClick={confirmDbAdminAction}
+            >
+              {isRunningDbAction ? 'Running...' : 'Confirm'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
