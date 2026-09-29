@@ -16,24 +16,7 @@ if ($hostname) {
   }
 }
 
-// Attempt to detect public IP via ipify (fast timeout, optional)
-$publicIp = null;
-try {
-  $ctx = stream_context_create([
-    'http' => [
-      'timeout' => 1.5,
-      'ignore_errors' => true,
-      'header' => "User-Agent: LMeve-2/host-info\r\n",
-    ]
-  ]);
-  $resp = @file_get_contents('https://api.ipify.org?format=json', false, $ctx);
-  if ($resp) {
-    $json = json_decode($resp, true);
-    if (isset($json['ip'])) { $publicIp = $json['ip']; }
-  }
-} catch (\Throwable $e) {
-  // ignore
-}
+$publicIp = api_public_ipv4();
 
 // Client IPs
 $clientIp = $_SERVER['REMOTE_ADDR'] ?? null;

@@ -94,6 +94,7 @@ const DatabaseTabContainer: React.FC = () => {
 
   // DB admin action state
   const [isRunningDbAction, setIsRunningDbAction] = React.useState(false);
+  const [sdeImportRunning, setSdeImportRunning] = React.useState(false);
   const [pendingDbAction, setPendingDbAction] = React.useState<'clear' | 'schema' | 'sde' | null>(null);
   const [sudoPasswordInput, setSudoPasswordInput] = React.useState('');
 
@@ -325,8 +326,8 @@ const DatabaseTabContainer: React.FC = () => {
   const isSiteAdmin = !!(currentUser && isLocalSiteAdmin(currentUser));
 
   const handleDbAdminActionClick = (action: 'clear' | 'schema' | 'sde') => {
-    if (action === 'schema' && (!databaseSettings.configured || realPassword !== null)) {
-      toast.error('Save the application database settings before initializing the schema');
+    if (action !== 'clear' && (!databaseSettings.configured || realPassword !== null)) {
+      toast.error('Save the application database settings before this action');
       return;
     }
     if (!dbStatus.connected) {
@@ -378,8 +379,9 @@ const DatabaseTabContainer: React.FC = () => {
         toast.error(`${action} failed: ${err}`);
       } else {
         if (data.started) {
-          addConnectionLog(`✅ ${action} started (background). Log: ${data.logFile || 'sde-import.log'}`);
-          toast.success(`${action} started — check logs for progress`);
+          addConnectionLog(`SDE import started. Download and database import are running in the background.`);
+          setSdeImportRunning(true);
+          toast.info('SDE import started');
         } else {
           let detail = '';
           if (data.tablesCreated) detail = `${data.tablesCreated} tables`;
@@ -403,6 +405,33 @@ const DatabaseTabContainer: React.FC = () => {
     schema: 'initialize fresh schema (creates tables)',
     sde: 'download and import EVE static data',
   };
+
+  const readSdeStatus = async (showLog: boolean) => {
+    try {
+      const response = await fetch('/api/db-admin-actions.php?action=sde-status', { credentials: 'include', cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const status = await response.json();
+      const lines = Array.isArray(status.lines) ? status.lines : [];
+      if (showLog || status.state !== 'running') {
+        addConnectionLog(`SDE import status: ${status.state}`);
+        for (const line of lines.slice(-12)) addConnectionLog(`SDE: ${line}`);
+      }
+      if (status.state === 'success' || status.state === 'failed' || status.state === 'unknown') {
+        setSdeImportRunning(false);
+        if (status.state === 'success') toast.success('SDE import completed');
+        else toast.error('SDE import failed; see the connection log');
+      }
+    } catch (error) {
+      addConnectionLog(`SDE status check failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  React.useEffect(() => {
+    if (!sdeImportRunning) return;
+    void readSdeStatus(false);
+    const timer = window.setInterval(() => { void readSdeStatus(false); }, 5000);
+    return () => window.clearInterval(timer);
+  }, [sdeImportRunning]);
 
   // Removed seed-admin functionality for security concerns; admin should be provisioned via setup script only.
 
@@ -488,7 +517,7 @@ const DatabaseTabContainer: React.FC = () => {
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Test Connection uses the values in this form. Save stores them on the server; a Saved password label means the server has that password.
+            Test Connection uses the values in this form. Save stores them on the server. Masked dots indicate a stored password.
           </p>
         </div>
 
@@ -580,7 +609,7 @@ const DatabaseTabContainer: React.FC = () => {
             <CardContent className="space-y-4">
               <div className="text-sm text-muted-foreground">
                 Administrative actions on the <code className="bg-muted px-1 rounded">{databaseSettings.database || 'lmeve2'}</code> database.
-                Schema initialization uses the application database user. Clear and SDE actions require the database admin password.
+                Schema and SDE actions use the application database user. Clear requires the database admin password.
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <Button
@@ -604,11 +633,14 @@ const DatabaseTabContainer: React.FC = () => {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={isRunningDbAction}
+                  disabled={isRunningDbAction || sdeImportRunning}
                   onClick={() => handleDbAdminActionClick('sde')}
                 >
                   <Download size={16} className="mr-2" />
                   Update SDE Data
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => { void readSdeStatus(true); }}>
+                  SDE Import Log
                 </Button>
               </div>
             </CardContent>
@@ -628,14 +660,16 @@ const DatabaseTabContainer: React.FC = () => {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{pendingDbAction === 'schema' ? 'Initialize database schema' : 'Confirm database admin password'}</AlertDialogTitle>
+            <AlertDialogTitle>{pendingDbAction === 'schema' ? 'Initialize database schema' : pendingDbAction === 'sde' ? 'Import EVE static data' : 'Confirm database admin password'}</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDbAction === 'schema'
                 ? 'Create missing tables in the configured database using the saved application user.'
+                : pendingDbAction === 'sde'
+                ? 'Download and import the latest EVE static data into EveStaticData using the saved application database user.'
                 : <>Enter the database admin password to <strong>{pendingDbAction && dbActionLabels[pendingDbAction]}</strong>. This operation cannot be undone.</>}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {pendingDbAction !== 'schema' && <Input
+          {pendingDbAction === 'clear' && <Input
             type="password"
             placeholder="Database admin password"
             value={sudoPasswordInput}
@@ -645,7 +679,7 @@ const DatabaseTabContainer: React.FC = () => {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isRunningDbAction}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              disabled={isRunningDbAction || (pendingDbAction !== 'schema' && !sudoPasswordInput)}
+              disabled={isRunningDbAction || (pendingDbAction === 'clear' && !sudoPasswordInput)}
               onClick={confirmDbAdminAction}
             >
               {isRunningDbAction ? 'Running...' : 'Confirm'}

@@ -214,23 +214,76 @@ function api_get_esi_config(array $payload = []): array {
  * Canonical EVE SSO callback. Fixed for this site — not a user-typed setting.
  * Must match the URL registered on the EVE application exactly.
  */
+function api_public_ipv4(): ?string {
+    static $resolved = false;
+    static $address = null;
+    if ($resolved) return $address;
+    $resolved = true;
+
+    $dir = api_storage_dir();
+    $cache = $dir ? rtrim($dir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'public-ip.json' : null;
+    $saved = null;
+    if ($cache && is_file($cache)) {
+        $saved = json_decode((string)@file_get_contents($cache), true);
+        if (is_array($saved)
+            && isset($saved['ip'], $saved['checkedAt'])
+            && filter_var($saved['ip'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)
+            && time() - (int)$saved['checkedAt'] < 21600) {
+            $address = $saved['ip'];
+            return $address;
+        }
+    }
+
+    $ctx = stream_context_create(['http' => [
+        'timeout' => 3,
+        'ignore_errors' => true,
+        'header' => "User-Agent: LMeve-2/public-callback\r\n",
+    ]]);
+    $raw = @file_get_contents('https://api.ipify.org?format=json', false, $ctx);
+    $json = $raw !== false ? json_decode($raw, true) : null;
+    $candidate = is_array($json) ? ($json['ip'] ?? null) : null;
+    if (is_string($candidate)
+        && filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+        $address = $candidate;
+        if ($cache) @file_put_contents($cache, json_encode(['ip' => $candidate, 'checkedAt' => time()]), LOCK_EX);
+        return $address;
+    }
+    if (is_array($saved) && isset($saved['ip'])
+        && filter_var($saved['ip'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+        $address = $saved['ip'];
+    }
+    return $address;
+}
+
 function api_get_esi_callback_url(array $payload = []): string {
     // Deployments reachable by both LAN and public hosts can pin the one EVE
     // developer application callback with LMEVE_PUBLIC_URL.
     $publicBase = trim((string)(getenv('LMEVE_PUBLIC_URL') ?: ''));
+    $scheme = '';
+    $host = '';
+    $port = null;
     if ($publicBase !== '') {
         $parts = parse_url($publicBase);
         if (is_array($parts) && in_array($parts['scheme'] ?? '', ['http', 'https'], true) && !empty($parts['host'])) {
-            $authority = $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
-            return $parts['scheme'] . '://' . $authority . '/api/auth/esi/callback.php';
+            $scheme = $parts['scheme'];
+            $host = $parts['host'];
+            $port = $parts['port'] ?? null;
         }
     }
-    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
-        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');
-    $scheme = $https ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    return $scheme . '://' . $host . '/api/auth/esi/callback.php';
+    if ($host === '') {
+        $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
+            || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');
+        $scheme = $https ? 'https' : 'http';
+        $requestHost = parse_url($scheme . '://' . (string)($_SERVER['HTTP_HOST'] ?? 'localhost'));
+        $host = is_array($requestHost) ? (string)($requestHost['host'] ?? 'localhost') : 'localhost';
+        $port = is_array($requestHost) ? ($requestHost['port'] ?? null) : null;
+    }
+    if (filter_var($host, FILTER_VALIDATE_IP) && !filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+        $host = api_public_ipv4() ?? '';
+    }
+    if ($host === '') return '';
+    return $scheme . '://' . $host . ($port !== null ? ':' . $port : '') . '/api/auth/esi/callback.php';
 }
 
 /**

@@ -49,7 +49,7 @@ Backed by `role_definitions` / `permission_mappings`, resolved at SSO login:
 
 The OAuth callback is handled server-side: EVE redirects to `/api/auth/esi/callback.php`, which exchanges the code, enriches identity (corp roles + titles), resolves the site role from the mapping rules, upserts the user row and establishes the `LMEVESESSID` browser session. The SPA then hydrates via `GET /api/auth/session.php`.
 
-The callback path is fixed. Set the server environment variable `LMEVE_PUBLIC_URL` to the public site origin (for example, `https://eve.example.com`) when the site is also reachable through a LAN address or reverse proxy. The installer detects the public IP in IP mode and confirms the public origin before pinning it. Register the displayed full callback URL with the EVE developer application; users cannot edit it in Connectivity.
+The callback path is fixed. For IP based installs, the server detects and caches its public IPv4 address, including when an older install has a LAN address in `LMEVE_PUBLIC_URL`. Set `LMEVE_PUBLIC_URL` to a public domain origin (for example, `https://eve.example.com`) if the site uses a domain or reverse proxy. The installer confirms the public origin before pinning it. Register the displayed full callback URL with the EVE developer application; users cannot edit it in Connectivity.
 
 - `POST /api/auth/esi/start.php` — begin OAuth with signed state (supports LAN→public host handoff)
 - `GET|POST /api/auth/esi/callback.php` — code exchange + session establishment
@@ -60,7 +60,7 @@ The callback path is fixed. Set the server environment variable `LMEVE_PUBLIC_UR
 
 ## SDE helpers
 
-Connectivity's **Initialize Schema** action uses the saved application database account and creates missing tables in an existing database. That account needs `CREATE` and ordinary data permissions on the selected database. **Clear All Data** and **Update SDE Data** use the separately configured database admin account. The production build includes the SQL schema and SDE import script used by these actions.
+Connectivity's **Initialize Schema** action uses the saved application database account and creates missing tables in an existing database. That account needs `CREATE` and ordinary data permissions on the selected database. **Update SDE Data** uses the same account with access to `EveStaticData`; **Clear All Data** uses the separately configured database admin account. The production build includes the SQL schema and SDE import script used by these actions. `GET /api/db-admin-actions.php?action=sde-status` returns the current import status and recent log lines to site admins.
 
 - `POST /api/sde/get-type-names.php` `{ typeIds: number[] }` → `{ ok, rows: [{ typeID, typeName }] }` (batched)
 - `GET /api/sde-latest.php`, `GET /api/app-metrics.php` — operational probes

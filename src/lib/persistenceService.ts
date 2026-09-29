@@ -479,7 +479,7 @@ export const defaultSDESettings: SDESettings = {
   lastUpdateDate: '',
   autoUpdate: false,
   updateSchedule: '0 2 * * 0',
-  downloadUrl: 'https://www.fuzzwork.co.uk/dump/mysql-latest.tar.bz2',
+  downloadUrl: 'https://www.fuzzwork.co.uk/dump/latest-mysql.sql.gz',
   backupBeforeUpdate: true,
   cleanupAfterUpdate: true,
   sdeSource: 'fuzzwork',

@@ -275,6 +275,7 @@ else
 fi
 
 echo -e "\n${GREEN}5. Installing Git${NC}"
+apt-get install -y default-mysql-client wget gzip
 if ! command -v git &> /dev/null; then
     apt-get install -y git
     echo -e "${GREEN}✓ Git installed${NC}"

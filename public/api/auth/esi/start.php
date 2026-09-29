@@ -20,6 +20,9 @@ if ($clientId === '' || (string)($esiCfg['clientSecret'] ?? '') === '') {
 // Browser host (LAN IP) must never become redirect_uri — CCP requires an exact match
 // with the EVE application callback (typically the public IP/hostname).
 $redirectUri = api_get_esi_callback_url($body);
+if ($redirectUri === '') {
+  api_fail(503, 'The server could not determine its public ESI callback URL');
+}
 
 $scopes = [];
 if (isset($body['scopes']) && is_array($body['scopes'])) {

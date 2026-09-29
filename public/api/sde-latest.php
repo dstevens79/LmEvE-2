@@ -52,7 +52,7 @@ if ($cache && $nextAllowedTs > $now && !empty($cache['latestVersion'])) {
 }
 
 // Remote HEAD to get Last-Modified of the latest dump file
-$url = 'https://www.fuzzwork.co.uk/dump/mysql-latest.tar.bz2';
+$url = 'https://www.fuzzwork.co.uk/dump/latest-mysql.sql.gz';
 $ch = curl_init($url);
 if ($ch === false) {
     // Fallback to cache if available

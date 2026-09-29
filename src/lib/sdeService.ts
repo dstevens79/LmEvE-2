@@ -37,7 +37,7 @@ export interface SDEDatabaseStats {
 }
 
 class SDEService {
-  private readonly SDE_URL = 'https://www.fuzzwork.co.uk/dump/mysql-latest.tar.bz2';
+  private readonly SDE_URL = 'https://www.fuzzwork.co.uk/dump/latest-mysql.sql.gz';
   private readonly SDE_VERSION_URL = 'https://www.fuzzwork.co.uk/dump/latest/';
   
   /**

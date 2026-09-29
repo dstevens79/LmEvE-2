@@ -26,13 +26,14 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
   onTestESIConfig,
 }) => {
   const [showSecrets, setShowSecrets] = React.useState(false);
-  const canonicalCallback = esiSettings.callbackUrl || `${window.location.origin}/api/auth/esi/callback.php`;
+  const canonicalCallback = esiSettings.callbackUrl || '';
 
   const secretSaved = esiSettings.clientSecretSet === true;
   const secretDisplay = esiSettings.clientSecret === '***' ? '' : (esiSettings.clientSecret || '');
 
 
   const copyCallback = async () => {
+    if (!canonicalCallback) return;
     try {
       await navigator.clipboard.writeText(canonicalCallback);
       toast.success('Callback URL copied');
@@ -77,9 +78,6 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
         <div className="space-y-2">
           <Label htmlFor="clientSecret" className="flex items-center gap-2">
             EVE Online Client Secret
-            {secretSaved && !secretDisplay && (
-              <span className="text-[11px] font-normal text-green-500">Saved</span>
-            )}
           </Label>
           <div className="relative">
             <Input
@@ -91,7 +89,7 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
                 if (next === '' && secretSaved) onUpdateESISetting('clientSecret', '***');
                 else onUpdateESISetting('clientSecret', next);
               }}
-              placeholder={secretSaved ? 'Saved on server — leave blank to keep' : 'Your EVE Online application Client Secret'}
+              placeholder={secretSaved ? '••••••••' : 'Your EVE Online application Client Secret'}
               className={secretDisplay ? 'border-accent' : ''}
             />
             <Button
@@ -100,6 +98,7 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
               size="sm"
               className="absolute right-0 top-0 h-full px-3"
               onClick={() => setShowSecrets((v) => !v)}
+              disabled={secretSaved && !secretDisplay}
             >
               {showSecrets ? <EyeSlash size={16} /> : <Eye size={16} />}
             </Button>
@@ -140,14 +139,15 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
       <div className="space-y-2">
         <Label>ESI callback URL</Label>
         <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2">
-          <code className="flex-1 break-all font-mono text-xs">{canonicalCallback}</code>
-          <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={copyCallback}>
+          <code className="flex-1 break-all font-mono text-xs">{canonicalCallback || 'Public IP unavailable'}</code>
+          <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={copyCallback} disabled={!canonicalCallback}>
             <Copy size={14} />
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Register this exact URL at developers.eveonline.com. It is fixed for this site and is not editable.
-          Server callback supports HTTP and HTTPS.
+          {canonicalCallback
+            ? 'Register this exact URL at developers.eveonline.com. The site determines it automatically.'
+            : 'The server could not determine its public IP. Check its outbound internet connection.'}
         </p>
       </div>
     </div>

@@ -92,7 +92,6 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground flex items-center gap-2">
                 Sudo User
-                {sudoSaved && !sudoDisplay && <span className="text-green-500">Saved</span>}
               </Label>
               <Input
                 value={databaseSettings.sudoUsername || ''}
@@ -109,7 +108,7 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
                     if (next === '' && sudoSaved) onUpdate('sudoPassword', '***');
                     else onUpdate('sudoPassword', next);
                   }}
-                  placeholder={sudoSaved ? 'Saved on server — leave blank to keep' : 'Admin password'}
+                  placeholder={sudoSaved ? '••••••••' : 'Admin password'}
                   className="h-8 text-sm pr-8"
                 />
                 <Button
@@ -118,6 +117,7 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
                   size="sm"
                   className="absolute right-0 top-0 h-8 w-8 p-0"
                   onClick={() => setShowSudoPassword((v) => !v)}
+                  disabled={sudoSaved && !sudoDisplay}
                 >
                   {showSudoPassword ? <EyeSlash size={12} /> : <Eye size={12} />}
                 </Button>
@@ -127,7 +127,6 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground flex items-center gap-2">
                 LMeve User
-                {appSaved && !appDisplay && <span className="text-green-500">Saved</span>}
               </Label>
               <Input
                 value={databaseSettings.username || ''}
@@ -144,7 +143,7 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
                     if (next === '' && appSaved) onUpdate('password', '***');
                     else onUpdate('password', next);
                   }}
-                  placeholder={appSaved ? 'Saved on server — leave blank to keep' : 'App password'}
+                  placeholder={appSaved ? '••••••••' : 'App password'}
                   className="h-8 text-sm pr-8"
                 />
                 <Button
@@ -153,6 +152,7 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
                   size="sm"
                   className="absolute right-0 top-0 h-8 w-8 p-0"
                   onClick={() => setShowDbPassword((v) => !v)}
+                  disabled={appSaved && !appDisplay}
                 >
                   {showDbPassword ? <EyeSlash size={12} /> : <Eye size={12} />}
                 </Button>

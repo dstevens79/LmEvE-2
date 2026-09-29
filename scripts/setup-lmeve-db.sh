@@ -1227,19 +1227,19 @@ if [[ "$DOWNLOAD_SDE" =~ ^[Yy]$ ]]; then
     print_step "Downloading EVE Static Data (MySQL Format)"
     
     # Use MySQL dump from Fuzzwork (original LMeve method)
-    SDE_URL="https://www.fuzzwork.co.uk/dump/mysql-latest.tar.bz2"
+    SDE_URL="https://www.fuzzwork.co.uk/dump/latest-mysql.sql.gz"
     TEMP_DIR=$(mktemp -d)
     cd "$TEMP_DIR"
     
     echo -e "${CYAN}Downloading from: $SDE_URL${NC}"
     echo -e "${CYAN}This may take several minutes...${NC}\n"
     
-    if wget --show-progress "$SDE_URL" -O mysql-latest.tar.bz2 2>&1; then
+    if wget --show-progress "$SDE_URL" -O latest-mysql.sql.gz 2>&1; then
         echo -e "\n${GREEN}✅ SDE download completed${NC}"
         
-        print_step "Extracting SDE Data"
-        # Extract only .sql files from the archive, stripping the directory structure
-        if tar -xjf mysql-latest.tar.bz2 --wildcards --no-anchored '*.sql' --strip-components=1; then
+        print_step "Decompressing SDE Data"
+        # The current Fuzzwork release is one gzip-compressed SQL file.
+        if gzip -dk latest-mysql.sql.gz; then
             echo -e "${GREEN}✅ Extraction completed${NC}"
             
             # Find the SQL file (should be a single combined file)

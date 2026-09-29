@@ -13,6 +13,24 @@ header('Content-Type: application/json');
 header('Cache-Control: no-store');
 
 $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+if ($method === 'GET' && ($_GET['action'] ?? '') === 'sde-status') {
+    $dir = api_storage_dir();
+    $logFile = $dir ? rtrim($dir, DIRECTORY_SEPARATOR) . '/sde-import.log' : null;
+    if (!$logFile || !is_file($logFile)) {
+        api_respond(['ok' => true, 'state' => 'none', 'lines' => []]);
+    }
+    $handle = @fopen($logFile, 'rb');
+    if (!$handle) api_fail(500, 'Cannot read SDE import log');
+    $size = (int)@filesize($logFile);
+    if ($size > 12000) fseek($handle, -12000, SEEK_END);
+    $tail = (string)stream_get_contents($handle);
+    fclose($handle);
+    $state = strpos($tail, 'LMEVE_SDE_STATUS=success') !== false ? 'success'
+        : (strpos($tail, 'LMEVE_SDE_STATUS=failed') !== false ? 'failed'
+        : ((time() - (int)@filemtime($logFile) > 7200) ? 'unknown' : 'running'));
+    $lines = array_slice(preg_split('/\R/', trim($tail)) ?: [], -30);
+    api_respond(['ok' => true, 'state' => $state, 'lines' => $lines]);
+}
 if ($method !== 'POST') {
     http_response_code(405);
     echo 'Method Not Allowed';
@@ -58,10 +76,10 @@ $storedReal = ($storedSudoPass !== '' && $storedSudoPass !== '***') ? $storedSud
 $submittedReal = ($submittedPassword !== '' && $submittedPassword !== '***') ? $submittedPassword : '';
 
 // An existing database can be initialized by its application user when that
-// account has CREATE TABLE privileges. Admin credentials are for clear/SDE.
-if ($action === 'schema') {
+// account has CREATE TABLE privileges. Clear is the only root-level action.
+if ($action === 'schema' || $action === 'sde') {
     if ($lmeveUser === '' || $lmevePass === '' || $lmevePass === '***') {
-        api_fail(400, 'Save the application database user and password before initializing the schema.');
+        api_fail(400, 'Save the application database user and password before database maintenance.');
     }
 } else {
     if ($sudoUser === '') {
@@ -170,44 +188,12 @@ function admin_list_tables(mysqli $mysqli, string $dbName): array {
     return $tables;
 }
 
-function admin_ensure_app_user(mysqli $mysqli, string $dbName, string $user, string $pass): array {
-    $notes = [];
-    if ($user === '') {
-        return ['granted' => false, 'note' => 'App database user is not configured'];
-    }
-    $userSql = admin_sql_string($mysqli, $user);
-    $dbIdent = admin_ident($dbName);
-    $hosts = ['%', 'localhost'];
-    $passReal = ($pass !== '' && $pass !== '***');
-    foreach ($hosts as $host) {
-        $hostSql = admin_sql_string($mysqli, $host);
-        if ($passReal) {
-            $passSql = admin_sql_string($mysqli, $pass);
-            $created = @$mysqli->query("CREATE USER IF NOT EXISTS $userSql@$hostSql IDENTIFIED BY $passSql");
-            if (!$created) {
-                // MySQL < 5.7.8 has no IF NOT EXISTS. Create, then alter.
-                @$mysqli->query("CREATE USER $userSql@$hostSql IDENTIFIED BY $passSql");
-            }
-            @$mysqli->query("ALTER USER $userSql@$hostSql IDENTIFIED BY $passSql");
-        }
-        $granted = @$mysqli->query("GRANT ALL PRIVILEGES ON $dbIdent.* TO $userSql@$hostSql");
-        if (!$granted) {
-            $notes[] = $host . ': ' . ($mysqli->error ?: 'grant failed');
-        }
-    }
-    @$mysqli->query('FLUSH PRIVILEGES');
-    return [
-        'granted' => $notes === [],
-        'note' => $notes === [] ? 'App user can write this database' : implode('; ', $notes),
-    ];
-}
-
-$mysqli = $action === 'schema'
-    ? admin_connect($dbHost, $lmeveUser, $lmevePass, $dbPort)
-    : admin_connect($dbHost, $sudoUser, $sudoPass, $dbPort);
+$mysqli = $action === 'clear'
+    ? admin_connect($dbHost, $sudoUser, $sudoPass, $dbPort)
+    : admin_connect($dbHost, $lmeveUser, $lmevePass, $dbPort);
 
 // If the saved sudo password was the mask, keep the password that just worked.
-if ($action !== 'schema' && $storedReal === '' && $submittedReal !== '') {
+if ($action === 'clear' && $storedReal === '' && $submittedReal !== '') {
     $dbCfg['sudoPassword'] = $submittedReal;
     $root['database'] = $dbCfg;
     $store = api_settings_path();
@@ -331,9 +317,13 @@ if ($action === 'schema') {
 
 // --- Action: sde (download + import SDE via background shell script) ---
 $sdeDb = 'EveStaticData';
-@$mysqli->query('CREATE DATABASE IF NOT EXISTS ' . admin_ident($sdeDb) . ' DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-if ($lmeveUser !== '') {
-    admin_ensure_app_user($mysqli, $sdeDb, $lmeveUser, $lmevePass);
+if (!@$mysqli->select_db($sdeDb)) {
+    if (!@$mysqli->query('CREATE DATABASE IF NOT EXISTS ' . admin_ident($sdeDb) . ' DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
+        || !@$mysqli->select_db($sdeDb)) {
+        $error = $mysqli->error;
+        @$mysqli->close();
+        api_fail(200, 'Application database user cannot access EveStaticData', ['mysqlError' => $error]);
+    }
 }
 @$mysqli->close();
 
@@ -350,16 +340,19 @@ if (stripos(PHP_OS, 'WIN') === 0) {
 
 $logDir = api_storage_dir();
 $logFile = ($logDir ? $logDir : sys_get_temp_dir()) . '/sde-import.log';
+$queued = @file_put_contents($logFile, "SDE import queued\n", LOCK_EX);
+if ($queued === false) api_fail(500, 'Cannot write SDE import log');
 $env = [
     'DB_HOST=' . escapeshellarg($dbHost),
     'DB_PORT=' . escapeshellarg((string)$dbPort),
-    'DB_USER=' . escapeshellarg($sudoUser),
-    'DB_PASSWORD=' . escapeshellarg($sudoPass),
+    'DB_USER=' . escapeshellarg($lmeveUser),
+    'DB_PASSWORD=' . escapeshellarg($lmevePass),
     'SDE_DB=' . escapeshellarg($sdeDb),
 ];
-$cmd = implode(' ', $env) . ' bash ' . escapeshellarg($scriptPath) . ' > ' . escapeshellarg($logFile) . ' 2>&1 &';
+$cmd = implode(' ', $env) . ' bash ' . escapeshellarg($scriptPath) . ' > ' . escapeshellarg($logFile) . ' 2>&1 & echo $!';
 $pid = @shell_exec($cmd);
-if ($pid === null && !is_file($logFile)) {
+if (!is_string($pid) || !ctype_digit(trim($pid))) {
+    @file_put_contents($logFile, "ERROR: Failed to launch SDE import\nLMEVE_SDE_STATUS=failed\n", LOCK_EX);
     api_fail(500, 'Failed to start SDE import process');
 }
 
@@ -367,6 +360,7 @@ echo json_encode([
     'ok' => true,
     'action' => 'sde',
     'started' => true,
+    'pid' => (int)trim($pid),
     'database' => $sdeDb,
     'logFile' => basename($logFile),
     'message' => 'SDE import started in background. Check logs for progress.',

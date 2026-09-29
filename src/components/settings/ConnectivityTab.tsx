@@ -112,7 +112,8 @@ export const ConnectivityTab: React.FC = () => {
                   await startEsiLogin(loginWithESI, { scopeType: 'basic', clientId, role: user?.role, announce: true });
                   return;
                 }
-                const callbackUrl = esiSettings.callbackUrl || `${window.location.origin}/api/auth/esi/callback.php`;
+                const callbackUrl = esiSettings.callbackUrl;
+                if (!callbackUrl) throw new Error('The server could not determine its public ESI callback URL');
                 const corps = getRegisteredCorporations();
                 initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
                 const svc = getESIAuthService();

@@ -36,6 +36,9 @@ if ($clientId === '') {
 }
 
 $callbackUrl = api_get_esi_callback_url([]);
+if ($callbackUrl === '') {
+  api_fail(503, 'The server could not determine its public ESI callback URL');
+}
 
 $results = [
   'ok' => false,
