@@ -21,7 +21,7 @@ if ($method !== 'POST') {
 
 $payload = api_read_json();
 $action = strtolower(trim((string)($payload['action'] ?? '')));
-$submittedPassword = trim((string)($payload['sudoPassword'] ?? ''));
+$submittedPassword = (string)($payload['sudoPassword'] ?? '');
 
 if ($action !== 'clear' && $action !== 'schema' && $action !== 'sde') {
     api_fail(400, "Unknown action: $action. Valid actions: clear, schema, sde");
@@ -42,20 +42,38 @@ $storedSudoPass = (string)($dbCfg['sudoPassword'] ?? '');
 $lmeveUser = trim((string)($dbCfg['username'] ?? ''));
 $lmevePass = (string)($dbCfg['password'] ?? '');
 
-if ($sudoUser === '') {
-    api_fail(500, 'Sudo/root database user is not configured. Set it in Connectivity and click Save.');
+// Never run maintenance against a different saved target than the one shown
+// in the current Connectivity form.
+$target = isset($payload['target']) && is_array($payload['target']) ? $payload['target'] : [];
+if ($target !== [] && (
+    (string)($target['host'] ?? '') !== $dbHost
+    || (int)($target['port'] ?? 0) !== $dbPort
+    || (string)($target['database'] ?? '') !== $dbName
+    || (string)($target['username'] ?? '') !== $lmeveUser
+)) {
+    api_fail(409, 'Database form differs from saved settings. Click Save before running maintenance.');
 }
 
 $storedReal = ($storedSudoPass !== '' && $storedSudoPass !== '***') ? $storedSudoPass : '';
 $submittedReal = ($submittedPassword !== '' && $submittedPassword !== '***') ? $submittedPassword : '';
 
-// Blank or "***" means "use the password already saved on the server".
-if ($submittedReal !== '' && $storedReal !== '' && !hash_equals($storedReal, $submittedReal)) {
-    api_fail(403, 'Invalid sudo password');
-}
-$sudoPass = $submittedReal !== '' ? $submittedReal : $storedReal;
-if ($sudoPass === '') {
-    api_fail(500, 'Sudo/root database password is not saved. Enter it in Connectivity and click Save.');
+// An existing database can be initialized by its application user when that
+// account has CREATE TABLE privileges. Admin credentials are for clear/SDE.
+if ($action === 'schema') {
+    if ($lmeveUser === '' || $lmevePass === '' || $lmevePass === '***') {
+        api_fail(400, 'Save the application database user and password before initializing the schema.');
+    }
+} else {
+    if ($sudoUser === '') {
+        api_fail(400, 'Database admin user is not configured. Set it in Connectivity and click Save.');
+    }
+    if ($submittedReal !== '' && $storedReal !== '' && !hash_equals($storedReal, $submittedReal)) {
+        api_fail(403, 'Invalid database admin password');
+    }
+    $sudoPass = $submittedReal !== '' ? $submittedReal : $storedReal;
+    if ($sudoPass === '') {
+        api_fail(400, 'Database admin password is not saved. Enter it in Connectivity and click Save.');
+    }
 }
 
 function admin_ident(string $name): string {
@@ -77,7 +95,7 @@ function admin_connect(string $host, string $user, string $pass, int $port): mys
     if (defined('MYSQLI_OPT_READ_TIMEOUT')) { @$mysqli->options(MYSQLI_OPT_READ_TIMEOUT, 120); }
     $connected = @$mysqli->real_connect($host, $user, $pass, null, $port);
     if (!$connected) {
-        api_fail(200, 'MySQL root connection failed', [
+        api_fail(200, 'MySQL database connection failed', [
             'mysqlError' => $mysqli->connect_error,
             'mysqlErrno' => $mysqli->connect_errno,
         ]);
@@ -88,6 +106,7 @@ function admin_connect(string $host, string $user, string $pass, int $port): mys
 
 function admin_schema_path(): string {
     $candidates = [
+        __DIR__ . '/../server/schema/lmeve-schema.sql',
         __DIR__ . '/../../server/schema/lmeve-schema.sql',
         __DIR__ . '/../../../server/schema/lmeve-schema.sql',
     ];
@@ -183,10 +202,12 @@ function admin_ensure_app_user(mysqli $mysqli, string $dbName, string $user, str
     ];
 }
 
-$mysqli = admin_connect($dbHost, $sudoUser, $sudoPass, $dbPort);
+$mysqli = $action === 'schema'
+    ? admin_connect($dbHost, $lmeveUser, $lmevePass, $dbPort)
+    : admin_connect($dbHost, $sudoUser, $sudoPass, $dbPort);
 
 // If the saved sudo password was the mask, keep the password that just worked.
-if ($storedReal === '' && $submittedReal !== '') {
+if ($action !== 'schema' && $storedReal === '' && $submittedReal !== '') {
     $dbCfg['sudoPassword'] = $submittedReal;
     $root['database'] = $dbCfg;
     $store = api_settings_path();
@@ -243,15 +264,10 @@ if ($action === 'clear') {
 }
 
 if ($action === 'schema') {
-    if (!@$mysqli->query('CREATE DATABASE IF NOT EXISTS ' . admin_ident($dbName) . ' DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')) {
-        $err = $mysqli->error;
-        @$mysqli->close();
-        api_fail(200, 'Cannot create database', ['mysqlError' => $err, 'database' => $dbName]);
-    }
     if (!@$mysqli->select_db($dbName)) {
         $err = $mysqli->error;
         @$mysqli->close();
-        api_fail(200, 'Cannot select database', ['mysqlError' => $err, 'database' => $dbName]);
+        api_fail(200, 'Cannot select database. Create it or grant the application user access first.', ['mysqlError' => $err, 'database' => $dbName]);
     }
 
     $schemaPath = admin_schema_path();
@@ -296,22 +312,18 @@ if ($action === 'schema') {
         api_fail(200, 'Schema import failed', $failed);
     }
 
-    $grant = admin_ensure_app_user($mysqli, $dbName, $lmeveUser, $lmevePass);
     $tables = admin_list_tables($mysqli, $dbName);
     @$mysqli->close();
 
     $message = 'Schema initialized — ' . count($tables) . " tables in `$dbName`";
-    if (!$grant['granted']) {
-        $message .= '. App user grant: ' . $grant['note'];
-    }
 
     echo json_encode([
         'ok' => true,
         'action' => 'schema',
         'tablesCreated' => count($tables),
         'statementsRun' => $ran,
-        'appUserGranted' => $grant['granted'],
-        'grantNote' => $grant['note'],
+        'appUserGranted' => true,
+        'grantNote' => 'Schema created using the application database user',
         'message' => $message,
     ]);
     exit;
@@ -325,7 +337,10 @@ if ($lmeveUser !== '') {
 }
 @$mysqli->close();
 
-$scriptPath = __DIR__ . '/../../scripts/import-sde.sh';
+$scriptPath = __DIR__ . '/../scripts/import-sde.sh';
+if (!is_file($scriptPath)) {
+    $scriptPath = __DIR__ . '/../../scripts/import-sde.sh';
+}
 if (!is_file($scriptPath)) {
     api_fail(500, 'SDE import script not found', ['path' => $scriptPath]);
 }

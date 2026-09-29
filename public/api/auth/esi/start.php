@@ -10,10 +10,10 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 }
 
 $body = api_read_json();
-$esiCfg = api_get_esi_config($body);
+$esiCfg = api_get_esi_config([]);
 $clientId = (string)($esiCfg['clientId'] ?? '');
-if ($clientId === '') {
-  api_fail(400, 'ESI is not configured on the server');
+if ($clientId === '' || (string)($esiCfg['clientSecret'] ?? '') === '') {
+  api_fail(400, 'Save the ESI Client ID and Secret before starting SSO');
 }
 
 // ALWAYS use the server-configured public callback URL.

@@ -215,6 +215,16 @@ function api_get_esi_config(array $payload = []): array {
  * Must match the URL registered on the EVE application exactly.
  */
 function api_get_esi_callback_url(array $payload = []): string {
+    // Deployments reachable by both LAN and public hosts can pin the one EVE
+    // developer application callback with LMEVE_PUBLIC_URL.
+    $publicBase = trim((string)(getenv('LMEVE_PUBLIC_URL') ?: ''));
+    if ($publicBase !== '') {
+        $parts = parse_url($publicBase);
+        if (is_array($parts) && in_array($parts['scheme'] ?? '', ['http', 'https'], true) && !empty($parts['host'])) {
+            $authority = $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
+            return $parts['scheme'] . '://' . $authority . '/api/auth/esi/callback.php';
+        }
+    }
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
         || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');

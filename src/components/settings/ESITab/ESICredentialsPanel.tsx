@@ -10,46 +10,27 @@ export interface ESICredentialsPanelProps {
   userName?: string;
   userCorp?: string;
   esiSettings: ESISettings & { clientSecretSet?: boolean };
-  esiConfig: { clientId?: string; clientSecret?: string };
   generalSettings: GeneralSettings;
   onUpdateESISetting: (key: keyof ESISettings, value: any) => void;
   onSaveESIConfig: (clientId: string, clientSecret: string) => void;
-  onClearESIForm: () => void;
   onTestESIConfig: () => Promise<void> | void;
-}
-
-function secretIsSaved(value: string | undefined, flag?: boolean): boolean {
-  return flag === true || value === '***';
 }
 
 export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
   userName,
   userCorp,
   esiSettings,
-  esiConfig,
-  generalSettings,
+  generalSettings: _generalSettings,
   onUpdateESISetting,
   onSaveESIConfig,
-  onClearESIForm,
   onTestESIConfig,
 }) => {
   const [showSecrets, setShowSecrets] = React.useState(false);
-  const [secretDraft, setSecretDraft] = React.useState<string | null>(null);
+  const canonicalCallback = esiSettings.callbackUrl || `${window.location.origin}/api/auth/esi/callback.php`;
 
-  const proto = generalSettings.deploymentProtocol || (window.location.protocol === 'https:' ? 'https' : 'http');
-  const host = window.location.host;
-  // Fixed for this site. Not a setting. Must match the EVE application exactly.
-  const canonicalCallback = `${proto}://${host}/api/auth/esi/callback.php`;
+  const secretSaved = esiSettings.clientSecretSet === true;
+  const secretDisplay = esiSettings.clientSecret === '***' ? '' : (esiSettings.clientSecret || '');
 
-  const secretSaved = secretIsSaved(esiSettings.clientSecret, esiSettings.clientSecretSet)
-    || secretIsSaved(esiConfig.clientSecret);
-  const secretDisplay = secretDraft !== null
-    ? secretDraft
-    : (secretSaved ? '' : (esiSettings.clientSecret || esiConfig.clientSecret || ''));
-
-  const hasUnsaved =
-    (esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId && esiSettings.clientId !== '***') ||
-    (secretDraft !== null && secretDraft !== '' && secretDraft !== '***');
 
   const copyCallback = async () => {
     try {
@@ -64,7 +45,7 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${esiConfig.clientId || esiSettings.clientId ? 'bg-green-500' : 'bg-red-500'}`} />
+          <div className={`w-2 h-2 rounded-full ${esiSettings.clientId ? 'bg-green-500' : 'bg-red-500'}`} />
           <h4 className="font-medium">ESI Application Credentials</h4>
         </div>
         <Button
@@ -88,19 +69,15 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
           <Label htmlFor="clientId">EVE Online Client ID</Label>
           <Input
             id="clientId"
-            value={esiSettings.clientId || esiConfig.clientId || ''}
+            value={esiSettings.clientId || ''}
             onChange={(e) => onUpdateESISetting('clientId', e.target.value)}
             placeholder="Your EVE Online application Client ID"
-            className={esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId ? 'border-accent' : ''}
           />
-          {esiSettings.clientId && esiSettings.clientId !== esiConfig.clientId && (
-            <p className="text-xs text-accent">• Unsaved changes</p>
-          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="clientSecret" className="flex items-center gap-2">
             EVE Online Client Secret
-            {secretSaved && secretDraft === null && (
+            {secretSaved && !secretDisplay && (
               <span className="text-[11px] font-normal text-green-500">Saved</span>
             )}
           </Label>
@@ -111,12 +88,11 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
               value={secretDisplay}
               onChange={(e) => {
                 const next = e.target.value;
-                setSecretDraft(next);
                 if (next === '' && secretSaved) onUpdateESISetting('clientSecret', '***');
                 else onUpdateESISetting('clientSecret', next);
               }}
               placeholder={secretSaved ? 'Saved on server — leave blank to keep' : 'Your EVE Online application Client Secret'}
-              className={secretDraft && secretDraft !== '***' ? 'border-accent' : ''}
+              className={secretDisplay ? 'border-accent' : ''}
             />
             <Button
               type="button"
@@ -128,7 +104,7 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
               {showSecrets ? <EyeSlash size={16} /> : <Eye size={16} />}
             </Button>
           </div>
-          {secretDraft && secretDraft !== '***' && (
+          {secretDisplay && secretDisplay !== '***' && (
             <p className="text-xs text-accent">• Unsaved changes</p>
           )}
         </div>
@@ -137,33 +113,20 @@ export const ESICredentialsPanel: React.FC<ESICredentialsPanelProps> = ({
       <div className="flex flex-wrap gap-2">
         <Button
           onClick={() => {
-            const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
-            const typed = (secretDraft ?? esiSettings.clientSecret ?? '').trim();
-            const clientSecret = typed && typed !== '***'
-              ? typed
-              : ((esiConfig.clientSecret && esiConfig.clientSecret !== '***')
-                ? esiConfig.clientSecret
-                : (secretSaved ? '***' : ''));
+            const clientId = (esiSettings.clientId || '').trim();
+            const typed = (esiSettings.clientSecret ?? '').trim();
+            const clientSecret = typed && typed !== '***' ? typed : (secretSaved ? '***' : '');
             if (!clientId) return;
+            if (!clientSecret) {
+              toast.error('EVE Online Client Secret is required');
+              return;
+            }
             onSaveESIConfig(clientId, clientSecret);
-            setSecretDraft(null);
           }}
           size="sm"
-          disabled={!esiSettings.clientId && !esiConfig.clientId}
-          className={hasUnsaved ? 'bg-accent hover:bg-accent/90 text-accent-foreground' : ''}
+          disabled={!esiSettings.clientId}
         >
-          {hasUnsaved ? 'Save Changes' : 'Save ESI Config'}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setSecretDraft('');
-            onClearESIForm();
-          }}
-          disabled={!esiSettings.clientId && !esiSettings.clientSecret && !secretSaved}
-        >
-          Clear
+          Save ESI Config
         </Button>
         <Button
           variant="outline"

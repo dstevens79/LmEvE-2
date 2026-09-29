@@ -3,11 +3,27 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig, type PluginOption } from "vite";
 import { resolve } from "path";
+import { readFileSync } from "node:fs";
 
 const projectRoot = process.env.PROJECT_ROOT || import.meta.dirname;
 
 export default defineConfig({
   plugins: [
+    {
+      name: "lmeve-server-resources",
+      generateBundle() {
+        for (const [source, fileName] of [
+          ["server/schema/lmeve-schema.sql", "server/schema/lmeve-schema.sql"],
+          ["scripts/import-sde.sh", "scripts/import-sde.sh"],
+        ]) {
+          this.emitFile({
+            type: "asset",
+            fileName,
+            source: readFileSync(resolve(projectRoot, source)),
+          });
+        }
+      },
+    },
     ...(process.env.LMEVE_DEV_API === "1"
       ? [
           {

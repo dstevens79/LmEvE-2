@@ -1459,23 +1459,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const newConfig = {
       clientId: normalized.clientId,
-      clientSecret: normalized.clientSecret,
-      callbackUrl: (esiConfiguration as any)?.callbackUrl,
+      clientSecret: normalized.clientSecret === '***'
+        ? (esiConfiguration.clientSecret && esiConfiguration.clientSecret !== '***' ? esiConfiguration.clientSecret : undefined)
+        : normalized.clientSecret,
     };
-    setESIConfiguration(newConfig);
 
     // Persist to server settings.json (fixes: esiConfig was localStorage-only,
     // so a page reload lost the config and showed "ESI not configured").
     try {
-      const esiSettingsFromService = await fetch('/api/settings.php', {
-        method: 'GET',
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-        cache: 'no-store',
-      }).then(r => r.ok ? r.json().catch(() => null) : null);
-      const root = esiSettingsFromService?.settings ?? esiSettingsFromService;
-      const callbackUrl = (root?.esi?.callbackUrl) || (newConfig as any).callbackUrl || '';
-      await fetch('/api/settings.php', {
+      const response = await fetch('/api/settings.php', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -1483,7 +1475,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
           esi: {
             clientId: normalized.clientId,
             clientSecret: normalized.clientSecret || '',
-            callbackUrl: callbackUrl || '',
             userAgent: 'LMeve-2',
             scopes: [
               'esi-corporations.read_corporation_membership.v1',
@@ -1500,9 +1491,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
           },
         }),
       });
-      console.log('ESI config persisted to server');
+      if (!response.ok) throw new Error(`Could not save ESI settings (HTTP ${response.status})`);
+      setESIConfiguration(newConfig);
     } catch (e) {
-      console.warn('Failed to persist ESI config to server:', e);
+      throw e;
     }
 
     // Initialize ESI service with new config (server owns real callback URL)
@@ -1511,7 +1503,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const callbackRedirect = useSpa2
         ? `${window.location.origin}/`
         : 'about:blank';
-      initializeESIAuth(normalized.clientId, normalized.clientSecret, registeredCorporations, callbackRedirect);
+      initializeESIAuth(normalized.clientId, newConfig.clientSecret, registeredCorporations, callbackRedirect);
       console.log('ESI configuration updated');
     } catch (error) {
       console.error('Failed to update ESI configuration:', error);

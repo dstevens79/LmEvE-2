@@ -21,27 +21,13 @@ export const ConnectivityTab: React.FC = () => {
   const [esiSettings, setESISettings] = useESISettings();
   const [persistedDbConnected] = useLocalKV<boolean>('lmeve-database-connected', false);
   const dbConnected = !!persistedDbConnected;
-  const esiConfigured = !!esiConfig.clientId;
+  const esiConfigured = !!esiSettings.clientId && esiSettings.clientSecretSet === true;
   const proto = generalSettings.deploymentProtocol || (typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'https' : 'http');
   const authFlow = generalSettings.authFlow || 'server';
   const callbackOrigin = (() => { try { return esiSettings.callbackUrl ? new URL(esiSettings.callbackUrl).origin : '' } catch { return '' } })();
 
   const updateGeneralSetting = <K extends keyof typeof generalSettings>(k: K, v: typeof generalSettings[K]) => setGeneralSettings(prev => ({ ...prev, [k]: v }));
   const updateESISetting = <K extends keyof typeof esiSettings>(k: K, v: typeof esiSettings[K]) => setESISettings(prev => ({ ...prev, [k]: v }));
-
-  // Sync: when esiConfig (from useAuth/localStorage) has a clientId but our
-  // local esiSettings form state doesn't, copy it over so the Test button
-  // can read it. This handles the case where config was saved in a different
-  // tab/session and the form fields were cleared.
-  React.useEffect(() => {
-    if (esiConfig?.clientId && !esiSettings.clientId) {
-      setESISettings(prev => ({
-        ...prev,
-        clientId: esiConfig.clientId || '',
-        clientSecret: esiConfig.clientSecret || '',
-      }));
-    }
-  }, [esiConfig?.clientId, esiConfig?.clientSecret, esiSettings.clientId, esiSettings.clientSecret, setESISettings]);
 
   const handleSaveSiteCompact = () => toast.success('Connectivity site settings saved');
 
@@ -81,26 +67,22 @@ export const ConnectivityTab: React.FC = () => {
             userName={user?.characterName}
             userCorp={user?.corporationName}
             esiSettings={esiSettings}
-            esiConfig={{ clientId: esiConfig.clientId, clientSecret: esiConfig.clientSecret }}
             generalSettings={generalSettings}
             onUpdateESISetting={(k, v) => updateESISetting(k as any, v)}
             onSaveESIConfig={async (clientId, clientSecret) => {
               if (!clientId) { toast.error('Client ID is required'); return; }
               try {
                 await updateESIConfig(clientId, clientSecret || '');
-                // Force useESISettings to re-fetch from server so it's in sync
                 window.dispatchEvent(new CustomEvent('lmeve-settings-reload'));
-                setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' }));
                 toast.success('ESI configuration updated');
               } catch (err) {
                 const message = err instanceof Error ? err.message : 'Failed to save ESI configuration';
                 toast.error(message);
               }
             }}
-            onClearESIForm={() => { setESISettings(prev => ({ ...prev, clientId: '', clientSecret: '' })); toast.info('Form cleared'); }}
             onTestESIConfig={async () => {
               try {
-                const clientId = (esiSettings.clientId || esiConfig.clientId || '').trim();
+                const clientId = (esiSettings.clientId || '').trim();
                 const clientSecret = (esiSettings.clientSecret || esiConfig.clientSecret || '').trim() || undefined;
                 if (!clientId) { toast.error('Client ID is required to test ESI configuration'); return; }
 
@@ -130,7 +112,7 @@ export const ConnectivityTab: React.FC = () => {
                   await startEsiLogin(loginWithESI, { scopeType: 'basic', clientId, role: user?.role, announce: true });
                   return;
                 }
-                const callbackUrl = (esiSettings.callbackUrl && esiSettings.callbackUrl.trim()) ? esiSettings.callbackUrl.trim() : `${window.location.origin}/`;
+                const callbackUrl = esiSettings.callbackUrl || `${window.location.origin}/api/auth/esi/callback.php`;
                 const corps = getRegisteredCorporations();
                 initializeESIAuth(clientId, clientSecret, corps, callbackUrl);
                 const svc = getESIAuthService();

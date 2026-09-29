@@ -56,7 +56,9 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 if ($method === 'GET') {
   if (!file_exists($storeFile)) {
-    api_respond(['ok' => true, 'settings' => null]);
+    api_respond(['ok' => true, 'settings' => [
+      'esi' => ['callbackUrl' => api_get_esi_callback_url([]), 'clientSecretSet' => false],
+    ]]);
   }
   $raw = @file_get_contents($storeFile);
   if ($raw === false) {
@@ -111,17 +113,17 @@ if ($method === 'GET') {
     $maskedRoot['database']['password'] = $hasSecret ? '***' : '';
     $maskedRoot['database']['sudoPassword'] = $hasSudo ? '***' : '';
   }
+  if (!isset($maskedRoot['esi']) || !is_array($maskedRoot['esi'])) {
+    $maskedRoot['esi'] = [];
+  }
   if (isset($root['esi']) && is_array($root['esi'])) {
-    if (!isset($maskedRoot['esi']) || !is_array($maskedRoot['esi'])) {
-      $maskedRoot['esi'] = [];
-    }
     $rawSecret = isset($root['esi']['clientSecret']) ? (string)$root['esi']['clientSecret'] : '';
     $secretSet = ($rawSecret !== '' && $rawSecret !== '***');
     $maskedRoot['esi']['clientSecretSet'] = $secretSet;
     $maskedRoot['esi']['clientSecret'] = $secretSet ? '***' : '';
-    // Callback is derived, never a stored user override.
-    $maskedRoot['esi']['callbackUrl'] = api_get_esi_callback_url([]);
   }
+  // Callback is derived even before ESI credentials have been saved.
+  $maskedRoot['esi']['callbackUrl'] = api_get_esi_callback_url([]);
   api_respond(['ok' => true, 'settings' => $maskedRoot]);
 }
 
@@ -139,7 +141,16 @@ if ($method === 'POST') {
 
   $existingRoot = api_resolve_settings_root($existing);
   $incomingRoot = api_resolve_settings_root($payload);
+  if (isset($incomingRoot['esi']) && is_array($incomingRoot['esi'])) {
+    unset($incomingRoot['esi']['callbackUrl'], $incomingRoot['esi']['clientSecretSet']);
+  }
+  if (isset($incomingRoot['database']) && is_array($incomingRoot['database'])) {
+    unset($incomingRoot['database']['configured'], $incomingRoot['database']['passwordSet'], $incomingRoot['database']['sudoPasswordSet']);
+  }
   $mergedRoot = merge_settings($existingRoot, $incomingRoot);
+  if (isset($mergedRoot['esi']) && is_array($mergedRoot['esi'])) {
+    unset($mergedRoot['esi']['callbackUrl'], $mergedRoot['esi']['clientSecretSet']);
+  }
 
   if (isset($existing['settings']) && is_array($existing['settings'])) {
     $toStore = $existing;

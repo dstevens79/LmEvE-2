@@ -43,7 +43,7 @@ cd "${TEMP_DIR}"
 
 echo "Downloading from: ${SDE_URL}"
 echo "This may take several minutes..."
-if ! wget --show-progress="${SDE_URL}" -O mysql-latest.tar.bz2 2>&1; then
+if ! wget --show-progress -O mysql-latest.tar.bz2 "${SDE_URL}" 2>&1; then
     echo "ERROR: SDE download failed"
     exit 1
 fi

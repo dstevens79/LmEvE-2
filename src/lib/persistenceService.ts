@@ -53,25 +53,6 @@ function extractServerSettingsRoot(data: any): Record<string, any> | null {
   return payload as Record<string, any>;
 }
 
-/**
- * Secret fields come back masked as '***'. Keep a real in-memory secret when
- * present; otherwise keep the mask so UI knows "configured" vs empty.
- */
-function mergeSecretField(serverValue: unknown, prevValue: unknown): string {
-  if (typeof serverValue === 'string' && serverValue !== '' && serverValue !== '***') {
-    return serverValue;
-  }
-  if (serverValue === '***') {
-    // Prefer a real password already typed this session; else keep mask marker.
-    if (typeof prevValue === 'string' && prevValue !== '' && prevValue !== '***') {
-      return prevValue;
-    }
-    return '***';
-  }
-  if (typeof prevValue === 'string') return prevValue;
-  return '';
-}
-
 function scheduleCategorySave(category: string, payload: any, delayMs = 400) {
   try {
     if (saveDebounceTimers[category]) {
@@ -193,6 +174,7 @@ export interface DatabaseSettings {
 export interface ESISettings {
   clientId: string;
   clientSecret: string;
+  clientSecretSet?: boolean;
   callbackUrl: string;
   userAgent: string;
   scopes: string[];
@@ -700,6 +682,8 @@ export const useGeneralSettings = () => {
 export interface DatabaseSettingsState extends DatabaseSettings {
   /** Server says a real DB password is stored (client may only see ***). */
   configured?: boolean;
+  passwordSet?: boolean;
+  sudoPasswordSet?: boolean;
 }
 
 export const useDatabaseSettings = () => {
@@ -716,14 +700,14 @@ export const useDatabaseSettings = () => {
       database: String(srv.database ?? prev.database ?? 'lmeve2'),
       username: String(srv.username ?? prev.username ?? ''),
       // Keep real typed password, else preserve *** mask so setup knows credentials exist
-      password: mergeSecretField(srv.password, prev.password),
+      password: srv.passwordSet ? '***' : '',
       sudoHost: String(srv.sudoHost ?? prev.sudoHost ?? 'localhost'),
       sudoPort: typeof srv.sudoPort === 'number' ? srv.sudoPort : Number(srv.sudoPort ?? prev.sudoPort ?? 3306),
       sudoUsername: String(srv.sudoUsername ?? prev.sudoUsername ?? 'root'),
-      sudoPassword: mergeSecretField(srv.sudoPassword, prev.sudoPassword),
-      configured: typeof srv.configured === 'boolean'
-        ? srv.configured
-        : !!(mergeSecretField(srv.password, prev.password)),
+      sudoPassword: srv.sudoPasswordSet ? '***' : '',
+      passwordSet: srv.passwordSet === true,
+      sudoPasswordSet: srv.sudoPasswordSet === true,
+      configured: srv.configured === true,
     }));
   }, []);
   useServerSettingsLoader(load);
@@ -731,15 +715,7 @@ export const useDatabaseSettings = () => {
   const setter = (next: DatabaseSettingsState | ((prev: DatabaseSettingsState) => DatabaseSettingsState)) => {
     setVal(prev => {
       const resolved = typeof next === 'function' ? (next as any)(prev) : next;
-      // Write-through to server only; no localStorage persistence
-      const { configured: _configured, ...toSave } = resolved as DatabaseSettingsState;
-      scheduleCategorySave('database', toSave);
-      return {
-        ...resolved,
-        configured:
-          !!(resolved.password && String(resolved.password).trim() !== '')
-          || !!resolved.configured,
-      };
+      return resolved;
     });
   };
   return [val, setter] as const;
@@ -754,7 +730,7 @@ export const useESISettings = () => {
     const srv = await fetchServerSettingsCategory<Record<string, any>>('esi');
     if (!srv || typeof srv !== 'object') return;
     setVal(prev => {
-      const rawId = srv.clientId ?? prev.clientId;
+      const rawId = srv.clientId ?? '';
       const clientId =
         rawId && typeof rawId === 'object'
           ? String((rawId as any).clientId ?? (rawId as any).client_id ?? '')
@@ -762,7 +738,8 @@ export const useESISettings = () => {
       return {
         ...prev,
         clientId,
-        clientSecret: mergeSecretField(srv.clientSecret, prev.clientSecret),
+        clientSecret: srv.clientSecretSet ? '***' : '',
+        clientSecretSet: srv.clientSecretSet === true,
         callbackUrl: String(srv.callbackUrl ?? prev.callbackUrl ?? ''),
         userAgent: String(srv.userAgent ?? prev.userAgent ?? ''),
         scopes: Array.isArray(srv.scopes) ? srv.scopes : prev.scopes,
@@ -777,7 +754,6 @@ export const useESISettings = () => {
   const setter = (next: ESISettings | ((prev: ESISettings) => ESISettings)) => {
     setVal(prev => {
       const resolved = typeof next === 'function' ? (next as any)(prev) : next;
-      scheduleCategorySave('esi', resolved);
       return resolved;
     });
   };

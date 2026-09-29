@@ -26,13 +26,10 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
 }) => {
   const [showSudoPassword, setShowSudoPassword] = React.useState(false);
   const [showDbPassword, setShowDbPassword] = React.useState(false);
-  const [dbDraft, setDbDraft] = React.useState<string | null>(null);
-  const [sudoDraft, setSudoDraft] = React.useState<string | null>(null);
-
-  const appSaved = secretSaved(databaseSettings.password, databaseSettings.passwordSet || databaseSettings.configured);
+  const appSaved = secretSaved(databaseSettings.password, databaseSettings.passwordSet);
   const sudoSaved = secretSaved(databaseSettings.sudoPassword, databaseSettings.sudoPasswordSet);
-  const appDisplay = dbDraft !== null ? dbDraft : (appSaved ? '' : (databaseSettings.password || ''));
-  const sudoDisplay = sudoDraft !== null ? sudoDraft : (sudoSaved ? '' : (databaseSettings.sudoPassword || ''));
+  const appDisplay = databaseSettings.password === '***' ? '' : (databaseSettings.password || '');
+  const sudoDisplay = databaseSettings.sudoPassword === '***' ? '' : (databaseSettings.sudoPassword || '');
 
   return (
     <>
@@ -95,7 +92,7 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground flex items-center gap-2">
                 Sudo User
-                {sudoSaved && sudoDraft === null && <span className="text-green-500">Saved</span>}
+                {sudoSaved && !sudoDisplay && <span className="text-green-500">Saved</span>}
               </Label>
               <Input
                 value={databaseSettings.sudoUsername || ''}
@@ -109,7 +106,6 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
                   value={sudoDisplay}
                   onChange={(e) => {
                     const next = e.target.value;
-                    setSudoDraft(next);
                     if (next === '' && sudoSaved) onUpdate('sudoPassword', '***');
                     else onUpdate('sudoPassword', next);
                   }}
@@ -131,7 +127,7 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground flex items-center gap-2">
                 LMeve User
-                {appSaved && dbDraft === null && <span className="text-green-500">Saved</span>}
+                {appSaved && !appDisplay && <span className="text-green-500">Saved</span>}
               </Label>
               <Input
                 value={databaseSettings.username || ''}
@@ -145,7 +141,6 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
                   value={appDisplay}
                   onChange={(e) => {
                     const next = e.target.value;
-                    setDbDraft(next);
                     if (next === '' && appSaved) onUpdate('password', '***');
                     else onUpdate('password', next);
                   }}

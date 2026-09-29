@@ -343,6 +343,15 @@ STORAGE_DIR="/var/lib/lmeve2"
 mkdir -p "$STORAGE_DIR"
 chown -R www-data:www-data "$STORAGE_DIR"
 chmod -R 775 "$STORAGE_DIR"
+if [ -z "${LMEVE_PUBLIC_URL:-}" ]; then
+    if [[ "$ENABLE_SSL" =~ ^[Yy]$ ]] && [ "$USE_IP" != true ]; then
+        LMEVE_PUBLIC_URL="https://${SERVER_NAME}"
+    elif [ "$HTTP_PORT" = "80" ]; then
+        LMEVE_PUBLIC_URL="http://${SERVER_NAME}"
+    else
+        LMEVE_PUBLIC_URL="http://${SERVER_NAME}:${HTTP_PORT}"
+    fi
+fi
 if [ "$USE_IP" = true ]; then
     # IP-based configuration
     VHOST_FILE="/etc/apache2/sites-available/lmeve2.conf"
@@ -352,6 +361,7 @@ if [ "$USE_IP" = true ]; then
     ServerAdmin ${ADMIN_EMAIL}
     # Writable storage location for PHP endpoints
     SetEnv LMEVE_STORAGE_DIR "${STORAGE_DIR}"
+    SetEnv LMEVE_PUBLIC_URL "${LMEVE_PUBLIC_URL}"
     
     DocumentRoot ${FINAL_DIR}
     
@@ -391,6 +401,7 @@ else
     ServerAdmin ${ADMIN_EMAIL}
     # Writable storage location for PHP endpoints
     SetEnv LMEVE_STORAGE_DIR "${STORAGE_DIR}"
+    SetEnv LMEVE_PUBLIC_URL "${LMEVE_PUBLIC_URL}"
     
     DocumentRoot ${FINAL_DIR}
     
@@ -544,11 +555,7 @@ echo "      Settings > Database (any host — local, remote server, or managed D
 echo "  • If you want a MySQL/MariaDB box set up from scratch, run scripts/setup-lmeve-db.sh"
 echo "    ON THE DATABASE MACHINE, then point this install at it via Settings > Database."
 echo "  • Create ESI app at: https://developers.eveonline.com"
-if [ "$HTTP_PORT" == "80" ]; then
-    echo "  • Callback URL: http://${SERVER_NAME}/api/auth/esi/callback.php"
-else
-    echo "  • Callback URL: http://${SERVER_NAME}:${HTTP_PORT}/api/auth/esi/callback.php"
-fi
+echo "  • Callback URL: ${LMEVE_PUBLIC_URL}/api/auth/esi/callback.php"
 echo ""
 echo -e "${BLUE}Logs:${NC}"
 if [ "$USE_IP" = true ]; then
