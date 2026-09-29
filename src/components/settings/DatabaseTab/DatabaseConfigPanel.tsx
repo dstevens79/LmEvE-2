@@ -2,14 +2,21 @@ import React from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Eye, EyeSlash } from '@phosphor-icons/react';
 import type { DatabaseSettings } from '@/lib/persistenceService';
 
 export interface DatabaseConfigPanelProps {
-  databaseSettings: DatabaseSettings;
+  databaseSettings: DatabaseSettings & {
+    configured?: boolean;
+    passwordSet?: boolean;
+    sudoPasswordSet?: boolean;
+  };
   dbConnected: boolean;
   onUpdate: (key: keyof DatabaseSettings, value: any) => void;
+}
+
+function secretSaved(value: string | undefined, flag?: boolean): boolean {
+  return flag === true || value === '***';
 }
 
 export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
@@ -19,10 +26,16 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
 }) => {
   const [showSudoPassword, setShowSudoPassword] = React.useState(false);
   const [showDbPassword, setShowDbPassword] = React.useState(false);
+  const [dbDraft, setDbDraft] = React.useState<string | null>(null);
+  const [sudoDraft, setSudoDraft] = React.useState<string | null>(null);
+
+  const appSaved = secretSaved(databaseSettings.password, databaseSettings.passwordSet || databaseSettings.configured);
+  const sudoSaved = secretSaved(databaseSettings.sudoPassword, databaseSettings.sudoPasswordSet);
+  const appDisplay = dbDraft !== null ? dbDraft : (appSaved ? '' : (databaseSettings.password || ''));
+  const sudoDisplay = sudoDraft !== null ? sudoDraft : (sudoSaved ? '' : (databaseSettings.sudoPassword || ''));
 
   return (
     <>
-      {/* Database Connection - Compact */}
       <div className="lg:col-span-1 space-y-4">
         <div className="border border-border rounded-lg p-3">
           <div className="flex items-center gap-2 mb-3">
@@ -72,17 +85,18 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
         </div>
       </div>
 
-      {/* Database Users - Compact */}
       <div className="lg:col-span-1 space-y-4">
         <div className="border border-border rounded-lg p-3">
           <div className="flex items-center gap-2 mb-3">
-            <div className={`w-2 h-2 rounded-full ${databaseSettings.sudoUsername && databaseSettings.sudoPassword ? 'bg-green-500' : 'bg-red-500'}`} />
+            <div className={`w-2 h-2 rounded-full ${(databaseSettings.sudoUsername && (sudoSaved || databaseSettings.sudoPassword)) ? 'bg-green-500' : 'bg-red-500'}`} />
             <h4 className="text-sm font-medium">DB Users</h4>
           </div>
           <div className="space-y-3">
-            {/* Admin User */}
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Sudo User</Label>
+              <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                Sudo User
+                {sudoSaved && sudoDraft === null && <span className="text-green-500">Saved</span>}
+              </Label>
               <Input
                 value={databaseSettings.sudoUsername || ''}
                 onChange={(e) => onUpdate('sudoUsername', e.target.value)}
@@ -92,9 +106,14 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
               <div className="relative">
                 <Input
                   type={showSudoPassword ? 'text' : 'password'}
-                  value={databaseSettings.sudoPassword || ''}
-                  onChange={(e) => onUpdate('sudoPassword', e.target.value)}
-                  placeholder="Admin password"
+                  value={sudoDisplay}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setSudoDraft(next);
+                    if (next === '' && sudoSaved) onUpdate('sudoPassword', '***');
+                    else onUpdate('sudoPassword', next);
+                  }}
+                  placeholder={sudoSaved ? 'Saved on server — leave blank to keep' : 'Admin password'}
                   className="h-8 text-sm pr-8"
                 />
                 <Button
@@ -109,9 +128,11 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
               </div>
             </div>
 
-            {/* App User */}
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">LMeve User</Label>
+              <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                LMeve User
+                {appSaved && dbDraft === null && <span className="text-green-500">Saved</span>}
+              </Label>
               <Input
                 value={databaseSettings.username || ''}
                 onChange={(e) => onUpdate('username', e.target.value)}
@@ -121,9 +142,14 @@ export const DatabaseConfigPanel: React.FC<DatabaseConfigPanelProps> = ({
               <div className="relative">
                 <Input
                   type={showDbPassword ? 'text' : 'password'}
-                  value={databaseSettings.password || ''}
-                  onChange={(e) => onUpdate('password', e.target.value)}
-                  placeholder="App password"
+                  value={appDisplay}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setDbDraft(next);
+                    if (next === '' && appSaved) onUpdate('password', '***');
+                    else onUpdate('password', next);
+                  }}
+                  placeholder={appSaved ? 'Saved on server — leave blank to keep' : 'App password'}
                   className="h-8 text-sm pr-8"
                 />
                 <Button

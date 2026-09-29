@@ -24,7 +24,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 function api_respond(array $data, int $status = 200): void {
     http_response_code($status);
     header('Content-Type: application/json');
-    header('Cache-Control: no-store');
     echo json_encode($data);
     exit;
 }
@@ -118,6 +117,10 @@ function api_resolve_settings_root(array $json): array {
     return $json;
 }
 
+function api_secret_is_real($value): bool {
+    return is_string($value) && $value !== '' && $value !== '***';
+}
+
 function api_get_db_config(array $payload = []): array {
     // Server-owned credentials only. Request payload is intentionally ignored here.
     // For authenticated admin "test before save", use api_get_db_config_for_admin_test().
@@ -172,9 +175,8 @@ function api_get_db_config_for_admin_test(array $payload = []): array {
 }
 
 function api_get_esi_config(array $payload = []): array {
-    // Client id/secret/callback come from server settings first.
-    // Request payload may only fill blanks — never override a saved public callback
-    // with a browser-local redirect (LAN IP), which breaks EVE SSO.
+    // Client id/secret come from server settings first.
+    // Callback URL is not a user setting — see api_get_esi_callback_url().
     $cfg = [
         'clientId' => '',
         'clientSecret' => '',
@@ -190,7 +192,6 @@ function api_get_esi_config(array $payload = []): array {
         $secret = $esi['clientSecret'] ?? '';
         if ($secret === '***') $secret = '';
         $cfg['clientSecret'] = (string)$secret;
-        $cfg['callbackUrl'] = (string)($esi['callbackUrl'] ?? '');
         $cfg['userAgent'] = (string)($esi['userAgent'] ?? 'LMeve-2');
     }
 
@@ -198,34 +199,22 @@ function api_get_esi_config(array $payload = []): array {
     if ($cfg['clientId'] === '' && !empty($payload['clientId'])) {
         $cfg['clientId'] = (string)$payload['clientId'];
     }
-    if ($cfg['clientSecret'] === '' && !empty($payload['clientSecret'])) {
+    if ($cfg['clientSecret'] === '' && !empty($payload['clientSecret']) && $payload['clientSecret'] !== '***') {
         $cfg['clientSecret'] = (string)$payload['clientSecret'];
-    }
-    if ($cfg['callbackUrl'] === '') {
-        $fromPayload = $payload['callbackUrl'] ?? ($payload['redirectUri'] ?? null);
-        if (is_string($fromPayload) && $fromPayload !== '') {
-            $cfg['callbackUrl'] = $fromPayload;
-        }
     }
     if (!empty($payload['userAgent'])) {
         $cfg['userAgent'] = (string)$payload['userAgent'];
     }
 
+    $cfg['callbackUrl'] = api_get_esi_callback_url($payload);
     return $cfg;
 }
 
 /**
- * Canonical EVE SSO callback URL (must match the CCP application exactly).
- * Prefer saved settings; never invent a LAN-host callback when a public one is configured.
+ * Canonical EVE SSO callback. Fixed for this site — not a user-typed setting.
+ * Must match the URL registered on the EVE application exactly.
  */
 function api_get_esi_callback_url(array $payload = []): string {
-    $cfg = api_get_esi_config($payload);
-    $url = trim((string)($cfg['callbackUrl'] ?? ''));
-    if ($url !== '') {
-        return $url;
-    }
-
-    // Last resort: this request host (only when nothing is configured yet)
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
         || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');

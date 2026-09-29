@@ -6,7 +6,7 @@
 require_once __DIR__ . '/_lib/common.php';
 api_require_admin();
 
-// Resolve a writable storage directory (server/storage â†’ LMEVE_STORAGE_DIR â†’ system temp).
+// Resolve a writable storage directory (server/storage → LMEVE_STORAGE_DIR → system temp).
 $storeDir = api_storage_dir();
 if ($storeDir === null) {
   api_fail(500, 'Failed to resolve writable settings storage directory', [
@@ -20,21 +20,27 @@ if ($storeDir === null) {
 
 $storeFile = $storeDir . DIRECTORY_SEPARATOR . 'settings.json';
 
-// Helper: merge incoming into existing with secret preservation
+// Helper: merge incoming into existing with secret preservation.
+// Never store the mask "***" as a real secret, and never wipe a saved secret
+// when the client reloads and posts the mask or an empty field.
 function merge_settings(array $existing, array $incoming): array {
   $merged = $existing;
+  $secretKeys = ['password', 'clientSecret', 'sudoPassword', 'smtpPassword'];
   foreach ($incoming as $key => $value) {
     if (is_array($value)) {
       $existingChild = isset($existing[$key]) && is_array($existing[$key]) ? $existing[$key] : [];
-      // Secret fields preservation
-      foreach (['password','clientSecret','sudoPassword','smtpPassword'] as $secretKey) {
-        if (isset($value[$secretKey])) {
-          $v = $value[$secretKey];
-          if ($v === '***' || $v === '' || $v === null) {
-            // Keep existing if present
-            if (isset($existingChild[$secretKey]) && $existingChild[$secretKey] !== '') {
-              $value[$secretKey] = $existingChild[$secretKey];
-            }
+      foreach ($secretKeys as $secretKey) {
+        if (!array_key_exists($secretKey, $value)) {
+          continue;
+        }
+        $v = $value[$secretKey];
+        $existingSecret = $existingChild[$secretKey] ?? '';
+        $existingReal = is_string($existingSecret) && $existingSecret !== '' && $existingSecret !== '***';
+        if ($v === '***' || $v === '' || $v === null || !is_string($v)) {
+          if ($existingReal) {
+            $value[$secretKey] = $existingSecret;
+          } else {
+            unset($value[$secretKey]);
           }
         }
       }
@@ -68,17 +74,16 @@ if ($method === 'GET') {
     api_fail(500, 'Corrupt settings file');
   }
   // Mask secrets in response
-  $maskKeys = ['password','clientSecret','sudoPassword','smtpPassword'];
+  $maskKeys = ['password', 'clientSecret', 'sudoPassword', 'smtpPassword'];
   $maskSecrets = function ($value) use (&$maskSecrets, $maskKeys) {
     if (is_array($value)) {
       $masked = [];
       foreach ($value as $k => $v) {
         if (in_array($k, $maskKeys, true)) {
-          // Only mask if not already masked and non-empty
           if (is_string($v) && $v !== '' && $v !== '***') {
             $masked[$k] = '***';
           } else {
-            $masked[$k] = $v;
+            $masked[$k] = '';
           }
         } else {
           $masked[$k] = $maskSecrets($v);
@@ -88,31 +93,41 @@ if ($method === 'GET') {
     }
     return $value;
   };
-  // Always return a flat category map: { database, esi, general, ... }
-    // regardless of whether the file used a nested { settings: {...} } wrapper.
-    $root = api_resolve_settings_root($json);
-    $maskedRoot = $maskSecrets($root);
-    // Flag DB as configured when a real password is stored (client only sees ***).
-    if (isset($root['database']) && is_array($root['database'])) {
-      if (!isset($maskedRoot['database']) || !is_array($maskedRoot['database'])) {
-        $maskedRoot['database'] = [];
-      }
-      $rawPass = isset($root['database']['password']) ? (string)$root['database']['password'] : '';
-      $rawUser = trim((string)($root['database']['username'] ?? ''));
-      $rawHost = trim((string)($root['database']['host'] ?? ''));
-      $hasSecret = ($rawPass !== '' && $rawPass !== '***');
-      $maskedRoot['database']['configured'] = ($rawHost !== '' && $rawUser !== '' && $hasSecret);
-      if ($hasSecret) {
-        $maskedRoot['database']['password'] = '***';
-      }
+  $root = api_resolve_settings_root($json);
+  $maskedRoot = $maskSecrets($root);
+  if (isset($root['database']) && is_array($root['database'])) {
+    if (!isset($maskedRoot['database']) || !is_array($maskedRoot['database'])) {
+      $maskedRoot['database'] = [];
     }
-    api_respond(['ok' => true, 'settings' => $maskedRoot]);
+    $rawPass = isset($root['database']['password']) ? (string)$root['database']['password'] : '';
+    $rawSudo = isset($root['database']['sudoPassword']) ? (string)$root['database']['sudoPassword'] : '';
+    $rawUser = trim((string)($root['database']['username'] ?? ''));
+    $rawHost = trim((string)($root['database']['host'] ?? ''));
+    $hasSecret = ($rawPass !== '' && $rawPass !== '***');
+    $hasSudo = ($rawSudo !== '' && $rawSudo !== '***');
+    $maskedRoot['database']['configured'] = ($rawHost !== '' && $rawUser !== '' && $hasSecret);
+    $maskedRoot['database']['passwordSet'] = $hasSecret;
+    $maskedRoot['database']['sudoPasswordSet'] = $hasSudo;
+    $maskedRoot['database']['password'] = $hasSecret ? '***' : '';
+    $maskedRoot['database']['sudoPassword'] = $hasSudo ? '***' : '';
   }
+  if (isset($root['esi']) && is_array($root['esi'])) {
+    if (!isset($maskedRoot['esi']) || !is_array($maskedRoot['esi'])) {
+      $maskedRoot['esi'] = [];
+    }
+    $rawSecret = isset($root['esi']['clientSecret']) ? (string)$root['esi']['clientSecret'] : '';
+    $secretSet = ($rawSecret !== '' && $rawSecret !== '***');
+    $maskedRoot['esi']['clientSecretSet'] = $secretSet;
+    $maskedRoot['esi']['clientSecret'] = $secretSet ? '***' : '';
+    // Callback is derived, never a stored user override.
+    $maskedRoot['esi']['callbackUrl'] = api_get_esi_callback_url([]);
+  }
+  api_respond(['ok' => true, 'settings' => $maskedRoot]);
+}
 
 if ($method === 'POST') {
   $payload = api_read_json();
 
-  // Load existing (any shape)
   $existing = [];
   if (file_exists($storeFile)) {
     $raw = @file_get_contents($storeFile);
@@ -122,19 +137,14 @@ if ($method === 'POST') {
     }
   }
 
-  // Determine the shapes
   $existingRoot = api_resolve_settings_root($existing);
   $incomingRoot = api_resolve_settings_root($payload);
-
-  // Merge incoming into existing
   $mergedRoot = merge_settings($existingRoot, $incomingRoot);
 
-  // Preserve wrapper if original had one, otherwise store root-only
   if (isset($existing['settings']) && is_array($existing['settings'])) {
     $toStore = $existing;
     $toStore['settings'] = $mergedRoot;
   } else {
-    // If incoming contains wrapper, honor it; else store root
     if (isset($payload['settings']) && is_array($payload['settings'])) {
       $toStore = $payload;
       $toStore['settings'] = $mergedRoot;
@@ -163,6 +173,5 @@ if ($method === 'POST') {
   api_respond(['ok' => true]);
 }
 
-// Method not allowed
 http_response_code(405);
 echo 'Method Not Allowed';
