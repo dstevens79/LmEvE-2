@@ -346,12 +346,27 @@ chmod -R 775 "$STORAGE_DIR"
 if [ -z "${LMEVE_PUBLIC_URL:-}" ]; then
     if [[ "$ENABLE_SSL" =~ ^[Yy]$ ]] && [ "$USE_IP" != true ]; then
         LMEVE_PUBLIC_URL="https://${SERVER_NAME}"
+    elif [ "$USE_IP" = true ]; then
+        PUBLIC_IP=$(curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)
+        if [[ "$PUBLIC_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+            LMEVE_PUBLIC_URL="http://${PUBLIC_IP}"
+            if [ "$HTTP_PORT" != "80" ]; then
+                LMEVE_PUBLIC_URL="${LMEVE_PUBLIC_URL}:${HTTP_PORT}"
+            fi
+        fi
     elif [ "$HTTP_PORT" = "80" ]; then
         LMEVE_PUBLIC_URL="http://${SERVER_NAME}"
     else
         LMEVE_PUBLIC_URL="http://${SERVER_NAME}:${HTTP_PORT}"
     fi
+    read -r -p "Public ESI site origin [${LMEVE_PUBLIC_URL:-required}]: " public_origin_input
+    LMEVE_PUBLIC_URL=${public_origin_input:-$LMEVE_PUBLIC_URL}
 fi
+if [[ ! "$LMEVE_PUBLIC_URL" =~ ^https?://[^/]+/?$ ]]; then
+    echo "A public site origin such as https://eve.example.com is required for EVE SSO."
+    exit 1
+fi
+LMEVE_PUBLIC_URL=${LMEVE_PUBLIC_URL%/}
 if [ "$USE_IP" = true ]; then
     # IP-based configuration
     VHOST_FILE="/etc/apache2/sites-available/lmeve2.conf"

@@ -487,6 +487,9 @@ const DatabaseTabContainer: React.FC = () => {
               Reset
             </Button>
           </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Test Connection uses the values in this form. Save stores them on the server; a Saved password label means the server has that password.
+          </p>
         </div>
 
         {/* Connection Logs + Actions (Right column) */}
